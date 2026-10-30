@@ -1,0 +1,95 @@
+name: Bug report
+description: Report something in Juntia that does not work as expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a problem.
+
+        **Do not report security vulnerabilities here.** Follow the [security policy](https://github.com/DrDonoso/juntia/security/policy) and report them privately.
+
+        Juntia handles financial and personal data. **Remove names, email addresses, phone numbers, addresses, IBANs, amounts and anything else personal or financial** from everything you paste or attach, and never attach real bank statements.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The exact steps that trigger the problem. If it involves data, describe it with synthetic examples.
+      placeholder: |
+        1. Sign in as a resident.
+        2. Open Transactions.
+        3. Filter by a category.
+        4. See the error.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead, including any error message shown in the interface.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or image tag
+      description: The image tag you run, or the version returned by `/api/version`.
+      placeholder: drdonoso/juntia:20261029
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment
+      description: How do you run Juntia?
+      options:
+        - Docker Compose with docker-compose.yml (server)
+        - Docker Compose with docker-compose.local.yml (local try-out)
+        - Another container setup
+        - From source (development)
+        - The public demo
+    validations:
+      required: true
+  - type: textarea
+    id: deployment-details
+    attributes:
+      label: Deployment details
+      description: The reverse proxy or tunnel in front of Juntia, settings you changed from the defaults, and the host operating system. Do not include hostnames, IP addresses or secrets.
+      placeholder: |
+        Reverse proxy: Caddy with HTTPS
+        Changed settings: APP_PORT, TRUSTED_PROXY_IPS
+        Host: Debian 13 (amd64)
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and operating system
+      placeholder: Firefox 150 on Windows 11, Safari on iOS 26
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant output of `docker compose logs --tail=100 api` or of the browser console, with personal and financial data removed. It is formatted as code automatically.
+      render: text
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and this bug has not been reported yet.
+          required: true
+        - label: I removed personal and financial data (names, email addresses, phone numbers, IBANs, amounts and statements) from this report.
+          required: true

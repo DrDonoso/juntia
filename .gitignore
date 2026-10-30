@@ -1,0 +1,22 @@
+.env
+.env.*
+!.env.example
+# Demo build flag (no secrets): see frontend/.env.demo
+!frontend/.env.demo
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+data/
+*.pdf
+node_modules/
+frontend/dist/
+frontend/dist-demo/
+frontend/.wrangler/
+frontend/playwright-report/
+frontend/test-results/
+*.log
+*.egg-info/

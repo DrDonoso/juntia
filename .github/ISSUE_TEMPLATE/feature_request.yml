@@ -1,0 +1,42 @@
+name: Feature request
+description: Suggest a new feature or an improvement for Juntia.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement! Juntia serves a single residential community: its residents and one technical administrator. Explaining the problem behind your idea helps find the best solution for every community.
+
+        Please use synthetic data only in examples, mockups and screenshots.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem would this solve? Describe the situation and why the current behavior falls short.
+      placeholder: As the administrator of our community, I need to ... but currently ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What you would like Juntia to do, and who would use it (residents, the administrator or both).
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other solutions or workarounds you have tried or considered.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that helps, such as examples from other tools, links or mockups.
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and this feature has not been requested yet.
+          required: true

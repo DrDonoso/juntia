@@ -1,0 +1,57 @@
+// Community labels administration (community-labels.tsx).
+export const labels = {
+  eyebrow: 'ADMINISTRATION',
+  title: 'Community labels',
+  description: 'Manage the name and color of existing labels. The catalogs for actions, contacts and finances are independent.',
+  creation: 'New labels are created when an action or a contact is saved. Labels are not deleted here and their history is not changed.',
+  edit: 'Edit {name}',
+  // Action labels and contact tags are separate catalogs with their own wording.
+  catalogs: {
+    actions: {
+      title: 'Action labels',
+      search: 'Search action labels',
+      loading: 'Loading labels…',
+      count: { one: '{count} label', other: '{count} labels' },
+      empty: {
+        search: 'No labels match your search.',
+        page: 'There are no labels on this page.',
+        none: 'There are no labels in this catalog yet.',
+      },
+      saved: 'Label “{name}” saved.',
+      editTitle: 'Edit label: {name}',
+      scope: 'The name and color will change in every action that uses this label. Its assignments are kept.',
+      previewName: 'Label',
+      preview: 'Label preview',
+      stale: 'Your draft is kept. Check the saved label before saving again.',
+      current: 'Current version of the label',
+      save: 'Save label',
+    },
+    contacts: {
+      title: 'Contact tags',
+      search: 'Search contact tags',
+      loading: 'Loading tags…',
+      count: { one: '{count} tag', other: '{count} tags' },
+      empty: {
+        search: 'No tags match your search.',
+        page: 'There are no tags on this page.',
+        none: 'There are no tags in this catalog yet.',
+      },
+      saved: 'Tag “{name}” saved.',
+      editTitle: 'Edit tag: {name}',
+      scope: 'The name and color will change on every contact card that uses this tag. Its assignments are kept.',
+      previewName: 'Tag',
+      preview: 'Tag preview',
+      stale: 'Your draft is kept. Check the saved tag before saving again.',
+      current: 'Current version of the tag',
+      save: 'Save tag',
+    },
+  },
+  editor: {
+    name: 'Name',
+    color: 'Color',
+    reloadCurrent: 'Check the current version',
+    currentTitle: 'Current version',
+    currentHelp: 'The fields you had not edited will be updated. Review your changes before saving.',
+    rebase: 'Update the base and keep my draft',
+  },
+} as const

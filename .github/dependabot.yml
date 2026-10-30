@@ -1,0 +1,124 @@
+# Dependabot version updates: https://docs.github.com/code-security/dependabot
+#
+#   uv              pyproject.toml + uv.lock
+#   npm             frontend/package.json + package-lock.json
+#   github-actions  .github/workflows/*.yml (commit SHA pins and their version comments)
+#   docker          Dockerfile (node, uv and python stages)
+#   docker-compose  docker-compose.yml, docker-compose.local.yml
+#
+# Grouping: minor and patch updates are grouped per ecosystem, while every major update gets a pull
+# request of its own, because it may need code changes and must not hold back everything else.
+# Packages that must move together share a group without `update-types`, so their majors land
+# together too. Security updates ignore groups, limits and the cooldown.
+#
+# The CI service image (postgres in ci.yml) is not updated by Dependabot. When the node, python or
+# uv image changes in the Dockerfile, update node-version, python-version and the uv version in
+# ci.yml to match.
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 10
+    open-pull-requests-limit: 5
+    labels: [dependencies, python]
+    commit-message:
+      prefix: chore(deps)
+      prefix-development: chore(deps-dev)
+    groups:
+      python-minor-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 10
+    open-pull-requests-limit: 5
+    labels: [dependencies, frontend]
+    commit-message:
+      prefix: chore(deps)
+      prefix-development: chore(deps-dev)
+    groups:
+      # react-dom requires the matching react, and the type packages follow them.
+      react:
+        patterns: [react, react-dom, "@types/react", "@types/react-dom"]
+      # @vitejs/plugin-react declares a peer dependency on the vite major.
+      vite:
+        patterns: [vite, "@vitejs/*"]
+      # The @vitest/* packages require the exact vitest version.
+      vitest:
+        patterns: [vitest, "@vitest/*"]
+      # Every msw update must also refresh frontend/public/mockServiceWorker.js with `npx msw init`
+      # (Dependabot does not run install scripts), or src/demo/worker.test.ts fails, so msw has a
+      # pull request of its own. msw 3 needs vitest 5.0.4 or later: merge the vitest group first.
+      msw:
+        patterns: [msw]
+      # The @dnd-kit packages are released together and require each other's minor version.
+      dnd-kit:
+        patterns: ["@dnd-kit/*"]
+      npm-minor-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 10
+    open-pull-requests-limit: 5
+    labels: [dependencies, ci]
+    commit-message:
+      prefix: chore(ci)
+    groups:
+      github-actions-minor-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 10
+    open-pull-requests-limit: 3
+    labels: [dependencies, docker]
+    commit-message:
+      prefix: chore(docker)
+    groups:
+      docker-minor-patch:
+        patterns: ["*"]
+        # A new Python version (3.14 to 3.15) counts as a minor update here, but it gets a pull
+        # request of its own: it can break the dependencies, and ci.yml must follow.
+        exclude-patterns: [python]
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 10
+    open-pull-requests-limit: 3
+    labels: [dependencies, docker]
+    commit-message:
+      prefix: chore(docker)
+    ignore:
+      # A new PostgreSQL major cannot open the data of the previous one: existing installations
+      # need a dump and restore, so that upgrade is done by hand, with instructions.
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
+    groups:
+      compose-minor-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]

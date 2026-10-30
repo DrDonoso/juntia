@@ -1,0 +1,232 @@
+name: CI
+on:
+  pull_request:
+    branches: [main]
+  workflow_call:
+  workflow_dispatch:
+# Each job grants itself only what it needs: read access to the repository at most.
+permissions: {}
+# A new push to a pull request cancels the run of its previous commit. Every other run, including
+# the call from the publish workflow, gets a group of its own and is never cancelled or queued.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('{0}-pr-{1}', github.workflow, github.event.pull_request.number) || format('{0}-run-{1}', github.workflow, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+# Job ids are the check names, and the ruleset on main requires `application`: no `name:` keys.
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2]
+    services:
+      postgres:
+        # A tag as in docker-compose.yml, not a digest: Dependabot does not update service images,
+        # so a digest would go stale. Keep it in step with docker-compose.yml by hand.
+        image: postgres:18-alpine # zizmor: ignore[unpinned-images]
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: juntia_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d juntia_test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Keep Python and uv in step with the python and uv images in the Dockerfile.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.12.19"
+      - run: uv sync --locked --extra test
+      - name: Audit locked public dependencies
+        if: matrix.group == 1
+        run: uv run --no-sync python scripts/audit_dependencies.py
+      - name: Run backend test group
+        run: >-
+          uv run --no-sync pytest -q
+          --splits 2 --group "$GROUP" --splitting-algorithm least_duration
+          --durations=25 --junitxml="$RUNNER_TEMP/pytest-$GROUP.xml"
+        env:
+          GROUP: ${{ matrix.group }}
+          TEST_DATABASE_URL: postgresql+asyncpg://postgres:ci-only-password@localhost:5432/juntia_test
+      - run: uv run --no-sync ruff check src tests scripts alembic seed.py
+        if: matrix.group == 1
+      - run: uv run --no-sync mypy
+        if: matrix.group == 1
+      - run: uv run --no-sync python scripts/export_openapi.py --check
+        if: matrix.group == 1
+      - name: Upload backend test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pytest-results-${{ matrix.group }}
+          path: ${{ runner.temp }}/pytest-${{ matrix.group }}.xml
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: 1
+            browsers: chromium
+          - group: 2
+            browsers: chromium webkit
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.12.19"
+      # Keep Node in step with the node image in the Dockerfile.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: uv sync --locked --extra test
+      - run: npm ci --no-audit --no-fund
+        working-directory: frontend
+      - run: npm run gen:api -- --check && npm run lint && npm test
+        if: matrix.group == 1
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - name: Install the browsers of this group
+        run: |
+          read -ra browsers <<< "$BROWSERS"
+          npx playwright install --with-deps "${browsers[@]}"
+        working-directory: frontend
+        env:
+          BROWSERS: ${{ matrix.browsers }}
+      - name: Run browser test group
+        run: npm run e2e -- --shard="$GROUP/2" --reporter=line,junit
+        working-directory: frontend
+        env:
+          GROUP: ${{ matrix.group }}
+          PLAYWRIGHT_JUNIT_OUTPUT_FILE: ${{ runner.temp }}/e2e-chromium.xml
+      - name: Check contacts and navigation in WebKit
+        if: matrix.group == 2
+        run: npm run e2e -- navigation.spec.ts --browser=webkit --grep 'contacts keep|OS glyphs' --reporter=line,junit
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_JUNIT_OUTPUT_FILE: ${{ runner.temp }}/e2e-webkit.xml
+      - run: npm run e2e -- google.spec.ts --reporter=line,junit
+        if: matrix.group == 2
+        working-directory: frontend
+        env:
+          E2E_GOOGLE: "true"
+          PLAYWRIGHT_JUNIT_OUTPUT_FILE: ${{ runner.temp }}/e2e-google.xml
+      - name: Upload browser test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-results-${{ matrix.group }}
+          path: ${{ runner.temp }}/e2e-*.xml
+  demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: frontend
+      - run: npm run build:demo
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - name: Run demo browser tests
+        run: npm run e2e:demo -- --reporter=line,junit
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_JUNIT_OUTPUT_FILE: ${{ runner.temp }}/e2e-demo.xml
+      - name: Upload demo browser test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-demo-results
+          path: ${{ runner.temp }}/e2e-demo.xml
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    env:
+      POSTGRES_PASSWORD: ci-postgres-only
+      ADMIN_USERNAME: ci-admin
+      ADMIN_PASSWORD: ci-password-for-container-tests
+      AUTH_SECRET: ci-secret-only-not-a-production-secret-12345
+      PUBLIC_ORIGIN: http://localhost:7778
+      AUTH_COOKIE_SECURE: "false"
+      IMAGE_TAG: ci
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the actual production image
+        run: docker build -t juntia:ci .
+      - name: Boot and smoke-test the isolated stack
+        run: |
+          docker tag juntia:ci drdonoso/juntia:ci
+          docker compose -p juntia-ci pull db
+          docker compose -p juntia-ci up -d --pull never
+          for _ in $(seq 1 60); do
+            if curl -fsS http://localhost:7778/health; then break; fi
+            sleep 2
+          done
+          curl -fsS http://localhost:7778/health
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:7778/api/summary)" = "401"
+          curl -fsS -c "$RUNNER_TEMP/juntia-ci-cookies" \
+            -H 'Origin: http://localhost:7778' -H 'X-Juntia-Request: 1' \
+            --json '{"username":"ci-admin","password":"ci-password-for-container-tests"}' \
+            http://localhost:7778/api/admin/auth/login
+          curl -fsS -b "$RUNNER_TEMP/juntia-ci-cookies" http://localhost:7778/api/summary
+          rm "$RUNNER_TEMP/juntia-ci-cookies"
+          curl -fsS http://localhost:7778/admin | grep '<div id="root">'
+      - name: Stop the isolated stack
+        if: always()
+        run: docker compose -p juntia-ci down --volumes --remove-orphans
+  application:
+    needs: [backend, frontend, demo, docker]
+    # always(): a failed, cancelled or skipped job fails this required check instead of skipping it
+    # (a skipped check counts as passed). Runs cancelled by a newer push therefore end red too.
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require every CI job to succeed
+        env:
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          DEMO_RESULT: ${{ needs.demo.result }}
+          DOCKER_RESULT: ${{ needs.docker.result }}
+        run: |
+          test "$BACKEND_RESULT" = success
+          test "$FRONTEND_RESULT" = success
+          test "$DEMO_RESULT" = success
+          test "$DOCKER_RESULT" = success

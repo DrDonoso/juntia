@@ -1,0 +1,422 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Typography — Geist / Geist Mono (variables, self-hosted)
+   SIL Open Font License 1.1 · https://github.com/vercel/geist-font
+   Self-hosted intentionally: the app runs without any external CDN
+   dependency at runtime.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/geist-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+                 U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+                 U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/geist-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+                 U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF,
+                 U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/geist-mono-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+                 U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+                 U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/geist-mono-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+                 U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF,
+                 U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Design tokens — Light (default)
+
+   Palette derived from the logo (house + chart, navy → teal gradient), not
+   from Tailwind defaults.  Brand colour ramp:
+       #123a6b  navy    →  #21639f  blue   →  #12b886  teal
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* ── Brand ── */
+  --brand-navy: #123a6b;
+  --brand-blue: #21639f;
+  --brand-teal: #12b886;
+  --brand-gradient: linear-gradient(135deg, #123a6b 0%, #21639f 48%, #12b886 100%);
+  /* Hero sheen: top-right burst, layered over --brand-gradient */
+  --brand-gradient-sheen: radial-gradient(120% 140% at 88% 8%, rgba(255, 255, 255, 0.16), transparent 58%);
+
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --border: #e3e8ef;
+  --text: #16202e;
+  --text-muted: #5a6577;
+  --primary: #1a4d8f;
+  --primary-rgb: 26, 77, 143;
+  --primary-hover: #123a6b;
+  --primary-bright: #4a8fd4;
+  --primary-contrast: #fff;
+  /* --income / --expense colour TEXT, so they must clear 4.5:1 on the white
+     surface and on their own 10–15% tints (the returns matrix). Chart marks
+     only need 3:1 and keep the brighter brand hue through the -fill tokens. */
+  --expense: #b43c32;
+  --expense-rgb: 194, 69, 58;
+  --expense-bright: #dd7a70;
+  --expense-fill: #c2453a;
+  --income: #08735a;
+  --income-rgb: 14, 157, 118;
+  --income-bright: #2ec49a;
+  --income-fill: #0e9d76;
+  --net-pos: #1a4d8f;
+  --net-neg: #b43c32;
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(18, 58, 107, 0.05), 0 1px 3px rgba(18, 58, 107, 0.04);
+  --shadow-hero: 0 6px 20px -6px rgba(18, 58, 107, 0.32);
+  --font: 'Geist', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Every number uses this stack: monospace with tabular digits */
+  --font-num: 'Geist Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+  --sidebar-width: 240px;
+  --topbar-height: 52px;
+  --bottom-nav-height: 56px;
+  /* Height of fixed chrome along the bottom edge (the compact bottom nav),
+     so toasts and the drawer can clear it. Zero wherever there is none. */
+  --chrome-bottom: 0px;
+  /* ── Type scale ── new and touched rules use these instead of raw pixels */
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  /* ── Spacing (4px grid) ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --focus-ring: 2px solid var(--primary);
+  /* ── Warning family ── */
+  --warning: #b7791f;
+  --warning-rgb: 183, 121, 31;
+  --warning-bg: rgba(183, 121, 31, 0.10);
+  --warning-text: #8a5a12;
+  /* ── Notification unread background ── */
+  --notif-unread-bg: rgba(var(--primary-rgb), 0.04);
+  /* ── Categorical colours ──
+     For classification (asset class, etc.), not status: that is why they
+     do not reuse --income / --expense.  Being tokens, they follow the
+     theme and make dark-mode overrides unnecessary. */
+  --cat-neutral-rgb: 95, 107, 125;
+  --cat-alt: #5b2fb5;
+  --cat-alt-rgb: 109, 58, 212;
+}
+
+/* ─── Accent palette tokens ───────────────────────────────────────── */
+[data-palette="emerald"] {
+  --primary: #047857;
+  --primary-rgb: 4, 120, 87;
+  --primary-hover: #065f46;
+  --primary-bright: #34d399;
+  --primary-contrast: #fff;
+  --brand-gradient: linear-gradient(135deg, #064e3b 0%, #047857 48%, #34d399 100%);
+  --income: #047857;
+  --income-rgb: 4, 120, 87;
+  --income-bright: #34d399;
+  --expense: #b03a2c;
+  --expense-rgb: 176, 58, 44;
+  --expense-bright: #d97a6c;
+}
+[data-palette="violet"] {
+  --primary: #6d3ad4;
+  --primary-rgb: 109, 58, 212;
+  --primary-hover: #5b2fb5;
+  --primary-bright: #a78bfa;
+  --primary-contrast: #fff;
+  --brand-gradient: linear-gradient(135deg, #3b1d78 0%, #6d3ad4 48%, #22b8a6 100%);
+  --income: #0f766e;
+  --income-rgb: 15, 118, 110;
+  --income-bright: #5eead4;
+  --expense: #b0304f;
+  --expense-rgb: 176, 48, 79;
+  --expense-bright: #e26e8a;
+}
+[data-palette="amber"] {
+  --primary: #b45309;
+  --primary-rgb: 180, 83, 9;
+  --primary-hover: #92400e;
+  --primary-bright: #fbbf24;
+  --primary-contrast: #fff;
+  --brand-gradient: linear-gradient(135deg, #7c2d12 0%, #b45309 48%, #d9a520 100%);
+  --income: #4d7c0f;
+  --income-rgb: 77, 124, 15;
+  --income-bright: #a3e635;
+  --expense: #a8341a;
+  --expense-rgb: 168, 52, 26;
+  --expense-bright: #e0785c;
+}
+[data-palette="contrast"] {
+  --primary: #111827;
+  --primary-rgb: 17, 24, 39;
+  --primary-hover: #000000;
+  --primary-bright: #334155;
+  --primary-contrast: #fff;
+  --brand-gradient: linear-gradient(135deg, #000000 0%, #1f2937 48%, #4b5563 100%);
+  --income: #14532d;
+  --income-rgb: 20, 83, 45;
+  --income-bright: #86efac;
+  --expense: #8f1d13;
+  --expense-rgb: 143, 29, 19;
+  --expense-bright: #d4776b;
+}
+
+[data-theme="dark"][data-palette="emerald"] {
+  --primary: #34d399;
+  --primary-rgb: 52, 211, 153;
+  --primary-hover: #10b981;
+  --primary-bright: #6ee7b7;
+  --primary-contrast: #052e16;
+  --brand-gradient: linear-gradient(135deg, #043d2e 0%, #0a7a5c 48%, #34d399 100%);
+  --income: #34d399;
+  --income-rgb: 52, 211, 153;
+  --income-bright: #6ee7b7;
+  --expense: #f4806f;
+  --expense-rgb: 244, 128, 111;
+  --expense-bright: #f8a99d;
+}
+[data-theme="dark"][data-palette="violet"] {
+  --primary: #a78bfa;
+  --primary-rgb: 167, 139, 250;
+  --primary-hover: #8b5cf6;
+  --primary-bright: #c4b5fd;
+  --primary-contrast: #2e1065;
+  --brand-gradient: linear-gradient(135deg, #2b1259 0%, #6d3ad4 48%, #2ed3c4 100%);
+  --income: #6ee7b7;
+  --income-rgb: 110, 231, 183;
+  --income-bright: #99f6e4;
+  --expense: #f4809a;
+  --expense-rgb: 244, 128, 154;
+  --expense-bright: #f8a9bb;
+}
+[data-theme="dark"][data-palette="amber"] {
+  --primary: #fbbf24;
+  --primary-rgb: 251, 191, 36;
+  --primary-hover: #f59e0b;
+  --primary-bright: #fde68a;
+  --primary-contrast: #451a03;
+  --brand-gradient: linear-gradient(135deg, #4a1d09 0%, #a2560c 48%, #fbbf24 100%);
+  --income: #a3e635;
+  --income-rgb: 163, 230, 53;
+  --income-bright: #bef264;
+  --expense: #fb923c;
+  --expense-rgb: 251, 146, 60;
+  --expense-bright: #fdba74;
+}
+[data-theme="dark"][data-palette="contrast"] {
+  --primary: #f8fafc;
+  --primary-rgb: 248, 250, 252;
+  --primary-hover: #e2e8f0;
+  --primary-bright: #ffffff;
+  --primary-contrast: #020617;
+  --brand-gradient: linear-gradient(135deg, #1e293b 0%, #475569 48%, #cbd5e1 100%);
+  --income: #86efac;
+  --income-rgb: 134, 239, 172;
+  --income-bright: #bbf7d0;
+  --expense: #fca5a5;
+  --expense-rgb: 252, 165, 165;
+  --expense-bright: #fecaca;
+}
+
+/* ─── Design tokens — Dark (explicit) ────────────────────────────── */
+[data-theme="dark"] {
+  --bg: #0c1420;
+  --surface: #131d2c;
+  --border: #24334a;
+  --text: #e6edf6;
+  --text-muted: #8b9ab0;
+  --primary: #5aa5ec;
+  --primary-rgb: 90, 165, 236;
+  --primary-hover: #7cbaf2;
+  --primary-bright: #9acbf6;
+  --primary-contrast: #08192b;
+  --income: #2ed3a7;
+  --income-rgb: 46, 211, 167;
+  --income-bright: #6ee7c4;
+  --expense: #f4806f;
+  --expense-rgb: 244, 128, 111;
+  --expense-bright: #f8a99d;
+  --net-pos: #5aa5ec;
+  --net-neg: #f4806f;
+  --brand-gradient: linear-gradient(135deg, #0e2a4f 0%, #155181 48%, #0d8a67 100%);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.34), 0 1px 3px rgba(0, 0, 0, 0.24);
+  --shadow-hero: 0 6px 22px -8px rgba(0, 0, 0, 0.6);
+  --warning: #e0a44a;
+  --warning-rgb: 224, 164, 74;
+  --warning-bg: rgba(224, 164, 74, 0.10);
+  --warning-text: #e0a44a;
+  /* Slightly stronger unread tint so the 7% shows on dark surfaces */
+  --notif-unread-bg: rgba(var(--primary-rgb), 0.07);
+  --cat-neutral-rgb: 139, 154, 176;
+  --cat-alt: #a78bfa;
+  --cat-alt-rgb: 167, 139, 250;
+}
+
+/* Only the classic light theme needs a separate chart hue; every other
+   theme's --income / --expense already reads as both text and fill. */
+[data-theme="dark"],
+[data-palette]:not([data-palette="classic"]) {
+  --income-fill: var(--income);
+  --expense-fill: var(--expense);
+}
+
+/* ─── Design tokens — Dark (system preference, only when explicit not set) ─ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c1420;
+    --surface: #131d2c;
+    --border: #24334a;
+    --text: #e6edf6;
+    --text-muted: #8b9ab0;
+    --primary: #5aa5ec;
+    --primary-rgb: 90, 165, 236;
+    --primary-hover: #7cbaf2;
+    --primary-bright: #9acbf6;
+    --primary-contrast: #08192b;
+    --income: #2ed3a7;
+    --income-rgb: 46, 211, 167;
+    --income-bright: #6ee7c4;
+    --expense: #f4806f;
+    --expense-rgb: 244, 128, 111;
+    --expense-bright: #f8a99d;
+    --income-fill: #2ed3a7;
+    --expense-fill: #f4806f;
+    --net-pos: #5aa5ec;
+    --net-neg: #f4806f;
+    --brand-gradient: linear-gradient(135deg, #0e2a4f 0%, #155181 48%, #0d8a67 100%);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.34), 0 1px 3px rgba(0, 0, 0, 0.24);
+    --shadow-hero: 0 6px 22px -8px rgba(0, 0, 0, 0.6);
+    --warning: #e0a44a;
+    --warning-rgb: 224, 164, 74;
+    --warning-bg: rgba(224, 164, 74, 0.10);
+    --warning-text: #e0a44a;
+    --notif-unread-bg: rgba(var(--primary-rgb), 0.07);
+    --cat-neutral-rgb: 139, 154, 176;
+    --cat-alt: #a78bfa;
+    --cat-alt-rgb: 167, 139, 250;
+  }
+}
+
+/* ─── Reset ──────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+button { font-family: inherit; cursor: pointer; }
+input, select { font-family: inherit; font-size: inherit; }
+a { color: var(--primary); text-decoration: none; }
+
+/* ─── Focus ──────────────────────────────────────────────────────── */
+/* One ring for every keyboard-reachable control. Text fields get a halo
+   instead, because they match :focus-visible on a mouse click too and a
+   ring there reads as an error state. */
+:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]), select, textarea):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.22);
+}
+
+/* ─── Utilities ──────────────────────────────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Rendered by <Money> and <Percent>, so a figure is monospaced wherever it
+   lands instead of only where its container happens to be allowlisted below. */
+.num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Icons (custom set, see ../icons.tsx) ─────────────────────────── */
+/* Inherit colour and size from context — unlike emoji, which don't. */
+.icon {
+  display: inline-block;
+  vertical-align: -0.145em;
+  flex-shrink: 0;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.icon-spin { animation: icon-spin 900ms linear infinite; }
+@keyframes icon-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .icon-spin { animation-duration: 2.4s; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Numbers — unified system
+
+   Every number in the app is rendered with the monospace stack and tabular
+   digits so table columns always align.  Previously this was scattered across
+   ~18 loose selectors and missing from the largest values
+   (.kpi-value / .inv-kpi-card__value).
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* Note: `:is()` inherits the specificity of its MOST specific argument, so
+   compound selectors are listed separately to avoid inflating the whole group. */
+:is(
+  .kpi-value, .kpi-sub,
+  .inv-kpi-card__value, .inv-kpi-card__sub,
+  .header-kpi-value, .header-kpi-sub, .header-kpi-delta,
+  .td-amount, .cat-td-num, .cat-td-weight,
+  .tx-total-value,
+  .movers-td-num, .movers-delta,
+  .inv-td-num, .inv-td-weight, .inv-td-isin,
+  .returns-value, .inv-summary-value, .inv-metric-value,
+  .inv-donut-legend-pct,
+  .mortgage-snapshot__value, .mortgage-snapshot__side-value,
+  .inv-provider-card__value, .inv-provider-card__gain,
+  .inv-snapshot-total-value, .inv-snapshot-provider-value
+) {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+.returns-matrix tbody td {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}

@@ -1,0 +1,12 @@
+# CodeQL configuration, used by .github/workflows/codeql.yml. Only generated files are excluded:
+# every first-party file stays analyzed.
+name: Juntia CodeQL config
+paths-ignore:
+  # The MSW service worker of the demo, copied from the msw package by `npx msw init` ("Please do
+  # NOT modify this file"; a unit test checks it matches the installed msw). It trips
+  # js/missing-origin-check, a false positive in a service worker: only same-origin pages can
+  # message it, and it already drops messages from any client it does not control
+  # (`self.clients.get(event.source.id)`).
+  - frontend/public/mockServiceWorker.js
+  # TypeScript types generated from openapi.json by `npm run gen:api` (declarations only).
+  - frontend/src/api/schema.gen.ts

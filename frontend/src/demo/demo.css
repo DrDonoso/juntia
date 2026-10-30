@@ -1,0 +1,85 @@
+/* Public demo only (src/demo): loaded with the demo's own chunk, never by the production app. */
+
+/* The banner is fixed at the bottom of the viewport: keep the end of the page and the sidebar clear
+   of it. DemoBanner publishes its real height, which grows when the text wraps on narrow screens. */
+:root[data-demo] {
+  --demo-banner-height: 36px;
+}
+
+:root[data-demo] body {
+  padding-bottom: var(--demo-banner-height);
+}
+
+:root[data-demo] .sidebar,
+:root[data-demo] .sidebar-backdrop {
+  bottom: var(--demo-banner-height);
+}
+
+:root[data-demo] main {
+  min-height: calc(100vh - 115px - var(--demo-banner-height));
+}
+
+.demo-banner {
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 35;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 2px 16px;
+  padding: 7px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.demo-banner p {
+  margin: 0;
+}
+
+.demo-banner a {
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.demo-sign-in-notice strong {
+  overflow-wrap: anywhere;
+}
+
+.demo-welcome p {
+  line-height: 1.55;
+}
+
+.demo-welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.demo-start-error {
+  max-width: 520px;
+  margin: 15vh auto;
+  padding: 28px;
+}
+
+.demo-start-error h1 {
+  margin-top: 0;
+  font-size: 22px;
+}
+
+@media print {
+  .demo-banner {
+    display: none;
+  }
+
+  :root[data-demo] body {
+    padding-bottom: 0;
+  }
+}

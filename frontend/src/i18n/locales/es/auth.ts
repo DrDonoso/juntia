@@ -1,0 +1,56 @@
+import type { Messages } from '../../types'
+import type { auth as source } from '../en/auth'
+
+export const auth: Messages<typeof source> = {
+  checkingSession: 'Comprobando sesión…',
+  email: 'Correo electrónico',
+  password: 'Contraseña',
+  backToSignIn: 'Volver al login',
+  login: {
+    eyebrow: 'TU COMUNIDAD',
+    title: 'Iniciar sesión',
+    passwordUpdated: 'Contraseña actualizada. Se han cerrado todas tus sesiones; inicia sesión con la nueva contraseña.',
+    sessionsClosed: 'Se han cerrado tus sesiones en todos los dispositivos.',
+    googleUnlinked: 'Google desvinculado. Inicia sesión con tu contraseña; se han cerrado las sesiones anteriores.',
+    help: 'Accede con el correo al que recibiste tu invitación. No hay registro público.',
+    submit: 'Entrar',
+    submitting: 'Entrando…',
+    forgotPassword: 'He olvidado mi contraseña',
+  },
+  forgot: {
+    title: 'Recuperar contraseña',
+    expiry: 'El enlace de recuperación caduca en una hora.',
+    sent: 'Si existe una cuenta activa con ese correo, recibirás instrucciones para recuperar el acceso. Revisa también el correo no deseado.',
+    submit: 'Enviar enlace de recuperación',
+    submitting: 'Solicitando…',
+  },
+  link: {
+    activateTitle: 'Activar tu cuenta',
+    resetTitle: 'Nueva contraseña',
+    doneTitle: 'Contraseña guardada',
+    done: 'Ya puedes iniciar sesión con tu correo y tu contraseña.',
+    invalidInvitation: 'El enlace no es válido. Solicita una nueva invitación a la administración.',
+    invalidRecovery: 'El enlace no es válido. Solicita un nuevo enlace de recuperación.',
+    help: 'Elige una contraseña de al menos {min} caracteres. El enlace solo se puede utilizar una vez.',
+    newPassword: 'Nueva contraseña',
+    repeatPassword: 'Repetir contraseña',
+    submit: 'Guardar contraseña',
+    submitting: 'Guardando…',
+    requestAnother: 'Solicitar otro enlace',
+  },
+  passwordRules: {
+    required: 'Escribe una contraseña.',
+    tooShort: 'La contraseña debe tener al menos {min} caracteres.',
+    tooLong: 'La contraseña es demasiado larga. Utiliza una más corta.',
+    confirmationRequired: 'Repite la contraseña.',
+    mismatch: 'Las contraseñas no coinciden.',
+  },
+  admin: {
+    eyebrow: 'ACCESO RESTRINGIDO',
+    title: 'Administración',
+    help: 'Inicia sesión para importar extractos y gestionar su clasificación.',
+    username: 'Usuario',
+    submit: 'Entrar en administración',
+    submitting: 'Entrando…',
+  },
+}

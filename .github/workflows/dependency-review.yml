@@ -1,0 +1,26 @@
+# Dependency review: fails a pull request that adds a dependency version with a known high or
+# critical vulnerability. Dependabot looks after what is already on main.
+name: Dependency review
+on:
+  pull_request:
+    branches: [main]
+permissions: {}
+# A new push to a pull request cancels the review of its previous commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  dependency-review:
+    name: Review dependency changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Pull requests from forks only get a read-only token: the action then logs a warning instead
+      # of commenting, and the report stays in the job summary.
+      pull-requests: write # comment the report when the review fails
+    steps:
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure

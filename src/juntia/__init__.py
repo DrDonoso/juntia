@@ -1,0 +1,1 @@
+"""Community finance application."""

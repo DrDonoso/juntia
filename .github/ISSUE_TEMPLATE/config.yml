@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/DrDonoso/juntia/security/advisories/new
+    about: Report vulnerabilities privately, never in a public issue.
+  - name: Try the live demo
+    url: https://demo.juntia.drdonoso.com
+    about: Explore Juntia with synthetic data, for example to check whether a problem also happens there.

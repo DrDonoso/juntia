@@ -1,0 +1,46 @@
+# CodeQL: static analysis of the Python backend, the React frontend and these workflows.
+# Results appear under Security > Code scanning (free on public repositories). The weekly run
+# applies newly published queries to code that has not changed.
+name: CodeQL
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Mondays at 06:17 UTC, off the hour to avoid GitHub's scheduling peak.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+permissions: {}
+# A new push to a pull request cancels the analysis of its previous commit; other runs never cancel.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('{0}-pr-{1}', github.workflow, github.event.pull_request.number) || format('{0}-run-{1}', github.workflow, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read # workflow run details, needed only while the repository is private
+      contents: read
+      packages: read # private CodeQL packs, if any are ever used
+      security-events: write # upload the results
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [actions, javascript-typescript, python]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          # The default queries plus lower-severity security findings.
+          queries: security-extended
+          config-file: ./.github/codeql/codeql-config.yml
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          category: /language:${{ matrix.language }}

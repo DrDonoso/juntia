@@ -1,0 +1,53 @@
+{
+  "name": "juntia-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "dev:demo": "vite --host 127.0.0.1 --mode demo",
+    "build": "tsc --noEmit && vite build",
+    "build:demo": "tsc --noEmit && vite build --mode demo",
+    "preview:demo": "vite preview --host 127.0.0.1 --mode demo",
+    "lint": "oxlint --deny-warnings src",
+    "test": "vitest run",
+    "e2e": "playwright test",
+    "e2e:demo": "playwright test --config playwright.demo.config.ts",
+    "screenshots": "node scripts/capture-screenshots.mjs",
+    "gen:api": "node scripts/gen-api-types.mjs",
+    "gen:icons": "node scripts/generate-icons.mjs"
+  },
+  "dependencies": {
+    "@dnd-kit/dom": "^0.5.0",
+    "@dnd-kit/react": "^0.5.0",
+    "@internationalized/date": "^3.12.4",
+    "@tanstack/react-query": "^5.103.1",
+    "diff": "^9.0.0",
+    "react": "^19.3.0",
+    "react-aria-components": "^1.22.0",
+    "react-dom": "^19.3.0",
+    "react-router": "^8.4.0",
+    "recharts": "^3.10.1"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.63.0",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "jsdom": "^30.1.0",
+    "msw": "^2.15.0",
+    "oxlint": "^1.83.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.3",
+    "vitest": "^5.0.3"
+  },
+  "msw": {
+    "workerDirectory": [
+      "public"
+    ]
+  }
+}

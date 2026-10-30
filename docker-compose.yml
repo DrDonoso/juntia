@@ -1,0 +1,60 @@
+name: juntia
+services:
+  api:
+    image: drdonoso/juntia:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      # Loopback by default: only a reverse proxy on this host can connect (see APP_BIND_ADDRESS).
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-7778}:7778"
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://juntia:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/juntia"
+      ADMIN_USERNAME: "${ADMIN_USERNAME:?Set ADMIN_USERNAME}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}"
+      AUTH_SECRET: "${AUTH_SECRET:?Set AUTH_SECRET}"
+      PUBLIC_ORIGIN: "${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN}"
+      AUTH_COOKIE_SECURE: "${AUTH_COOKIE_SECURE:-true}"
+      UPLOAD_DIR: /app/data/uploads
+      # Action PDF budgets in MiB; withdrawn PDFs count until the administrator purges them.
+      ACTION_STORAGE_USER_QUOTA_MB: "${ACTION_STORAGE_USER_QUOTA_MB:-250}"
+      ACTION_STORAGE_COMMUNITY_QUOTA_MB: "${ACTION_STORAGE_COMMUNITY_QUOTA_MB:-2048}"
+      # Free space (MiB) that PDF uploads and statement imports leave on the uploads volume.
+      MIN_FREE_DISK_MB: "${MIN_FREE_DISK_MB:-1024}"
+      TZ: "${TZ:-Europe/Madrid}"
+      APP_LANGUAGE: "${APP_LANGUAGE:-en}"
+      TRUSTED_PROXY_IPS: "${TRUSTED_PROXY_IPS:-127.0.0.1}"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_SECURITY: "${SMTP_SECURITY:-starttls}"
+      SMTP_USERNAME: "${SMTP_USERNAME:-}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      SMTP_FROM: "${SMTP_FROM:-}"
+      SMTP_TIMEOUT: "${SMTP_TIMEOUT:-10}"
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_BASE_URL: "${OPENAI_BASE_URL:-https://api.openai.com/v1}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-}"
+    volumes:
+      - uploads:/app/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: juntia
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}"
+      POSTGRES_DB: juntia
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U juntia -d juntia"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  pgdata:
+  uploads:
