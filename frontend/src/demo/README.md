@@ -22,12 +22,12 @@ lasts until the page is reloaded; a reload starts again from the same scenario. 
   `import.meta.env.VITE_DEMO === '1'` checks, so normal builds contain no demo code; the
   `juntia:without-mock-service-worker` plugin also removes `mockServiceWorker.js` from `dist/`.
 - **Start.** `startDemo()` (`browser.ts`) registers `public/mockServiceWorker.js` with every handler
-  (`onUnhandledRequest: 'bypass'`, quiet) before the first render. Without service workers
+  (`onUnhandledFrame: 'bypass'`, quiet) before the first render. Without service workers
   (insecure origin, some private windows) it shows a translated explanation instead of the app.
 - **Chrome.** `DemoChrome.tsx` adds a persistent banner (`DemoBanner`), a welcome dialog once per
   page load (`DemoWelcome`: "Explore as a neighbor" / "Open administration"), the credentials on
   the `/login` and `/admin` sign-in screens, filled in (`DemoSignInNotice`), and serves plain links
-  to API files through the demo API (`DemoApiLinks`: navigations bypass the service worker). Texts
+  to API files through the demo API (`DemoApiLinks`: navigating away would restart the demo). Texts
   live in the `demo` i18n namespace (English and Spanish).
 - **Static host.** `vite.config.ts` writes `dist-demo/_headers` (the backend's CSP and security
   headers plus `worker-src 'self'`; `no-cache` for the worker, immutable `/assets/*`) and a
