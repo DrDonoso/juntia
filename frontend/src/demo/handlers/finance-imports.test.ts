@@ -206,8 +206,7 @@ describe('importing a statement', () => {
     expect(await confirm(preview)).toMatchObject({ status: 409, body: { code: 'preview_stale' } })
     const later = (await upload(pdf('Later'))).body
     setClock(() => new Date(NOW.getTime() + 25 * 3_600_000))
-    // Sessions last 12 hours: sign in again the next day.
-    await demoRequest('POST', '/api/admin/auth/login', { body: { username: 'demo', password: 'demo' } })
+    expect((await demoRequest('GET', '/api/admin/auth/session')).body).toMatchObject({ authenticated: true })
     expect(await demoRequest('GET', `/api/admin/imports/${later.id}`)).toMatchObject({ status: 410, body: { code: 'preview_expired' } })
     expect(await confirm(later)).toMatchObject({ status: 410, body: { code: 'preview_expired' } })
     // The next upload forgets expired previews.

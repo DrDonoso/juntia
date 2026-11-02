@@ -96,6 +96,9 @@ bound to `AUTH_SECRET`. Resident and technical administrator cookies are
 separate. Both are HttpOnly/SameSite Strict, Secure in production, and scoped to
 `/api`; legacy administrator cookies are migrated without extending expiry.
 The interface's logout revokes both browser identities and clears private caches.
+Sessions expire 168 hours after sign-in by default, not after inactivity; `SESSION_HOURS` can set
+the lifetime from 1 to 168 hours for newly issued sessions. Existing sessions keep their original
+expiry. A longer lifetime also extends the time a stolen cookie can be used.
 
 Invitations expire after 72 hours and recovery links after one hour. Acceptance
 requires an explicit password-submission POST or a verified Google callback

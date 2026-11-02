@@ -248,6 +248,7 @@ the old values).
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD` | required | Technical administrator; password of 15+ characters, at most 72 bytes. |
 | `PUBLIC_ORIGIN` | `http://localhost:7778` | The exact address residents open in the browser (comma-separated for several). |
 | `AUTH_COOKIE_SECURE` | `false` | Secure session cookies: `false` for `http://localhost`, `true` when every address uses HTTPS. |
+| `SESSION_HOURS` | `168` | Fixed lifetime of new resident and administrator sessions in hours (1–168). |
 | `APP_LANGUAGE` | `en` | Language of emails, first-run defaults and server labels: `en` or `es`. |
 | `APP_BIND_ADDRESS` | `127.0.0.1` | Host address the app port is published on (`127.0.0.1`: this machine only). |
 | `APP_PORT` | `7778` | Host port; the container always listens on 7778. |

@@ -56,6 +56,24 @@ def test_default_origin_matches_application_port(values, monkeypatch):
 
 
 @pytest.mark.parametrize(
+    ("configured", "expected"), [(None, 168), ("1", 1), ("48", 48), ("168", 168)]
+)
+def test_session_duration_default_and_environment_override(values, monkeypatch, configured, expected):
+    monkeypatch.delenv("SESSION_HOURS", raising=False)
+    if configured is not None:
+        monkeypatch.setenv("SESSION_HOURS", configured)
+    settings = Settings(_env_file=None, **{**values, "allow_insecure_local_admin": True})
+    assert settings.session_hours == expected
+
+
+@pytest.mark.parametrize("configured", ["-1", "0", "169"])
+def test_session_duration_rejects_values_outside_the_allowed_range(values, monkeypatch, configured):
+    monkeypatch.setenv("SESSION_HOURS", configured)
+    with pytest.raises(ValidationError, match="between 1 and 168 hours"):
+        Settings(_env_file=None, **{**values, "allow_insecure_local_admin": True})
+
+
+@pytest.mark.parametrize(
     "origin", ["http://localhost:7778", "http://127.0.0.1:8888", "http://[::1]:7778"]
 )
 def test_local_default_credentials_work_for_loopback_only(values, origin):

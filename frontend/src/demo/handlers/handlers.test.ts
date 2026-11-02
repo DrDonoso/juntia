@@ -10,9 +10,9 @@ import { UNHANDLED_PREFIX, UNHANDLED_STATUS, domainHandlers, handlers, unhandled
 import { peopleHandlers } from './people'
 import { storageHandlers } from './storage'
 
-// Thursday 29 October 2026, midday (local time): sessions last until midnight.
+// Thursday 29 October 2026, midday (local time).
 const NOW = new Date(2026, 9, 29, 12, 0)
-const SESSION_END = new Date(2026, 9, 30, 0, 0).toISOString()
+const SESSION_END = new Date(NOW.getTime() + 168 * 3_600_000).toISOString()
 
 beforeEach(() => resetDemo({ now: () => NOW }))
 afterEach(() => resetDemo())
