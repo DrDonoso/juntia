@@ -124,6 +124,9 @@ def test_google_activation_preserves_invitation_details_without_a_local_password
         response = finish(reader, flow)
         assert response.status_code == 303
         assert response.headers["location"] == "/neighbors"
+        cookies = (SimpleCookie(header) for header in response.headers.get_list("set-cookie"))
+        cookie = next(value[auth.USER_COOKIE] for value in cookies if auth.USER_COOKIE in value)
+        assert cookie["max-age"] == str(config.session_hours * 3600)
         assert reader.cookies.get(auth.USER_COOKIE)
         assert reader.cookies.get(auth.GOOGLE_COOKIE) is None
         profile = reader.get("/api/auth/profile").json()

@@ -86,7 +86,7 @@ class Settings(LanguageSettings):
     auth_secret: SecretStr
     public_origin: str = "http://localhost:7778"
     auth_cookie_secure: bool = True
-    session_hours: int = 12
+    session_hours: int = 168
     upload_dir: Path = Path("data/uploads")
     # Byte budgets for community action PDFs, in MiB. Every stored file counts, active or
     # withdrawn, until the administrator purges it: 250 MiB per resident author and 2 GiB for

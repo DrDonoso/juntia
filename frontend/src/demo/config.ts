@@ -18,7 +18,7 @@ export const DEMO_PASSWORD = 'demo'
 export const DEMO_SEED = 20261029
 
 /** Hours a demo session lasts, like the backend's default `SESSION_HOURS`. */
-export const DEMO_SESSION_HOURS = 12
+export const DEMO_SESSION_HOURS = 168
 
 /** Source code of Juntia, linked from the demo banner. */
 export const DEMO_REPOSITORY_URL = 'https://github.com/DrDonoso/juntia'

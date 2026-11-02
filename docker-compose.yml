@@ -13,6 +13,7 @@ services:
       AUTH_SECRET: "${AUTH_SECRET:?Set AUTH_SECRET}"
       PUBLIC_ORIGIN: "${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN}"
       AUTH_COOKIE_SECURE: "${AUTH_COOKIE_SECURE:-true}"
+      SESSION_HOURS: "${SESSION_HOURS:-168}"
       UPLOAD_DIR: /app/data/uploads
       # Action PDF budgets in MiB; withdrawn PDFs count until the administrator purges them.
       ACTION_STORAGE_USER_QUOTA_MB: "${ACTION_STORAGE_USER_QUOTA_MB:-250}"

@@ -1,16 +1,18 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, render, renderHook, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, expect, test, vi } from 'vitest'
 import { Login } from './admin'
 import { cache, signedOut } from './api/client'
-import { ForgotPassword, LoginNoticeProvider, PasswordLink, ResidentLogin, safeReturnPath } from './auth'
+import type { UserAuthOut } from './api/schema.gen'
+import { ForgotPassword, LoginNoticeProvider, PasswordLink, ResidentLogin, safeReturnPath, useSessionLifecycle } from './auth'
 import { setLanguage } from './i18n'
 import { coefficientPercent, connectionTime, phoneValidationMessage, profileInitials } from './shared'
 
-afterEach(() => { cleanup(); cache.clear(); vi.unstubAllGlobals() })
+const cacheDefaults = cache.getDefaultOptions()
+afterEach(() => { cleanup(); cache.clear(); cache.setDefaultOptions(cacheDefaults); vi.useRealTimers(); vi.unstubAllGlobals() })
 
 function renderSignedOut(ui: ReactNode, path = '/login') {
   vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Unexpected request'))))
@@ -20,6 +22,30 @@ function renderSignedOut(ui: ReactNode, path = '/login') {
     {ui}
   </MemoryRouter></LoginNoticeProvider></QueryClientProvider>)
 }
+
+test.each(['resident', 'administrator'] as const)('a %s session stays signed in until its seven-day expiry', async kind => {
+  vi.useFakeTimers()
+  const start = new Date('2026-11-02T18:00:00Z')
+  vi.setSystemTime(start)
+  cache.setDefaultOptions({ ...cacheDefaults, queries: { ...cacheDefaults.queries, gcTime: Infinity } })
+  const reader: UserAuthOut = {
+    authenticated: true, kind, name: 'Test user', email: null,
+    user_id: kind === 'resident' ? 1 : null, dwelling_id: null,
+    expires_at: new Date(start.getTime() + 168 * 3_600_000).toISOString(),
+  }
+  cache.setQueryData(['reader-auth'], reader)
+  cache.setQueryData(['auth'], { authenticated: kind === 'administrator', username: 'admin' })
+  cache.setQueryData(['summary'], { private: true })
+  renderHook(() => useSessionLifecycle(reader, kind === 'administrator'))
+
+  await act(async () => { await vi.advanceTimersByTimeAsync(168 * 3_600_000 - 1) })
+  expect(cache.getQueryData(['reader-auth'])).toEqual(reader)
+  expect(cache.getQueryData(['summary'])).toEqual({ private: true })
+  await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+  expect(cache.getQueryData(['reader-auth'])).toEqual(signedOut)
+  expect(cache.getQueryData(['summary'])).toBeUndefined()
+  if (kind === 'administrator') expect(cache.getQueryData(['auth'])).toEqual({ authenticated: false, username: null })
+})
 
 test.each([
   [null, '/'],
