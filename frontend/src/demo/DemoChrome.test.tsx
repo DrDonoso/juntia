@@ -191,7 +191,7 @@ describe('start', () => {
       const root = document.createElement('div')
       expect(await startDemo(root)).toBe(true)
       expect(setupWorker).toHaveBeenCalledOnce()
-      expect(start).toHaveBeenCalledWith({ serviceWorker: { url: '/mockServiceWorker.js' }, quiet: true, onUnhandledRequest: 'bypass' })
+      expect(start).toHaveBeenCalledWith({ serviceWorker: { url: '/mockServiceWorker.js' }, quiet: true, onUnhandledFrame: 'bypass' })
       expect(root).toBeEmptyDOMElement()
     } finally {
       Reflect.deleteProperty(navigator, 'serviceWorker')

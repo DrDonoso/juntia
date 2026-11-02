@@ -36,10 +36,10 @@ function download(href: string, filename: string): void {
 
 /**
  * Plain links to API files (a statement's original PDF, an action's PDF preview) make the browser
- * navigate, and navigations do not go through the demo's service worker: the static host would
- * answer with the app instead of the file, and leaving the page would restart the demo. A click on
- * such a link fetches the file through the demo API instead, then opens it in a new tab (links with
- * `target="_blank"`, middle or modified clicks) or downloads it.
+ * navigate. Leaving the page would restart the demo, whose data lives in this page, and MSW only
+ * answers a navigation while a demo page is visible: a new tab could get the app from the static
+ * host instead of the file. A click on such a link fetches the file through the demo API instead,
+ * then opens it in a new tab (links with `target="_blank"`, middle or modified clicks) or downloads it.
  */
 export function DemoApiLinks() {
   useEffect(() => {

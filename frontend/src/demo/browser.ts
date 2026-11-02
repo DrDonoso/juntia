@@ -33,7 +33,7 @@ export async function startDemo(root: HTMLElement): Promise<boolean> {
       serviceWorker: { url: '/mockServiceWorker.js' },
       quiet: true,
       // Scripts, styles, fonts and icons come from the static host; /api never gets here (catch-all).
-      onUnhandledRequest: 'bypass',
+      onUnhandledFrame: 'bypass',
     })
     return true
   } catch (error) {
