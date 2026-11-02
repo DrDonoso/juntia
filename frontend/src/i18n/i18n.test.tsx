@@ -285,7 +285,7 @@ describe('shell', () => {
       Finances: ['Overview', 'Transactions'], Management: ['Actions', 'Events'], Community: ['Neighbors', 'Contacts'],
     })
     expect(screen.getByRole('contentinfo')).toHaveTextContent('Information from the imported statements')
-    await user.click(screen.getByRole('button', { name: 'User menu' }))
+    await user.click(screen.getByRole('button', { name: /^User menu, / }))
     const menu = screen.getByRole('navigation', { name: 'User options' })
     expect(within(menu).getByRole('link', { name: 'My profile' })).toHaveAttribute('href', '/profile')
     expect(within(menu).getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
@@ -302,7 +302,7 @@ describe('shell', () => {
     const spanishMenu = screen.getByRole('navigation', { name: 'Opciones de usuario' })
     expect(within(spanishMenu).getByRole('link', { name: 'Mi perfil' })).toBeInTheDocument()
     expect(within(spanishMenu).getByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Menú de usuario' })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: /^Menú de usuario, / })).toHaveAttribute('aria-expanded', 'true')
 
     await user.selectOptions(within(spanishMenu).getByRole('combobox', { name: 'Idioma' }), 'en')
     expect(document.documentElement.lang).toBe('en')

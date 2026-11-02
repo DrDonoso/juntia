@@ -75,7 +75,7 @@ test('disabled coefficient feature removes every control and requirement', async
     await resident.getByLabel('Password', { exact: true }).fill(password)
     await resident.getByRole('button', { name: 'Sign in', exact: true }).click()
     await expect(resident.getByRole('heading', { name: 'Community finances', exact: true })).toBeVisible()
-    await resident.getByRole('button', { name: 'User menu', exact: true }).click()
+    await resident.getByRole('button', { name: 'User menu' }).click()
     await resident.getByRole('link', { name: /My profile/ }).click()
     await expect(resident.getByLabel('Name', { exact: true })).toHaveValue('Feature flag resident')
     await expect(resident.locator('main')).not.toContainText(/coefficient/i)

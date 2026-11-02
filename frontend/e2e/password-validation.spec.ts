@@ -82,7 +82,7 @@ test('password forms use styled errors instead of native validation and accept t
     await resident.getByLabel('Password', { exact: true }).fill('Secret1234')
     await resident.getByRole('button', { name: 'Sign in', exact: true }).click()
     await expect(resident.getByRole('heading', { name: 'Community finances', exact: true })).toBeVisible()
-    await resident.getByRole('button', { name: 'User menu', exact: true }).click()
+    await resident.getByRole('button', { name: 'User menu' }).click()
     await resident.getByRole('link', { name: /My profile/ }).click()
     const update = resident.getByRole('button', { name: 'Update password', exact: true })
     await expect(resident.locator('.profile-password form')).toHaveAttribute('novalidate', '')

@@ -42,7 +42,7 @@ export const neighbors = {
       columnNames: 'Show column names',
       help: 'The preview reflects these options. Save to publish them in Neighbors. The editor always shows the row and column names.',
     },
-    dragHelp: 'Drag by the handle or use “Move to…”. Dropping on an occupied cell swaps the dwellings. Nothing is published until you save.',
+    dragHelp: 'Drag by the handle or use “Move…”. Dropping on an occupied cell swaps the dwellings. Nothing is published until you save.',
     unplaced: {
       region: 'Unplaced dwellings',
       title: 'Unplaced',
@@ -86,7 +86,8 @@ export const neighbors = {
     tile: {
       drag: 'Drag dwelling {dwelling}',
       move: 'Move dwelling {dwelling}',
-      moveTo: 'Move to…',
+      // The visible text starts the accessible name above (WCAG 2.5.3 Label in Name).
+      moveTo: 'Move…',
     },
     moveDialog: {
       title: 'Move dwelling {dwelling}',

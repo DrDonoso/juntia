@@ -9,6 +9,7 @@ export const shell: Messages<typeof source> = {
   lightMode: 'Modo claro',
   darkMode: 'Modo oscuro',
   userMenu: 'Menú de usuario',
+  userMenuLabel: 'Menú de usuario, {initials}',
   userOptions: 'Opciones de usuario',
   defaultUserName: 'Usuario',
   myProfile: 'Mi perfil',

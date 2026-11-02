@@ -34,15 +34,14 @@ export const finance = {
     },
     categories: {
       title: 'Expenses by category',
-      view: 'View transactions in category {name}',
-      viewUncategorized: 'View uncategorized transactions',
+      // Hidden prefix of each breakdown link: its name continues with the visible name, amount and share.
+      view: 'View transactions in category',
       hiddenShare: 'Hidden percentage',
       empty: 'No expenses in this period.',
     },
     merchants: {
       title: 'Top merchants',
-      view: 'View transactions from merchant {name}',
-      viewNoMerchant: 'View transactions without a merchant',
+      view: 'View transactions from merchant',
       empty: 'No merchants to show.',
     },
   },
@@ -68,7 +67,9 @@ export const finance = {
       amount: 'Sort by amount',
       balance: 'Sort by balance after',
     },
-    view: 'View transaction on {date}: {description}',
+    // The row button's name starts with its visible text, Details or Edit (WCAG 2.5.3 Label in Name).
+    detailsLabel: 'Details of the transaction on {date}: {description}',
+    editLabel: 'Edit the transaction on {date}: {description}',
     details: 'Details',
   },
   detail: {

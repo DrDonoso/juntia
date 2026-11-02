@@ -35,15 +35,13 @@ export const finance: Messages<typeof source> = {
     },
     categories: {
       title: 'Gastos por categoría',
-      view: 'Ver movimientos de la categoría {name}',
-      viewUncategorized: 'Ver movimientos de la categoría Sin categoría',
+      view: 'Ver movimientos de la categoría',
       hiddenShare: 'Porcentaje oculto',
       empty: 'Sin gastos en este periodo.',
     },
     merchants: {
       title: 'Principales proveedores',
-      view: 'Ver movimientos del proveedor {name}',
-      viewNoMerchant: 'Ver movimientos del proveedor Sin proveedor',
+      view: 'Ver movimientos del proveedor',
       empty: 'Sin proveedores para mostrar.',
     },
   },
@@ -69,7 +67,8 @@ export const finance: Messages<typeof source> = {
       amount: 'Ordenar por importe',
       balance: 'Ordenar por saldo posterior',
     },
-    view: 'Ver movimiento del {date}: {description}',
+    detailsLabel: 'Detalle del movimiento del {date}: {description}',
+    editLabel: 'Editar el movimiento del {date}: {description}',
     details: 'Detalle',
   },
   detail: {
