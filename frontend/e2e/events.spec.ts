@@ -614,7 +614,7 @@ test.describe('event controls follow the selected language', () => {
     await enableEvents(page)
     await page.goto('/events')
     await expect(page.getByRole('heading', { level: 1, name: 'Events', exact: true })).toBeVisible()
-    await page.getByRole('button', { name: 'User menu', exact: true }).click()
+    await page.getByRole('button', { name: 'User menu' }).click()
     await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('es')
     await page.keyboard.press('Escape')
     await expect(page.locator('html')).toHaveAttribute('lang', 'es')

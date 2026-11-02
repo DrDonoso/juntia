@@ -7,6 +7,8 @@ export const shell = {
   lightMode: 'Light mode',
   darkMode: 'Dark mode',
   userMenu: 'User menu',
+  // The accessible name repeats the visible initials (WCAG 2.5.3 Label in Name); axe ignores text in parentheses.
+  userMenuLabel: 'User menu, {initials}',
   userOptions: 'User options',
   defaultUserName: 'User',
   myProfile: 'My profile',

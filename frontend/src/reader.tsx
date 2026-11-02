@@ -75,7 +75,7 @@ export function Transactions({ editable = false }: { editable?: boolean }) {
             <td><span className="badge"><i style={{ background: categories.data?.find(c => c.id === row.category_id)?.color || '#64748b' }} />{row.category_id === null ? t('finance.uncategorized') : categories.data?.find(c => c.id === row.category_id)?.name || t('finance.categoryNumber', { id: row.category_id })}</span>
               <TransactionTags value={metadataDraft(row)} available={tags.data || []} /></td>
             <td className={`numeric ${Number(row.amount) < 0 ? 'expense' : 'income'}`}><Money value={row.amount} /></td><td className="numeric"><Money value={row.balance_after} /></td>
-            <td><button className="quiet" onClick={() => setSelected(row)} aria-label={t('finance.transactions.view', { date: day(row.booking_date), description: row.description })}>{editable ? t('common.edit') : t('finance.transactions.details')}</button></td>
+            <td><button className="quiet" onClick={() => setSelected(row)} aria-label={editable ? t('finance.transactions.editLabel', { date: day(row.booking_date), description: row.description }) : t('finance.transactions.detailsLabel', { date: day(row.booking_date), description: row.description })}>{editable ? t('common.edit') : t('finance.transactions.details')}</button></td>
           </tr>)}</tbody></table>
       </div>}
       <footer className="pagination"><button className="secondary" disabled={query.data.page <= 1} onClick={() => paginate(query.data!.page - 1)}>{t('common.pagination.previous')}</button>
@@ -143,13 +143,14 @@ export function Overview() {
         <section className="card"><header><h2>{t('finance.overview.categories.title')}</h2></header>
           {data.categories.length ? <><div className="chart category-chart" aria-hidden={privateValues || undefined}><ResponsiveContainer width="100%" height={220}><PieChart accessibilityLayer={!privateValues}><Pie rootTabIndex={privateValues ? -1 : 0} isAnimationActive={false} onClick={(_, index) => navigate(categoryPath(data.categories[index].category_id))} data={data.categories.map(row => ({ ...row, name: categoryName(row), value: Number(row.amount) }))} dataKey="value" nameKey="name" innerRadius={60} outerRadius={90}>
             {data.categories.map(row => <Cell key={row.category_id ?? 'uncategorized'} fill={row.color} />)}</Pie><Tooltip formatter={value => `${money(String(value ?? 0))} · ${expenseShare(String(value ?? 0), data.expense)}`} /></PieChart></ResponsiveContainer></div>
-            <ul className="breakdown">{data.categories.map(row => <li key={row.category_id ?? 'uncategorized'}><Link className="breakdown-link" to={categoryPath(row.category_id)} aria-label={row.category_id === null ? t('finance.overview.categories.viewUncategorized') : t('finance.overview.categories.view', { name: row.name })}>
+            <ul className="breakdown">{data.categories.map(row => <li key={row.category_id ?? 'uncategorized'}><Link className="breakdown-link" to={categoryPath(row.category_id)}>
+              <span className="sr-only">{t('finance.overview.categories.view')}</span>{' '}
               <span className="badge breakdown-label"><i style={{ background: row.color }} />{categoryName(row)}</span>
               <span className="breakdown-values"><strong><Money value={row.amount} /></strong><span className="category-share"><PrivateValue hiddenLabel={t('finance.overview.categories.hiddenShare')}>{expenseShare(row.amount, data.expense)}</PrivateValue></span></span>
             </Link></li>)}</ul>
           </> : <p className="empty">{t('finance.overview.categories.empty')}</p>}
         </section>
-        <section className="card providers-card"><header><h2>{t('finance.overview.merchants.title')}</h2></header><ul className="breakdown">{data.merchants.map(row => <li key={row.merchant}><Link className="breakdown-link" to={merchantPath(row.merchant)} aria-label={row.merchant ? t('finance.overview.merchants.view', { name: row.name }) : t('finance.overview.merchants.viewNoMerchant')}><span className="breakdown-label">{merchantName(row)}</span><strong><Money value={row.amount} /></strong></Link></li>)}</ul>{!data.merchants.length && <p className="empty">{t('finance.overview.merchants.empty')}</p>}</section>
+        <section className="card providers-card"><header><h2>{t('finance.overview.merchants.title')}</h2></header><ul className="breakdown">{data.merchants.map(row => <li key={row.merchant}><Link className="breakdown-link" to={merchantPath(row.merchant)}><span className="sr-only">{t('finance.overview.merchants.view')}</span>{' '}<span className="breakdown-label">{merchantName(row)}</span><strong><Money value={row.amount} /></strong></Link></li>)}</ul>{!data.merchants.length && <p className="empty">{t('finance.overview.merchants.empty')}</p>}</section>
       </div>
     </>}
   </>

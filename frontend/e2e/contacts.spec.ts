@@ -208,7 +208,7 @@ test('contacts are shared, audited, sortable and usable on mobile without financ
     await expect(b.getByRole('button', { name: 'New contact' })).toBeFocused()
     await expect(b.getByRole('button', { name: 'View deleted contacts' })).toHaveCount(0)
     expect((await b.request.get('/api/admin/contacts/deleted')).status()).toBe(401)
-    await b.getByRole('button', { name: 'User menu', exact: true }).click()
+    await b.getByRole('button', { name: 'User menu' }).click()
     await b.getByRole('button', { name: 'Sign out' }).click()
     await expect(b.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible()
     expect((await b.request.get('/api/contact-history')).status()).toBe(401)

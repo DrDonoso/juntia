@@ -159,6 +159,7 @@ export function Shell() {
     try { localStorage.setItem('juntia_hide_values', next ? '1' : '0') }
     catch { console.warn('Privacy preference could not be stored.') }
   }
+  const initials = profileInitials(reader.data?.name || auth.data?.username || t('shell.defaultUserName'))
   return <PrivacyContext value={privateValues}><a className="skip-link" href="#content">{t('shell.skipToContent')}</a>
     <header className="topbar">
       <button ref={navigationButton} type="button" className="quiet icon-button navigation-toggle" title={t('shell.navigationMenu')} aria-label={t('shell.navigationMenu')} aria-controls="site-navigation" aria-expanded={sidebarExpanded} onClick={toggleNavigation}><Icon name={compactNavigation && sidebarExpanded ? 'close' : 'menu'} /></button>
@@ -167,8 +168,8 @@ export function Shell() {
         {isFinanceView && reader.data?.authenticated && <button className="quiet icon-button" title={hideValues ? t('shell.showAmounts') : t('shell.hideAmounts')} aria-label={hideValues ? t('shell.showAmounts') : t('shell.hideAmounts')} aria-pressed={hideValues} onClick={togglePrivacy}><Icon name={hideValues ? 'eye-off' : 'eye'} /></button>}
         <button className="quiet icon-button" title={theme === 'dark' ? t('shell.lightMode') : t('shell.darkMode')} aria-label={theme === 'dark' ? t('shell.lightMode') : t('shell.darkMode')} aria-pressed={theme === 'dark'} onClick={toggleTheme}><Icon name={theme === 'dark' ? 'sun' : 'moon'} /></button>
         {(auth.data?.authenticated || reader.data?.authenticated) && <div className="user-controls">
-          <button ref={userButton} type="button" className="quiet icon-button profile-button" title={t('shell.userMenu')} aria-label={t('shell.userMenu')} aria-controls="user-menu" aria-expanded={openMenu === 'user'} onClick={() => setOpenMenu(previous => previous === 'user' ? null : 'user')}>
-            <span className="profile-avatar" aria-hidden="true">{profileInitials(reader.data?.name || auth.data?.username || t('shell.defaultUserName'))}</span>
+          <button ref={userButton} type="button" className="quiet icon-button profile-button" title={t('shell.userMenu')} aria-label={t('shell.userMenuLabel', { initials })} aria-controls="user-menu" aria-expanded={openMenu === 'user'} onClick={() => setOpenMenu(previous => previous === 'user' ? null : 'user')}>
+            <span className="profile-avatar" aria-hidden="true">{initials}</span>
           </button>
           <nav ref={userMenu} id="user-menu" className="user-menu" aria-label={t('shell.userOptions')} hidden={openMenu !== 'user'}>
             {reader.data?.authenticated && <NavLink to="/profile" onClick={closeMenu}>{t('shell.myProfile')}</NavLink>}

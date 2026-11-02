@@ -42,7 +42,7 @@ export const neighbors: Messages<typeof source> = {
       columnNames: 'Mostrar nombres de columnas',
       help: 'La vista previa refleja estas opciones. Guarda para publicarlas en Vecinos. En el editor siempre se muestran las referencias.',
     },
-    dragHelp: 'Arrastra por el asa o utiliza «Mover a…». Una casilla ocupada intercambia las viviendas. Nada se publica hasta guardar.',
+    dragHelp: 'Arrastra por el asa o utiliza «Mover…». Una casilla ocupada intercambia las viviendas. Nada se publica hasta guardar.',
     unplaced: {
       region: 'Viviendas sin colocar',
       title: 'Sin colocar',
@@ -86,7 +86,7 @@ export const neighbors: Messages<typeof source> = {
     tile: {
       drag: 'Arrastrar vivienda {dwelling}',
       move: 'Mover vivienda {dwelling}',
-      moveTo: 'Mover a…',
+      moveTo: 'Mover…',
     },
     moveDialog: {
       title: 'Mover vivienda {dwelling}',

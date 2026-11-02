@@ -332,7 +332,7 @@ In **Settings > Dwellings**, **Arrange dwellings** lays the directory out like t
   rows with optional names; put the upper floors first. Names never change the order.
 - Under **Neighbors view**, **Show row names** and **Show column names** control the directory's
   headings; both are off by default. Hidden headings take no space.
-- Drag a dwelling by its handle into a cell, or use **Move to…** to pick a zone, row and column.
+- Drag a dwelling by its handle into a cell, or use **Move…** to pick a zone, row and column.
   Dropping on an occupied cell swaps the two dwellings; nothing else moves. Empty cells keep their
   space, so columns stay aligned.
 - Rows and zones move up and down, and columns are added or removed across every row. Removing a

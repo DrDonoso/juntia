@@ -160,7 +160,7 @@ test('invitation-only users, shared dwellings, email changes, revocation and rec
     await resident.goto('/login')
     await login(resident, changedEmail)
 
-    await resident.getByRole('button', { name: 'User menu', exact: true }).click()
+    await resident.getByRole('button', { name: 'User menu' }).click()
     await resident.getByRole('button', { name: 'Sign out', exact: true }).click()
     await expect(resident.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible()
     await resident.getByRole('link', { name: 'Forgot your password?', exact: true }).click()
@@ -202,7 +202,7 @@ test('header profile menu, editable name, password change and all-device logout'
   await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-test-password')
   await page.getByRole('button', { name: 'Sign in to administration' }).click()
   await expect(page.getByRole('heading', { name: 'Import statement', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'User menu', exact: true }).click()
+  await page.getByRole('button', { name: 'User menu' }).click()
   await page.getByRole('link', { name: /My profile/ }).click()
   await expect(page.getByRole('heading', { name: 'My profile', exact: true })).toBeVisible()
   await expect(page.locator('.technical-profile')).toContainText('Technical administrator')
@@ -232,7 +232,7 @@ test('header profile menu, editable name, password change and all-device logout'
       headers, data: { email, password },
     })).status()).toBe(200)
     await expect(resident.locator('.sidebar-profile')).toHaveCount(0)
-    await resident.getByRole('button', { name: 'User menu', exact: true }).click()
+    await resident.getByRole('button', { name: 'User menu' }).click()
     await resident.getByRole('link', { name: /My profile/ }).click()
     await expect(resident.getByRole('heading', { name: 'My profile', exact: true })).toBeVisible()
     await expect(resident.locator('.profile-details')).toContainText(email)
@@ -267,7 +267,7 @@ test('header profile menu, editable name, password change and all-device logout'
     expect((await otherDevice.request.post('/api/auth/login', {
       headers, data: { email, password: newPassword },
     })).status()).toBe(200)
-    await resident.getByRole('button', { name: 'User menu', exact: true }).click()
+    await resident.getByRole('button', { name: 'User menu' }).click()
     await resident.getByRole('link', { name: /My profile/ }).click()
     await expect(resident.getByRole('heading', { name: 'My profile', exact: true })).toBeVisible()
     await resident.setViewportSize({ width: 390, height: 844 })
@@ -280,7 +280,7 @@ test('header profile menu, editable name, password change and all-device logout'
     await expect(resident.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible()
     await expect(resident.getByText('Your sessions have been closed on every device.', { exact: true })).toBeVisible()
     expect((await otherDevice.request.get('/api/auth/profile')).status()).toBe(401)
-    await expect(resident.getByRole('button', { name: 'User menu', exact: true })).toHaveCount(0)
+    await expect(resident.getByRole('button', { name: 'User menu' })).toHaveCount(0)
     await login(resident, email, newPassword, 'profile')
     expect(errors).toEqual([])
   } finally {
@@ -389,7 +389,7 @@ test('neighbors directory groups contact phones by naturally ordered dwelling', 
     expect(await resident.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     expect((await new AxeBuilder({ page: resident }).analyze()).violations).toEqual([])
     await resident.screenshot({ path: 'test-results/neighbors-mobile.png', fullPage: true })
-    await resident.getByRole('button', { name: 'User menu', exact: true }).click()
+    await resident.getByRole('button', { name: 'User menu' }).click()
     await resident.getByRole('button', { name: 'Sign out', exact: true }).click()
     await expect(resident.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible()
     await expect(resident.getByText('Anna Clark', { exact: true })).toHaveCount(0)
