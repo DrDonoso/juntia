@@ -9,6 +9,7 @@
 //   Root directory   /frontend            ← this file and package.json live here
 //   Build command    npm run build:demo
 //   Deploy command   npx wrangler@4 deploy
+//   Preview command  npx wrangler@4 preview
 //   Variable         NODE_VERSION = 24    ← Vite 8 needs Node ^20.19 || >=22.12
 // wrangler is deliberately not a devDependency (it would bloat every `npm ci`), so the deploy
 // command pins its major instead.
@@ -21,6 +22,8 @@
   "$schema": "https://unpkg.com/wrangler@4/config-schema.json",
   "name": "juntia-demo",
   "compatibility_date": "2026-10-01",
+  // Required by wrangler preview; the static demo needs no Preview-specific bindings.
+  "previews": {},
   "assets": {
     "directory": "./dist-demo",
     // The app uses client-side routes (/transactions, /admin/users…): navigations that match no file

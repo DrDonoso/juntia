@@ -131,7 +131,12 @@ importing the `DrDonoso/juntia` repository):
 | Root directory | `/frontend` |
 | Build command | `npm run build:demo` |
 | Deploy command | `npx wrangler@4 deploy` |
+| Preview command (non-production branches) | `npx wrangler@4 preview` |
 | Environment variable | `NODE_VERSION=24` |
+
+The empty `previews` block in `wrangler.jsonc` enables branch Previews. This static demo needs no
+Preview-specific bindings: assets and compatibility settings stay at the top level. Keep
+`wrangler deploy` for production; `wrangler preview` publishes an isolated branch Preview instead.
 
 The custom domain comes from `wrangler.jsonc` and needs the domain's zone in the same Cloudflare
 account; otherwise, add the domain in the Worker's **Domains & Routes** settings and remove `routes`
