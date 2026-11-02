@@ -54,7 +54,7 @@ function emptyCalendar(instant: string): void {
   state.eventHistory.length = 0
 }
 
-/** Moves the clock; the visitor signs in again (demo sessions last 12 hours). */
+/** Moves the clock; the visitor signs in again after potentially long time jumps. */
 function moveClock(instant: string): void {
   clock = new Date(instant)
   signInResident(6)

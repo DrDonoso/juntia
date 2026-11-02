@@ -138,9 +138,9 @@ describe('sessions', () => {
 
   test('a session ends when it expires, when the account is disabled or when it is revoked', () => {
     coreStore()
-    setClock(() => new Date(NOW.getTime() + 11 * 3_600_000))
+    setClock(() => new Date(NOW.getTime() + 168 * 3_600_000 - 1))
     expect(readerIdentity()).not.toBeNull()
-    setClock(() => new Date(NOW.getTime() + 13 * 3_600_000))
+    setClock(() => new Date(NOW.getTime() + 168 * 3_600_000))
     expect(readerIdentity()).toBeNull()
 
     setClock(() => NOW)

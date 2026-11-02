@@ -4,7 +4,8 @@ import secrets
 import smtplib
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
+from datetime import datetime, timedelta
+from http.cookies import SimpleCookie
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,6 +17,7 @@ from juntia import auth, mail
 from juntia import users as user_api
 from juntia.app import create_app
 from juntia.config import Settings
+from juntia.db import Session as AdminSession
 from juntia.db import State, User, UserSession, UserToken, aware, utcnow
 from tests.test_api import commit, preview
 
@@ -324,6 +326,59 @@ def test_account_links_expire_at_the_exact_documented_boundary(
     assert admin.post(f"/api/auth/{endpoint}", json={
         "token": token, "password": PASSWORD,
     }).status_code == 400
+
+
+@pytest.mark.parametrize("kind", ["resident", "administrator"])
+@pytest.mark.parametrize("hours", [48, 168])
+def test_session_lifetime_matches_the_cookie_and_absolute_expiry(
+    admin, mailbox, config, monkeypatch, kind, hours
+):
+    if kind == "resident":
+        _, invitation = invite(admin, mailbox)
+    with visitor(config) as reader:
+        if kind == "resident":
+            activate(reader, invitation)
+        config.session_hours = hours
+        start = utcnow()
+        monkeypatch.setattr(auth, "utcnow", lambda: start)
+        if kind == "resident":
+            response = login(reader)
+            cookie_name = auth.USER_COOKIE
+        else:
+            response = reader.post("/api/admin/auth/login", json={
+                "username": config.admin_username,
+                "password": config.admin_password.get_secret_value(),
+            })
+            cookie_name = auth.COOKIE
+        assert response.status_code == 200, response.text
+        cookies = (SimpleCookie(header) for header in response.headers.get_list("set-cookie"))
+        cookie = next(value[cookie_name] for value in cookies if (
+            cookie_name in value and value[cookie_name].value
+        ))
+        assert cookie["max-age"] == str(hours * 3600)
+        token = reader.cookies.get(cookie_name)
+        session_hash = (
+            auth.access_hash(config, "session", token) if kind == "resident" else auth.digest(token)
+        )
+        model = UserSession if kind == "resident" else AdminSession
+        async def expiry(db):
+            session = await db.get(model, session_hash)
+            assert session is not None
+            return aware(session.expires_at)
+        expires = start + timedelta(hours=hours)
+        assert database(config, expiry) == expires
+
+        config.session_hours = 1
+        monkeypatch.setattr(auth, "utcnow", lambda: expires - timedelta(seconds=1))
+        assert reader.get("/api/summary").status_code == 200
+        current = reader.get("/api/auth/session").json()
+        assert current["authenticated"] is True
+        assert current["kind"] == kind
+        assert datetime.fromisoformat(current["expires_at"]) == expires
+
+        monkeypatch.setattr(auth, "utcnow", lambda: expires)
+        assert reader.get("/api/summary").status_code == 401
+        assert reader.get("/api/auth/session").json()["authenticated"] is False
 
 
 def test_resident_session_expiry_is_enforced_without_a_browser_refresh(

@@ -60,7 +60,7 @@ that live in the database, such as the feature switches, are managed in the admi
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_TIMEOUT` | email off | [Email (SMTP)](#email-smtp) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google off | [Google sign-in](#google-sign-in) |
 | `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` | AI off | [AI classification](#ai-classification) |
-| `SESSION_HOURS`, `PREVIEW_HOURS` | `12`, `24` | [Sessions and import previews](#sessions-and-import-previews) |
+| `SESSION_HOURS`, `PREVIEW_HOURS` | `168`, `24` | [Sessions and import previews](#sessions-and-import-previews) |
 | `DATABASE_URL`, `UPLOAD_DIR`, `BUILD_DATE` | set for you | [Set by Compose or the image](#set-by-compose-or-the-image) |
 | `LOCAL_PUBLIC_ORIGIN`, `ALLOW_INSECURE_LOCAL_ADMIN` | local stack only | [Local Compose only](#local-compose-only) |
 
@@ -228,11 +228,18 @@ never the PDF, the IBAN, the amounts or the balances. Sanitizing is not anonymiz
 
 | Variable | Default | Description and rules |
 | --- | --- | --- |
-| `SESSION_HOURS` | `12` | Lifetime of resident and administrator sessions, 1 to 168 hours. |
+| `SESSION_HOURS` | `168` | Fixed lifetime of resident and administrator sessions, 1 to 168 hours. |
 | `PREVIEW_HOURS` | `24` | Lifetime of an unconfirmed statement import preview, 1 to 168 hours. |
 
-The Compose files do not pass these two variables to the container. To change them, add them to the
-`environment` of the `api` service.
+Sessions expire the configured number of hours after sign-in, even while the user is active; browsing
+does not extend them. A change to `SESSION_HOURS` affects newly issued sessions only. Existing
+sessions retain their original expiry, so users may need to sign in again once after an increase.
+Signing out, changing credentials or revoking a resident's sessions still ends them immediately.
+Longer sessions also give anyone with access to a stolen cookie or shared device more time to use it.
+
+Both Compose files pass `SESSION_HOURS` from `.env`; after changing it,
+[recreate the application container](#applying-changes). They do not pass `PREVIEW_HOURS`: to change
+that setting, add it to the `environment` of the `api` service.
 
 ## Set by Compose or the image
 

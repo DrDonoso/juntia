@@ -15,6 +15,7 @@ services:
       AUTH_SECRET: "${AUTH_SECRET:?Set AUTH_SECRET}"
       PUBLIC_ORIGIN: "${LOCAL_PUBLIC_ORIGIN:-http://localhost:7778}"
       AUTH_COOKIE_SECURE: "false"
+      SESSION_HOURS: "${SESSION_HOURS:-168}"
       UPLOAD_DIR: /app/data/uploads
       # Action PDF budgets in MiB; withdrawn PDFs count until the administrator purges them.
       ACTION_STORAGE_USER_QUOTA_MB: "${ACTION_STORAGE_USER_QUOTA_MB:-250}"
