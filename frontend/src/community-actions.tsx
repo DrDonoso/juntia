@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
 import { diffArrays } from 'diff'
@@ -19,6 +19,8 @@ import { ActionEvents } from './community-events'
 import { ContactTagPicker, normalizeTagName, paletteColor, tagColor, type ContactTagChoice } from './contact-tags'
 import { formatNumber, lowerCase, useI18n, type Translate } from './i18n'
 import { Icon } from './icons'
+import { MarkdownText } from './markdown'
+import { MarkdownField } from './markdown-field'
 
 type LabelError = 'actions.editor.labelInvalid' | 'actions.editor.labelLimit'
 
@@ -74,11 +76,13 @@ export function ActionEditor({ value, close, saved }: { value: ActionOut | null;
   const [base, setBase] = useState(value)
   const [draft, setDraft] = useState(() => actionDraft(value))
   const [current, setCurrent] = useState<ActionOut | null>(null)
+  const [uploading, setUploading] = useState(false)
   const operation = useAction(['actions']), refresh = useAction(false)
   const stale = operation.failure instanceof ApiError && operation.failure.code === 'action_stale'
   const busy = operation.busy || refresh.busy
   function submit(event: FormEvent) {
     event.preventDefault()
+    if (uploading) return
     void operation.run(async () => {
       const body = base
         ? { ...draft, version: base.version }
@@ -92,7 +96,8 @@ export function ActionEditor({ value, close, saved }: { value: ActionOut | null;
   return <Modal title={base ? t('actions.editor.editTitle') : t('actions.editor.newTitle')} close={close} disabled={busy} className="action-editor">
     <form onSubmit={submit}>
       <label>{t('actions.editor.title')}<input required maxLength={200} value={draft.title} disabled={busy} onChange={event => setDraft({ ...draft, title: event.target.value })} /></label>
-      <label>{t('actions.editor.description')}<textarea rows={5} maxLength={20000} value={draft.description} disabled={busy} onChange={event => setDraft({ ...draft, description: event.target.value })} /></label>
+      <MarkdownField label={t('actions.editor.description')} scope="actions" rows={5} maxLength={20000} value={draft.description} disabled={busy}
+        change={update => setDraft(previous => ({ ...previous, description: update(previous.description) }))} onUploadingChange={setUploading} />
       {base && <label>{t('actions.editor.status')}<select value={draft.status} disabled={busy} onChange={event => {
         if (isActionStatus(event.target.value)) setDraft({ ...draft, status: event.target.value })
       }}><StatusOptions /></select></label>}
@@ -107,14 +112,14 @@ export function ActionEditor({ value, close, saved }: { value: ActionOut | null;
       </section>}
       {current && base && <section className="action-conflict" aria-label={t('actions.editor.currentLabel')}>
         <h3>{t('actions.editor.current')}</h3><p><strong>{current.title}</strong></p>
-        <p className="action-text">{current.description || t('actions.editor.noDescription')}</p>
+        {current.description ? <MarkdownText text={current.description} /> : <p className="action-text">{t('actions.editor.noDescription')}</p>}
         <p>{t(`actions.status.${current.status}`)} · {current.labels.map(label => label.name).join(', ') || t('actions.editor.noLabels')}</p>
         <p>{t('actions.editor.rebaseHelp')}</p>
         <button type="button" className="secondary" disabled={busy} onClick={() => {
           setDraft(rebaseActionDraft(draft, base, current)); setBase(current); setCurrent(null); operation.reset()
         }}>{t('actions.editor.rebase')}</button>
       </section>}
-      <div className="inline"><button disabled={busy || stale}>{operation.busy ? t('common.saving') : t('actions.editor.save')}</button>
+      <div className="inline"><button disabled={busy || stale || uploading}>{operation.busy ? t('common.saving') : t('actions.editor.save')}</button>
         <button type="button" className="secondary" disabled={busy} onClick={close}>{t('common.cancel')}</button></div>
     </form>
   </Modal>
@@ -252,13 +257,13 @@ export function ActionsPage() {
 }
 
 function WithdrawDialog({ title, description, kept, endpoint, version, close }: {
-  title: string; description: string; kept?: string; endpoint: string; version: number; close: () => void
+  title: string; description: ReactNode; kept?: string; endpoint: string; version: number; close: () => void
 }) {
   const { t } = useI18n()
   const operation = useAction(['actions'])
   function dismiss() { close(); void cache.invalidateQueries({ queryKey: ['actions'] }) }
   return <Modal title={title} close={dismiss} disabled={operation.busy}>
-    <p>{description}</p><p>{kept ?? t('actions.withdraw.kept')}</p>
+    {typeof description === 'string' ? <p>{description}</p> : description}<p>{kept ?? t('actions.withdraw.kept')}</p>
     {operation.notice}<div className="inline">
       <button disabled={operation.busy} onClick={() => void operation.run(async () => {
         await api(endpoint, 'DELETE', { version }); close()
@@ -272,27 +277,30 @@ function CommentEditor({ itemId, value, close }: { itemId: number; value: Action
   const { t } = useI18n()
   const [body, setBody] = useState(value.body || ''), [version, setVersion] = useState(value.version)
   const [current, setCurrent] = useState<ActionCommentOut | null>(null)
+  const [uploading, setUploading] = useState(false)
   const operation = useAction(['actions']), refresh = useAction(false)
   const stale = operation.failure instanceof ApiError && operation.failure.code === 'action_stale'
   const endpoint = `/actions/items/${itemId}/comments/${value.id}`
   const busy = operation.busy || refresh.busy
   return <Modal title={t('actions.comments.editor.title')} close={close} disabled={busy}>
-    <form onSubmit={event => { event.preventDefault(); void operation.run(async () => {
+    <form onSubmit={event => { event.preventDefault(); if (uploading) return; void operation.run(async () => {
       await api(endpoint, 'PATCH', { body, version }); close()
     }) }}>
-      <label>{t('actions.comments.editor.body')}<textarea required maxLength={10000} rows={5} value={body} disabled={busy} onChange={event => setBody(event.target.value)} /></label>
+      <MarkdownField label={t('actions.comments.editor.body')} scope="actions" required maxLength={10000} rows={5} value={body}
+        disabled={busy} change={setBody} onUploadingChange={setUploading} />
       <p className="muted">{t('actions.comments.editor.historyKept')}</p>
       {operation.notice}{refresh.notice}
       {stale && <button type="button" className="secondary" disabled={busy} onClick={() => void refresh.run(async () => {
         setCurrent(await api<ActionCommentOut>(endpoint))
       })}>{t('actions.comments.editor.checkCurrent')}</button>}
       {current && <section className="action-conflict">
-        <h3>{t('actions.comments.editor.current')}</h3><p className="action-text">{current.body || t('actions.comments.editor.withdrawn')}</p>
+        <h3>{t('actions.comments.editor.current')}</h3>
+        {current.body ? <MarkdownText text={current.body} /> : <p className="action-text">{t('actions.comments.editor.withdrawn')}</p>}
         {!current.withdrawn_at && <button type="button" className="secondary" onClick={() => {
           setVersion(current.version); setCurrent(null); operation.reset()
         }}>{t('actions.comments.editor.keepMine')}</button>}
       </section>}
-      <div className="inline"><button disabled={busy || stale || !!current?.withdrawn_at || !body.trim()}>{t('actions.comments.editor.save')}</button>
+      <div className="inline"><button disabled={busy || stale || uploading || !!current?.withdrawn_at || !body.trim()}>{t('actions.comments.editor.save')}</button>
         <button type="button" className="secondary" disabled={busy} onClick={close}>{t('common.cancel')}</button></div>
     </form>
   </Modal>
@@ -301,6 +309,7 @@ function CommentEditor({ itemId, value, close }: { itemId: number; value: Action
 export function ActionComments({ itemId, reader, onHistory }: { itemId: number; reader?: UserAuthOut; onHistory: () => void }) {
   const { t, rich } = useI18n()
   const [page, setPage] = useState(1), [body, setBody] = useState('')
+  const [uploading, setUploading] = useState(false)
   const [editing, setEditing] = useState<ActionCommentOut | null>(null)
   const [withdrawing, setWithdrawing] = useState<ActionCommentOut | null>(null)
   const operation = useAction(['actions'])
@@ -309,11 +318,12 @@ export function ActionComments({ itemId, reader, onHistory }: { itemId: number; 
     queryFn: () => api<ActionCommentPage>(`/actions/items/${itemId}/comments?page=${page}`),
   })
   return <section className="card" aria-labelledby="action-comments-heading"><h2 id="action-comments-heading">{t('actions.comments.title')}</h2>
-    <form className="action-comment-form" onSubmit={event => { event.preventDefault(); void operation.run(async () => {
+    <form className="action-comment-form" onSubmit={event => { event.preventDefault(); if (uploading) return; void operation.run(async () => {
       await api(`/actions/items/${itemId}/comments`, 'POST', { body }); setBody(''); setPage(1)
     }, t('actions.comments.posted')) }}>
-      <label>{t('actions.comments.new')}<textarea required maxLength={10000} rows={3} value={body} disabled={operation.busy} onChange={event => setBody(event.target.value)} /></label>
-      <button disabled={operation.busy || !body.trim()}>{t('actions.comments.post')}</button>
+      <MarkdownField label={t('actions.comments.new')} scope="actions" required maxLength={10000} rows={3} value={body}
+        disabled={operation.busy} change={setBody} onUploadingChange={setUploading} />
+      <button disabled={operation.busy || uploading || !body.trim()}>{t('actions.comments.post')}</button>
       {operation.notice}
     </form>
     {query.isPending && <Notice>{t('actions.comments.loading')}</Notice>}
@@ -326,7 +336,7 @@ export function ActionComments({ itemId, reader, onHistory }: { itemId: number; 
           <p className="muted">{t('actions.comments.withdrawn')}</p>
           <button type="button" className="quiet" onClick={onHistory}>{t('actions.comments.viewHistory')}</button>
         </> : <>
-          <p className="action-text">{comment.body}</p>
+          <MarkdownText text={comment.body || ''} />
           {comment.version > 1 && <small className="muted">{rich('actions.comments.edited', { time: () => <ActionTime value={comment.updated_at} /> })}</small>}
           {canModerate(comment.author, reader) && <div className="inline">
             <button type="button" className="quiet" aria-label={t('actions.comments.editLabel', { id: comment.id })} onClick={() => setEditing(comment)}>{t('actions.comments.edit')}</button>
@@ -337,7 +347,7 @@ export function ActionComments({ itemId, reader, onHistory }: { itemId: number; 
       <ActionPagination page={page} pages={query.data.pages} change={setPage} busy={query.isFetching} label={t('actions.comments.pagination')} />
     </>}
     {editing && <CommentEditor key={editing.id} itemId={itemId} value={editing} close={() => setEditing(null)} />}
-    {withdrawing && <WithdrawDialog title={t('actions.comments.withdrawTitle')} description={withdrawing.body || ''} endpoint={`/actions/items/${itemId}/comments/${withdrawing.id}`}
+    {withdrawing && <WithdrawDialog title={t('actions.comments.withdrawTitle')} description={<MarkdownText text={withdrawing.body || ''} />} endpoint={`/actions/items/${itemId}/comments/${withdrawing.id}`}
       version={withdrawing.version} close={() => setWithdrawing(null)} />}
   </section>
 }
@@ -613,7 +623,8 @@ function ActionDetail({ item, reader, basePath, search }: { item: ActionOut; rea
         </div>
       </div></div>
     <section className="card action-details">
-      <h2>{t('actions.detail.description')}</h2><p className="action-text">{item.description || t('actions.detail.noDescription')}</p>
+      <h2>{t('actions.detail.description')}</h2>
+      {item.description ? <MarkdownText text={item.description} /> : <p className="action-text">{t('actions.detail.noDescription')}</p>}
       <p className="muted">{rich('actions.detail.created', {
         actor: () => <Actor value={item.author} />, time: () => <ActionTime value={item.created_at} />,
       })}</p>

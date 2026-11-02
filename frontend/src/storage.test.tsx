@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest'
 import { cache } from './api/client'
-import type { ResidentStorageOut, StorageOut, StoredAttachmentOut, StoredAttachmentPage } from './api/schema.gen'
+import type { ResidentStorageOut, StorageOut, StoredAttachmentOut, StoredAttachmentPage, StoredImageOut, StoredImagePage } from './api/schema.gen'
 import { setLanguage } from './i18n'
 import { StoragePage } from './storage'
 
@@ -11,21 +11,27 @@ const MiB = 1024 ** 2, GiB = 1024 ** 3
 const alice: ResidentStorageOut = {
   user_id: 7, name: 'Alice', account_deleted: false, quota_bytes: 250 * MiB,
   stored_bytes: 240 * MiB, active_bytes: 200 * MiB, withdrawn_bytes: 40 * MiB, active_files: 10, withdrawn_files: 2,
+  image_bytes: 0, image_files: 0,
 }
 const ben: ResidentStorageOut = {
   user_id: 8, name: 'Ben', account_deleted: true, quota_bytes: 250 * MiB,
   stored_bytes: 20 * MiB, active_bytes: 0, withdrawn_bytes: 20 * MiB, active_files: 0, withdrawn_files: 1,
+  image_bytes: 0, image_files: 0,
 }
 const carol: ResidentStorageOut = {
   user_id: 9, name: 'Carol', account_deleted: false, quota_bytes: 250 * MiB,
-  stored_bytes: 5 * MiB, active_bytes: 5 * MiB, withdrawn_bytes: 0, active_files: 1, withdrawn_files: 0,
+  stored_bytes: 8 * MiB, active_bytes: 5 * MiB, withdrawn_bytes: 0, active_files: 1, withdrawn_files: 0,
+  image_bytes: 3 * MiB, image_files: 2,
 }
 const usage: StorageOut = {
   community: {
     quota_bytes: 2048 * MiB, stored_bytes: 1280 * MiB, active_bytes: GiB, withdrawn_bytes: 256 * MiB,
-    active_files: 30, withdrawn_files: 5,
+    active_files: 30, withdrawn_files: 5, image_bytes: 0, image_files: 0,
   },
-  administrator: { stored_bytes: 15 * MiB, active_bytes: 10 * MiB, withdrawn_bytes: 5 * MiB, active_files: 2, withdrawn_files: 1 },
+  administrator: {
+    stored_bytes: 15 * MiB, active_bytes: 10 * MiB, withdrawn_bytes: 5 * MiB, active_files: 2, withdrawn_files: 1,
+    image_bytes: 0, image_files: 0,
+  },
   residents: [alice, ben, carol],
   resident_quota_bytes: 250 * MiB,
   disk: { total_bytes: 200 * GiB, free_bytes: 50 * GiB, reserve_bytes: GiB },
@@ -36,11 +42,16 @@ const quote: StoredAttachmentOut = {
   author: { kind: 'resident', user_id: 7, name: 'Alice' }, version: 2, created_at: '2026-09-01T08:00:00Z',
   withdrawn_at: stamp, purged_at: null, action_id: 12, action_title: 'Entrance door',
 }
+const photo: StoredImageOut = {
+  id: 'img-1', url: '/api/actions/images/img-1', filename: 'Leak on the roof.jpg', media_type: 'image/jpeg', size: 2 * MiB,
+  width: 2560, height: 1920, created_at: stamp, scope: 'actions', sha256: 'b'.repeat(64),
+  author: { kind: 'resident', user_id: 9, name: 'Carol' }, purged_at: null,
+}
 const defaults = cache.getDefaultOptions()
 const originalShow = HTMLDialogElement.prototype.showModal
 const originalClose = HTMLDialogElement.prototype.close
-let summary: StorageOut, withdrawn: StoredAttachmentOut[], total: number | null
-let purge: (body: unknown) => Response
+let summary: StorageOut, withdrawn: StoredAttachmentOut[], total: number | null, images: StoredImageOut[]
+let purge: (body: unknown) => Response, purgeImage: () => Response
 const requests: string[] = []
 
 beforeAll(() => {
@@ -55,11 +66,16 @@ beforeEach(() => {
   cache.setDefaultOptions({ queries: { retry: false } })
   summary = structuredClone(usage)
   withdrawn = [quote]
+  images = [photo]
   total = null
   requests.length = 0
   purge = () => {
     withdrawn = []
     return reply({ ...quote, purged_at: '2026-10-12T09:30:00Z', version: 3 })
+  }
+  purgeImage = () => {
+    images = []
+    return reply({ ...photo, purged_at: '2026-10-12T09:30:00Z' })
   }
   vi.stubGlobal('fetch', vi.fn(respond))
 })
@@ -83,6 +99,15 @@ async function respond(input: string, options: RequestInit = {}) {
   if (input === '/api/admin/storage/attachments/pdf-1/purge' && options.method === 'POST') {
     expect(options.headers).toEqual({ 'X-Juntia-Request': '1', 'Content-Type': 'application/json' })
     return purge(JSON.parse(String(options.body)))
+  }
+  if (input.startsWith('/api/admin/storage/images?')) {
+    const page = Number(new URL(input, 'http://localhost').searchParams.get('page'))
+    const body: StoredImagePage = { items: page === 1 ? images : [], total: images.length, page, pages: 1 }
+    return reply(body)
+  }
+  if (input === '/api/admin/storage/images/img-1/purge' && options.method === 'POST') {
+    expect(options.body).toBeUndefined()
+    return purgeImage()
   }
   throw new Error(`Unexpected request: ${input}`)
 }
@@ -113,14 +138,15 @@ test('the summary shows the community, administrator and disk usage with accessi
   expect(community.getByText('768 MiB still available.')).toBeVisible()
   expect(community.getByText('Active').nextElementSibling).toHaveTextContent('1 GiB · 30 PDFs')
   expect(community.getByText('Withdrawn').nextElementSibling).toHaveTextContent('256 MiB · 5 PDFs')
+  expect(community.getByText('Images').nextElementSibling).toHaveTextContent('0 B · 0 images')
   const administrator = region('Technical administrator')
   expect(administrator.getByText('15 MiB stored')).toBeVisible()
-  expect(administrator.getByText('No quota of its own: these PDFs count only towards the community quota.')).toBeVisible()
+  expect(administrator.getByText('No quota of its own: these PDFs and images count only towards the community quota.')).toBeVisible()
   expect(administrator.getByText('Withdrawn').nextElementSibling).toHaveTextContent('5 MiB · 1 PDF')
   const disk = region('Server disk')
   expect(disk.getByText('50 GiB free of 200 GiB')).toBeVisible()
   expect(disk.getByRole('meter', { name: 'Server disk space used' })).toHaveAttribute('aria-valuetext', '150 GiB of 200 GiB used (75%)')
-  expect(disk.getByText('1 GiB are kept free as a reserve. Below it, PDF uploads and statement imports are refused.')).toBeVisible()
+  expect(disk.getByText('1 GiB are kept free as a reserve. Below it, uploads of PDFs and images and statement imports are refused.')).toBeVisible()
   expect(screen.queryByRole('alert')).toBeNull()
   const help = region('How storage limits work')
   for (const [label, size, setting] of [
@@ -132,16 +158,16 @@ test('the summary shows the community, administrator and disk usage with accessi
     expect(value).toHaveTextContent(`${size}${setting}`)
     expect(value?.querySelector('code')).toHaveTextContent(setting)
   }
-  expect(help.getByText('Withdrawn PDFs keep counting towards both quotas until you delete them permanently on this page.')).toBeVisible()
+  expect(help.getByText('Withdrawn PDFs, and images removed from their text, keep counting towards both quotas until you delete them permanently on this page.')).toBeVisible()
   expect(help.getByText('To change a limit, set the server environment variable shown next to it, in whole MiB, and recreate the Juntia container (docker compose up -d): a plain restart keeps the previous values.')).toBeVisible()
-  expect(help.getByText('Deleting a PDF permanently cannot be undone.')).toBeVisible()
+  expect(help.getByText('Deleting a PDF or an image permanently cannot be undone.')).toBeVisible()
 })
 
 test.each([
-  { name: 'a full community quota', change: (value: StorageOut) => { value.community.stored_bytes = 2100 * MiB }, alert: 'The community quota is full, so new PDFs are refused. Delete withdrawn PDFs permanently or raise the quota.' },
-  { name: 'free space below the reserve', change: (value: StorageOut) => { value.disk.free_bytes = 512 * MiB }, alert: 'The free space is below the reserve, so PDF uploads and statement imports are refused. Free space on the server or delete withdrawn PDFs permanently.' },
-  { name: 'a community quota almost full', change: (value: StorageOut) => { value.community.stored_bytes = 1900 * MiB }, warning: 'The community quota is almost full. Delete withdrawn PDFs permanently to free space.' },
-  { name: 'free space close to the reserve', change: (value: StorageOut) => { value.disk.free_bytes = 1536 * MiB }, warning: 'The free space is close to the reserve. Free space on the server soon to keep accepting PDF uploads and statement imports.' },
+  { name: 'a full community quota', change: (value: StorageOut) => { value.community.stored_bytes = 2100 * MiB }, alert: 'The community quota is full, so new PDFs and images are refused. Delete withdrawn PDFs or images permanently, or raise the quota.' },
+  { name: 'free space below the reserve', change: (value: StorageOut) => { value.disk.free_bytes = 512 * MiB }, alert: 'The free space is below the reserve, so uploads of PDFs and images and statement imports are refused. Free space on the server or delete withdrawn PDFs or images permanently.' },
+  { name: 'a community quota almost full', change: (value: StorageOut) => { value.community.stored_bytes = 1900 * MiB }, warning: 'The community quota is almost full. Delete withdrawn PDFs or images permanently to free space.' },
+  { name: 'free space close to the reserve', change: (value: StorageOut) => { value.disk.free_bytes = 1536 * MiB }, warning: 'The free space is close to the reserve. Free space on the server soon to keep accepting uploads of PDFs and images and statement imports.' },
 ])('the summary warns about $name', async ({ change, alert, warning }) => {
   change(summary)
   renderPage()
@@ -166,7 +192,7 @@ test('a disk the server cannot read is explained without an alarm', async () => 
   summary.disk = { total_bytes: null, free_bytes: null, reserve_bytes: GiB }
   renderPage()
   const disk = within(await screen.findByRole('region', { name: 'Server disk' }))
-  expect(disk.getByText('The server cannot read the free space of its upload folder right now. While it cannot, PDF uploads and statement imports are refused.'))
+  expect(disk.getByText('The server cannot read the free space of its upload folder right now. While it cannot, uploads of PDFs and images and statement imports are refused.'))
     .toHaveAttribute('role', 'status')
   expect(disk.queryByRole('meter')).toBeNull()
   expect(disk.getByText(/^1 GiB are kept free/)).toBeVisible()
@@ -177,7 +203,7 @@ test('neighbors are listed in the order returned, with their quota use and delet
   summary.residents = [alice, ben, { ...carol, name: '' }]
   renderPage()
   const table = await screen.findByRole('table', { name: 'Storage by neighbor' })
-  expect(within(table).getAllByRole('columnheader').map(header => header.textContent)).toEqual(['Neighbor', 'Active PDFs', 'Withdrawn PDFs', 'Quota used'])
+  expect(within(table).getAllByRole('columnheader').map(header => header.textContent)).toEqual(['Neighbor', 'Active PDFs', 'Withdrawn PDFs', 'Images', 'Quota used'])
   const rows = within(table).getAllByRole('row').slice(1)
   expect(rows.map(row => within(row).getByRole('rowheader').textContent)).toEqual(['Alice', 'BenDeleted account', 'Neighbor #9'])
   expect(rows[0]).toHaveTextContent('200 MiB10 PDFs')
@@ -188,18 +214,77 @@ test('neighbors are listed in the order returned, with their quota use and delet
   expect(meter).toHaveAttribute('data-level', 'warning')
   expect(within(rows[1]).getByText('Deleted account')).toHaveClass('tag')
   expect(within(rows[1]).getByRole('meter', { name: 'Quota used by Ben' })).toHaveAttribute('data-level', 'normal')
-  expect(screen.getByText('Each neighbor can keep up to 250 MiB of PDFs, counting active and withdrawn ones. The neighbors using the most space come first.')).toBeVisible()
+  expect(rows[2]).toHaveTextContent('3 MiB2 images')
+  expect(rows[2]).toHaveTextContent('8 MiB of 250 MiB used')
+  expect(screen.getByText('Each neighbor can keep up to 250 MiB of PDFs and images, counting withdrawn PDFs. The neighbors using the most space come first.')).toBeVisible()
 })
 
 test('without stored PDFs the page says so', async () => {
   summary = { ...summary, residents: [] }
   withdrawn = []
+  images = []
   renderPage()
-  expect(await screen.findByText('No neighbor has stored PDFs yet.')).toBeVisible()
+  expect(await screen.findByText('No neighbor has stored PDFs or images yet.')).toBeVisible()
   expect(await screen.findByText('There are no withdrawn PDFs using space.')).toBeVisible()
+  expect(await screen.findByText('No images are stored.')).toBeVisible()
   expect(screen.queryByText(/still uses? space/)).toBeNull()
   expect(screen.queryByRole('table')).toBeNull()
   expect(screen.queryByRole('list', { name: 'Withdrawn PDFs' })).toBeNull()
+  expect(screen.queryByRole('list', { name: 'Images in texts' })).toBeNull()
+})
+
+test('stored images show a thumbnail, their details and author, and can be sorted and filtered', async () => {
+  renderPage()
+  const section = region('Images in texts')
+  const list = await section.findByRole('list', { name: 'Images in texts' })
+  expect(requests).toContain('/api/admin/storage/images?page=1&sort=newest')
+  const entry = within(list).getByRole('listitem')
+  const thumbnail = within(entry).getByRole('link', { name: 'Open Leak on the roof.jpg at full size in a new tab' })
+  expect(thumbnail).toHaveAttribute('href', '/api/admin/storage/images/img-1/file')
+  expect(thumbnail).toHaveAttribute('target', '_blank')
+  expect(thumbnail.querySelector('img')).toHaveAttribute('src', '/api/admin/storage/images/img-1/file')
+  expect(entry).toHaveTextContent('Leak on the roof.jpg')
+  expect(entry).toHaveTextContent('2 MiB · 2,560 × 1,920 px · Actions')
+  expect(entry).toHaveTextContent('Uploaded by Carol')
+  expect(within(entry).getByText('Uploaded:', { exact: false }).querySelector('time')).toHaveAttribute('datetime', stamp)
+  expect(section.getByText('1 image uses space.')).toBeVisible()
+  const author = section.getByRole('combobox', { name: 'Uploaded by' })
+  expect(within(author).getAllByRole('option').map(option => option.textContent)).toEqual(['Everyone', 'Carol'])
+  fireEvent.change(section.getByRole('combobox', { name: 'Sort by' }), { target: { value: 'largest' } })
+  await waitFor(() => expect(requests).toContain('/api/admin/storage/images?page=1&sort=largest'))
+  fireEvent.change(author, { target: { value: '9' } })
+  await waitFor(() => expect(requests).toContain('/api/admin/storage/images?page=1&sort=largest&user_id=9'))
+})
+
+test('deleting an image permanently is confirmed and refreshes the usage and the list', async () => {
+  renderPage()
+  const section = region('Images in texts')
+  const remove = await section.findByRole('button', { name: 'Delete permanently: Leak on the roof.jpg' })
+  fireEvent.click(remove)
+  const dialog = within(screen.getByRole('dialog', { name: 'Delete image permanently' }))
+  expect(dialog.getByRole('img', { name: 'Leak on the roof.jpg' })).toHaveAttribute('src', '/api/admin/storage/images/img-1/file')
+  expect(dialog.getByText('Actions', { exact: false })).toHaveTextContent('Uploaded by Carol')
+  expect(dialog.getByText('The file will be deleted from the server forever. This cannot be undone.')).toBeVisible()
+  expect(dialog.getByText('The descriptions, comments and history entries that show it will say "Image not available" instead.')).toBeVisible()
+  expect(dialog.getByText('It frees 2 MiB of the community quota and of the quota of Carol.')).toBeVisible()
+  const before = requests.filter(request => request === '/api/admin/storage').length
+  fireEvent.click(dialog.getByRole('button', { name: 'Delete permanently' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  expect(requests.filter(request => request.startsWith('POST'))).toEqual(['POST /api/admin/storage/images/img-1/purge undefined'])
+  expect(section.getByText('Leak on the roof.jpg has been deleted permanently. 2 MiB freed.')).toHaveAttribute('role', 'status')
+  expect(section.getByRole('heading', { name: 'Images in texts' })).toHaveFocus()
+  expect(await section.findByText('No images are stored.')).toBeVisible()
+  await waitFor(() => expect(requests.filter(request => request === '/api/admin/storage').length).toBe(before + 1))
+})
+
+test('an image the server could not delete keeps the dialog open with an explanation', async () => {
+  purgeImage = () => reply({ code: 'image_storage_error' }, 503)
+  renderPage()
+  fireEvent.click(await screen.findByRole('button', { name: 'Delete permanently: Leak on the roof.jpg' }))
+  const dialog = within(screen.getByRole('dialog', { name: 'Delete image permanently' }))
+  fireEvent.click(dialog.getByRole('button', { name: 'Delete permanently' }))
+  expect(await dialog.findByRole('alert')).toHaveTextContent('The file could not be deleted from the server storage, so nothing has changed. Try again later.')
+  expect(screen.queryByText(/has been deleted permanently/)).toBeNull()
 })
 
 test('withdrawn PDFs can be sorted, filtered by neighbor and paged', async () => {

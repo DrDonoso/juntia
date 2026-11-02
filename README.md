@@ -74,6 +74,8 @@ describes every part in detail.
   with labels, comments, PDF attachments and a full history with diffs.
 - **Events** form a shared agenda, with multi-day and all-day events, links to actions and export to
   Google Calendar or any `.ics` calendar.
+- Descriptions and comments are written in **Markdown**, and images can be pasted, dropped or added
+  into them like on GitHub: the browser reduces them and removes their metadata before uploading.
 
 **Community: Neighbors and Contacts**
 
@@ -252,7 +254,7 @@ the old values).
 | `APP_PORT` | `7778` | Host port; the container always listens on 7778. |
 | `IMAGE_TAG` | `latest` | Image tag to run; pin a CalVer release. |
 | `TZ` | `Europe/Madrid` | Community time zone for events. |
-| `ACTION_STORAGE_USER_QUOTA_MB`, `ACTION_STORAGE_COMMUNITY_QUOTA_MB`, `MIN_FREE_DISK_MB` | `250`, `2048`, `1024` | Action PDF storage per resident and for the community, and free space to keep on the uploads volume, in MiB. |
+| `ACTION_STORAGE_USER_QUOTA_MB`, `ACTION_STORAGE_COMMUNITY_QUOTA_MB`, `MIN_FREE_DISK_MB` | `250`, `2048`, `1024` | Storage of action PDFs and pasted images per resident and for the community, and free space to keep on the uploads volume, in MiB. |
 | `SMTP_HOST`, `SMTP_FROM`, … | empty | Email for invitations and password recovery. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | empty | Optional Google sign-in. |
 | `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL` | empty | Optional AI classification. |

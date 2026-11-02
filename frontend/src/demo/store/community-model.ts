@@ -5,7 +5,7 @@
  * like the backend's `Authorship` columns, so they survive later changes to the neighbor.
  */
 import type {
-  ActionChange, ActionEventOut, ActionSummaryOut, ActorOut, ContactSnapshot, ContactTagIn, EventSnapshot,
+  ActionChange, ActionEventOut, ActionSummaryOut, ActorOut, CommunityImageOut, ContactSnapshot, ContactTagIn, EventSnapshot,
 } from '../../api/schema.gen'
 import { ADMINISTRATOR_ACTOR_NAME } from '../cast'
 import type { IdSequence } from '../core/ids'
@@ -76,6 +76,28 @@ export interface DemoActionEvent {
   changes: ActionChange[]
   commentId: number | null
   attachmentId: string | null
+}
+
+export type ImageScope = 'actions' | 'events'
+export type ImageMediaType = CommunityImageOut['media_type']
+
+/** An image pasted into a description or a comment (backend `community_images`). */
+export interface DemoCommunityImage {
+  /** The upload id the client chose (a UUID). */
+  id: string
+  /** The section whose routes serve it, under that section's feature switch. */
+  scope: ImageScope
+  filename: string
+  mediaType: ImageMediaType
+  size: number
+  sha256: string
+  width: number
+  height: number
+  /** The file; a purge deletes it (empty), while the record stays. */
+  bytes: Uint8Array<ArrayBuffer>
+  author: ActorOut
+  createdAt: string
+  purgedAt: string | null
 }
 
 export interface DemoEvent {
@@ -162,6 +184,8 @@ export interface CommunityState {
   comments: DemoActionComment[]
   attachments: DemoActionAttachment[]
   actionHistory: DemoActionEvent[]
+  /** Images of action and event texts, whatever text shows them. */
+  images: DemoCommunityImage[]
   events: DemoEvent[]
   eventHistory: DemoEventChange[]
   contactTags: DemoContactTag[]

@@ -438,6 +438,69 @@ test('comment tools respect ownership and withdrawn comments do not expose their
   expect(within(editor).getByText('The previous text will be kept in the history.')).toBeVisible()
 })
 
+test('descriptions and comments are rendered as Markdown, with their pasted images', async () => {
+  const image = '/api/actions/images/0b0f7d2e-5a1c-4c33-9a7e-2f1d6c8e9b10'
+  const described = { ...item, description: `**Urgent**: the lock is stuck\n\n![Broken lock](${image})` }
+  const formatted = { ...comment, body: 'Next steps:\n- ask for a quote\n- vote\n\n<b>not bold</b>' }
+  vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+    if (input === '/api/actions/items/1') return reply(described)
+    if (input.startsWith('/api/actions/items/1/attachments?')) return reply(page([]))
+    if (input.startsWith('/api/actions/items/1/comments?')) return reply(page([formatted]))
+    throw new Error(`Unexpected request: ${input}`)
+  }))
+  renderView(<Routes><Route path="/actions/:itemId" element={<ActionDetailPage />} /></Routes>, '/actions/1')
+  const description = (await screen.findByRole('heading', { name: 'Description' })).closest('section')
+  if (!(description instanceof HTMLElement)) throw new Error('Missing description')
+  expect(within(description).getByText('Urgent').tagName).toBe('STRONG')
+  expect(within(description).getByRole('img', { name: 'Broken lock' })).toHaveAttribute('src', image)
+  expect(within(description).getByRole('link', { name: 'Broken lock' })).toHaveAttribute('target', '_blank')
+  const comments = screen.getByRole('region', { name: 'Comments' })
+  expect(await within(comments).findByText('ask for a quote')).toBeVisible()
+  expect(within(comments).getByText('ask for a quote').tagName).toBe('LI')
+  expect(within(comments).getByText('<b>not bold</b>')).toBeVisible()
+})
+
+test('an image pasted into a new comment is uploaded first, then posted in its Markdown', async () => {
+  const posted: unknown[] = []
+  let finishUpload: (() => void) | null = null
+  const fetcher = vi.fn(async (input: string, options: RequestInit = {}) => {
+    if (input.startsWith('/api/actions/items/1/comments?')) return reply(page([]))
+    if (input === '/api/actions/images' && options.method === 'POST') {
+      const uploadId = String((options.body as FormData).get('upload_id'))
+      await new Promise<void>(resolve => { finishUpload = resolve })
+      return reply({
+        id: uploadId, url: `/api/actions/images/${uploadId}`, filename: 'leak.gif', media_type: 'image/gif', size: 14,
+        width: 1, height: 1, created_at: stamp,
+      }, 201)
+    }
+    if (input === '/api/actions/items/1/comments' && options.method === 'POST') {
+      posted.push(JSON.parse(String(options.body)))
+      return reply(comment, 201)
+    }
+    throw new Error(`Unexpected request: ${input}`)
+  })
+  vi.stubGlobal('fetch', fetcher)
+  renderView(<ActionComments itemId={1} reader={reader} onHistory={vi.fn()} />)
+  const field = await screen.findByLabelText('New comment') as HTMLTextAreaElement
+  fireEvent.change(field, { target: { value: 'Photo of the leak:' } })
+  field.focus()
+  field.setSelectionRange(18, 18)
+  const leak = new File([new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1, 0, 1, 0, 0, 0, 0, 0x3b])], 'leak.gif', { type: 'image/gif' })
+  fireEvent.paste(field, { clipboardData: { files: [leak], getData: () => '' } })
+  const post = screen.getByRole('button', { name: 'Post comment' })
+  await waitFor(() => expect(fetcher).toHaveBeenCalledWith('/api/actions/images', expect.objectContaining({ method: 'POST' })))
+  expect(post).toBeDisabled()
+  expect(field.value).toMatch(/^Photo of the leak:\n!\[Uploading leak…\]\(#upload-[0-9a-f]{8}\)$/)
+  await act(async () => finishUpload?.())
+  await waitFor(() => expect(post).toBeEnabled())
+  const upload = fetcher.mock.calls.find(call => call[0] === '/api/actions/images')?.[1]
+  if (!(upload?.body instanceof FormData)) throw new Error('The image was not uploaded')
+  const uploadId = String(upload.body.get('upload_id'))
+  expect(field).toHaveValue(`Photo of the leak:\n![leak](/api/actions/images/${uploadId})`)
+  fireEvent.click(post)
+  await waitFor(() => expect(posted).toEqual([{ body: `Photo of the leak:\n![leak](/api/actions/images/${uploadId})` }]))
+})
+
 test('history opens on demand in a paginated modal without replacing the comment draft', async () => {
   const changed: ActionEventOut = {
     id: 2, kind: 'updated', author: actor, created_at: stamp,
@@ -722,8 +785,8 @@ test('the file picker enforces available slots and cancellation never uploads', 
 
 test.each([
   { code: 'action_attachment_limit', status: 409, message: 'The action already has 20 active PDFs.' },
-  { code: 'action_storage_user_quota', status: 409, message: 'This PDF does not fit in your storage quota. Withdrawn PDFs also count: the administrator can free space by deleting them permanently.' },
-  { code: 'action_storage_community_quota', status: 409, message: 'This PDF does not fit in the community storage quota. Withdrawn PDFs also count: the administrator can free space by deleting them permanently.' },
+  { code: 'action_storage_user_quota', status: 409, message: 'This file does not fit in your storage quota. Withdrawn PDFs and pasted images also count: the administrator can free space by deleting them permanently.' },
+  { code: 'action_storage_community_quota', status: 409, message: 'This file does not fit in the community storage quota. Withdrawn PDFs and pasted images also count: the administrator can free space by deleting them permanently.' },
   { code: 'storage_low_space', status: 507, message: 'The server does not have enough free disk space, so nothing has been saved. Try again later or contact the administrator.' },
 ])('quota errors stop the automatic batch and identify files that were not sent ($code)', async ({ code, status, message }) => {
   const uploads = vi.fn()

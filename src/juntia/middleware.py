@@ -15,6 +15,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from . import queries
 from .auth import administrator, reader_session
+from .community_images import MAX_IMAGE_BYTES
 from .config import Settings, normalize_origin
 from .errors import AppError
 from .parser import MAX_BYTES
@@ -25,13 +26,17 @@ JSON_BODY_BYTES = 512 * 1024
 LAYOUT_BODY_BYTES = 12 * 1024 * 1024
 BODY_CHUNK_BYTES = 64 * 1024
 MAX_BODY_BYTES = MAX_BYTES + BODY_CHUNK_BYTES
+IMAGE_BODY_BYTES = MAX_IMAGE_BYTES + BODY_CHUNK_BYTES
 MAX_ACTIVE_MUTATIONS = 16
 MAX_ACTIVE_LARGE_BODIES = 4
 MAX_ACTIVE_CLIENT_MUTATIONS = 4
 UPLOAD_PATH = re.compile(r"/api/(?:admin/imports/preview|actions/items/[^/]+/attachments)")
+IMAGE_UPLOAD_PATH = re.compile(r"/api/(?:actions|events)/images")
 
 
 def body_limit(path: str, method: str) -> int:
+    if method == "POST" and IMAGE_UPLOAD_PATH.fullmatch(path):
+        return IMAGE_BODY_BYTES
     if method == "POST" and (
         UPLOAD_PATH.fullmatch(path)
         or re.fullmatch(r"/api/admin/imports/[^/]+/confirm", path)
@@ -134,7 +139,9 @@ class SecurityMiddleware:
             path = scope.get("path", "").rstrip("/")
             limit = body_limit(path, scope["method"])
             size_error = (
-                "upload_too_large"
+                "image_too_large"
+                if scope["method"] == "POST" and IMAGE_UPLOAD_PATH.fullmatch(path)
+                else "upload_too_large"
                 if scope["method"] == "POST" and UPLOAD_PATH.fullmatch(path)
                 else "request_too_large"
             )

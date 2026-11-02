@@ -1076,6 +1076,26 @@
         "title": "AuthOut",
         "type": "object"
       },
+      "Body_upload_action_image_api_actions_images_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "upload_id": {
+            "format": "uuid",
+            "title": "Upload Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "upload_id"
+        ],
+        "title": "Body_upload_action_image_api_actions_images_post",
+        "type": "object"
+      },
       "Body_upload_api_admin_imports_preview_post": {
         "properties": {
           "file": {
@@ -1108,6 +1128,26 @@
           "upload_id"
         ],
         "title": "Body_upload_attachment_api_actions_items__item_id__attachments_post",
+        "type": "object"
+      },
+      "Body_upload_event_image_api_events_images_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "upload_id": {
+            "format": "uuid",
+            "title": "Upload Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "upload_id"
+        ],
+        "title": "Body_upload_event_image_api_events_images_post",
         "type": "object"
       },
       "CatalogIn": {
@@ -1219,6 +1259,62 @@
         "title": "ChangePasswordIn",
         "type": "object"
       },
+      "CommunityImageOut": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "media_type": {
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/gif",
+              "image/webp"
+            ],
+            "title": "Media Type",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "filename",
+          "media_type",
+          "size",
+          "width",
+          "height",
+          "created_at"
+        ],
+        "title": "CommunityImageOut",
+        "type": "object"
+      },
       "CommunityStorageOut": {
         "additionalProperties": false,
         "properties": {
@@ -1228,6 +1324,14 @@
           },
           "active_files": {
             "title": "Active Files",
+            "type": "integer"
+          },
+          "image_bytes": {
+            "title": "Image Bytes",
+            "type": "integer"
+          },
+          "image_files": {
+            "title": "Image Files",
             "type": "integer"
           },
           "quota_bytes": {
@@ -1253,6 +1357,8 @@
           "withdrawn_bytes",
           "active_files",
           "withdrawn_files",
+          "image_bytes",
+          "image_files",
           "quota_bytes"
         ],
         "title": "CommunityStorageOut",
@@ -3752,6 +3858,14 @@
             "title": "Active Files",
             "type": "integer"
           },
+          "image_bytes": {
+            "title": "Image Bytes",
+            "type": "integer"
+          },
+          "image_files": {
+            "title": "Image Files",
+            "type": "integer"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -3783,6 +3897,8 @@
           "withdrawn_bytes",
           "active_files",
           "withdrawn_files",
+          "image_bytes",
+          "image_files",
           "user_id",
           "name",
           "account_deleted",
@@ -4303,6 +4419,14 @@
             "title": "Active Files",
             "type": "integer"
           },
+          "image_bytes": {
+            "title": "Image Bytes",
+            "type": "integer"
+          },
+          "image_files": {
+            "title": "Image Files",
+            "type": "integer"
+          },
           "stored_bytes": {
             "title": "Stored Bytes",
             "type": "integer"
@@ -4321,7 +4445,9 @@
           "active_bytes",
           "withdrawn_bytes",
           "active_files",
-          "withdrawn_files"
+          "withdrawn_files",
+          "image_bytes",
+          "image_files"
         ],
         "title": "StorageUsageOut",
         "type": "object"
@@ -4436,6 +4562,125 @@
           "items"
         ],
         "title": "StoredAttachmentPage",
+        "type": "object"
+      },
+      "StoredImageOut": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "$ref": "#/components/schemas/ActionActorOut"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "media_type": {
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/gif",
+              "image/webp"
+            ],
+            "title": "Media Type",
+            "type": "string"
+          },
+          "purged_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purged At"
+          },
+          "scope": {
+            "enum": [
+              "actions",
+              "events"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "filename",
+          "media_type",
+          "size",
+          "width",
+          "height",
+          "created_at",
+          "scope",
+          "sha256",
+          "author",
+          "purged_at"
+        ],
+        "title": "StoredImageOut",
+        "type": "object"
+      },
+      "StoredImagePage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StoredImageOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "page",
+          "pages",
+          "items"
+        ],
+        "title": "StoredImagePage",
         "type": "object"
       },
       "SummaryOut": {
@@ -5256,6 +5501,83 @@
           }
         },
         "summary": "Board",
+        "tags": [
+          "Community actions"
+        ]
+      }
+    },
+    "/api/actions/images": {
+      "post": {
+        "operationId": "upload_action_image_api_actions_images_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_action_image_api_actions_images_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityImageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Action Image",
+        "tags": [
+          "Community actions"
+        ]
+      }
+    },
+    "/api/actions/images/{image_id}": {
+      "get": {
+        "operationId": "action_image_api_actions_images__image_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Image Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Action Image",
         "tags": [
           "Community actions"
         ]
@@ -8051,6 +8373,162 @@
         ]
       }
     },
+    "/api/admin/storage/images": {
+      "get": {
+        "operationId": "stored_images_api_admin_storage_images_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 1000000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "newest",
+              "enum": [
+                "newest",
+                "largest"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 2147483647,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoredImagePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stored Images",
+        "tags": [
+          "Storage"
+        ]
+      }
+    },
+    "/api/admin/storage/images/{image_id}/file": {
+      "get": {
+        "operationId": "stored_image_file_api_admin_storage_images__image_id__file_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Image Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stored Image File",
+        "tags": [
+          "Storage"
+        ]
+      }
+    },
+    "/api/admin/storage/images/{image_id}/purge": {
+      "post": {
+        "operationId": "purge_image_api_admin_storage_images__image_id__purge_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Image Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoredImageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Purge Image",
+        "tags": [
+          "Storage"
+        ]
+      }
+    },
     "/api/admin/storage/withdrawn": {
       "get": {
         "operationId": "withdrawn_attachments_api_admin_storage_withdrawn_get",
@@ -9592,6 +10070,83 @@
           }
         },
         "summary": "Configuration",
+        "tags": [
+          "Community events"
+        ]
+      }
+    },
+    "/api/events/images": {
+      "post": {
+        "operationId": "upload_event_image_api_events_images_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_event_image_api_events_images_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityImageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Event Image",
+        "tags": [
+          "Community events"
+        ]
+      }
+    },
+    "/api/events/images/{image_id}": {
+      "get": {
+        "operationId": "event_image_api_events_images__image_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Image Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Event Image",
         "tags": [
           "Community events"
         ]

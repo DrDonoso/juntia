@@ -5,6 +5,7 @@ from tempfile import SpooledTemporaryFile
 import pytest
 
 from juntia import middleware
+from juntia.community_images import MAX_IMAGE_BYTES
 from juntia.config import Settings
 from juntia.contracts import ActionIn, ContactIn, DwellingLayoutIn, GoogleStartIn
 from juntia.middleware import (
@@ -96,14 +97,27 @@ async def test_declared_lengths_are_rejected_without_receiving(limits_config, he
     assert received == []
 
 
+@pytest.mark.parametrize("path", ["/api/actions/images", "/api/events/images"])
+async def test_image_uploads_have_their_own_size_limit_and_code(limits_config, path):
+    app = SecurityMiddleware(reject_downstream, lambda: limits_config)
+    assert body_limit(path, "POST") == MAX_IMAGE_BYTES + BODY_CHUNK_BYTES
+    declared = str(MAX_IMAGE_BYTES + BODY_CHUNK_BYTES + 1).encode()
+    messages, received = await invoke(app, scope(path, headers=[(b"content-length", declared)]))
+    assert_rejection(messages, 413, "image_too_large")
+    assert received == []
+
+
 @pytest.mark.parametrize("path,method", [
     ("/api/admin/imports/preview", "POST"),
     ("/api/admin/imports/preview/", "POST"),
     ("/api/actions/items/1/attachments", "POST"),
+    ("/api/actions/images", "POST"),
+    ("/api/events/images", "POST"),
     ("/api/admin/dwellings/layout", "PUT"),
     ("/api/admin/settings/features/actions", "PATCH"),
     ("/api/admin/imports/00000000-0000-0000-0000-000000000001/confirm", "POST"),
     ("/api/admin/storage/attachments/00000000-0000-0000-0000-000000000001/purge", "POST"),
+    ("/api/admin/storage/images/00000000-0000-0000-0000-000000000001/purge", "POST"),
 ])
 def test_protected_bodies_are_authenticated_before_receiving(client, path, method):
     def unread_body():
@@ -121,6 +135,7 @@ def test_protected_bodies_are_authenticated_before_receiving(client, path, metho
     ("PATCH", "/api/actions/items/1"),
     ("POST", "/api/actions/items/1/attachments"),
     ("POST", "/api/actions/items/1/attachments/"),
+    ("POST", "/api/actions/images"),
     ("DELETE", "/api/actions/items/1/comments/1"),
 ])
 def test_disabled_actions_are_rejected_before_receiving_after_a_live_update(admin, method, path):

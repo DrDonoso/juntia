@@ -482,6 +482,42 @@ th[aria-sort="descending"] .table-sort-button { color: var(--primary); }
 .action-pagination { flex-wrap: wrap; }
 .action-pagination > button { padding: var(--space-2); }
 .action-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; }
+/* Markdown texts (markdown.tsx): descriptions and comments, with the images members paste. */
+.markdown { overflow-wrap: anywhere; line-height: 1.65; font-size: var(--text-base); }
+.markdown > :first-child { margin-top: 0; }
+.markdown > :last-child { margin-bottom: 0; }
+.markdown p, .markdown ul, .markdown ol, .markdown blockquote, .markdown pre, .markdown .markdown-table, .markdown hr, .markdown section { margin: 0 0 var(--space-3); }
+.markdown ul, .markdown ol { padding-left: var(--space-6); }
+.markdown li + li { margin-top: var(--space-1); }
+.markdown h3, .markdown h4, .markdown h5, .markdown h6 { margin: var(--space-4) 0 var(--space-2); font-size: var(--text-md); line-height: 1.4; }
+.markdown h5, .markdown h6 { font-size: var(--text-base); }
+.markdown blockquote { padding: 0 var(--space-3); border-left: 3px solid var(--border); color: var(--text-muted); }
+.markdown code { font-family: var(--font-num); font-size: .9em; background: rgba(var(--primary-rgb), .07); border-radius: 4px; padding: 1px 5px; }
+.markdown pre { white-space: pre-wrap; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: var(--space-3); }
+.markdown pre code { background: none; padding: 0; font-size: var(--text-sm); }
+.markdown hr { border: 0; border-top: 1px solid var(--border); }
+.markdown .markdown-table { max-width: 100%; overflow-x: auto; }
+.markdown .markdown-table table { width: auto; font-size: var(--text-sm); }
+.markdown th, .markdown td { padding: var(--space-2) var(--space-3); border: 1px solid var(--border); white-space: normal; }
+.markdown .contains-task-list { list-style: none; padding-left: var(--space-1); }
+.markdown .task-list-item input { margin: 0 var(--space-2) 0 0; min-height: 0; vertical-align: middle; }
+.markdown .markdown-image { display: inline-block; max-width: 100%; vertical-align: top; }
+.markdown img { display: block; max-width: 100%; max-height: 640px; height: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.markdown-image-missing { display: inline-block; padding: var(--space-2) var(--space-3); border: 1px dashed var(--border); border-radius: 8px; color: var(--text-muted); font-size: var(--text-sm); }
+.markdown section[data-footnotes] { font-size: var(--text-sm); color: var(--text-muted); }
+/* The Markdown editor (markdown-field.tsx): Write and Preview tabs, and images added to the text. */
+.markdown-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.markdown-field-header { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.markdown-field-tabs { display: flex; gap: 2px; }
+.markdown-field-tabs button { min-height: 30px; padding: 4px 10px; font-size: var(--text-xs); border-radius: 6px 6px 0 0; color: var(--text-muted); }
+.markdown-field-tabs button[aria-selected="true"] { color: var(--primary); background: rgba(var(--primary-rgb), .08); box-shadow: inset 0 -2px 0 var(--primary); }
+.markdown-field textarea.markdown-dropping { border-color: var(--primary); outline: var(--focus-ring); background: rgba(var(--primary-rgb), .04); }
+.markdown-preview { min-height: 65px; max-height: 420px; overflow: auto; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+.markdown-field-footer { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.markdown-field-footer button { min-height: 32px; padding: 5px 11px; font-size: var(--text-xs); }
+.markdown-field-footer small { flex: 1 1 260px; font-size: var(--text-xs); line-height: 1.5; }
+.markdown-field .notice { margin: 4px 0 0; }
+.event-editor form > .markdown-field { margin-bottom: 12px; }
 .action-conflict { padding: var(--space-4); border: 1px solid var(--warning); background: var(--warning-bg); border-radius: 8px; font-size: var(--text-sm); overflow-wrap: anywhere; }
 .action-board-help { font-size: var(--text-sm); margin-bottom: var(--space-4); }
 .action-board { display: grid; grid-auto-flow: column; grid-auto-columns: 290px; align-items: start; gap: var(--space-4); max-width: 100%; overflow-x: auto; padding: var(--space-1) var(--space-1) var(--space-5); }
@@ -597,6 +633,11 @@ dialog.action-history-dialog { width: min(900px, calc(100vw - 30px)); }
 .storage-filters label { flex: 1 1 200px; }
 .storage-withdrawn-list > li > button { flex-shrink: 0; }
 .storage-withdrawn-list .action-file-info > p:last-child { font-size: var(--text-sm); }
+.storage-image-list > li { align-items: center; }
+.storage-image-list > li > button { flex-shrink: 0; }
+.storage-image-thumb { display: block; flex: 0 0 auto; width: 96px; height: 72px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--bg); }
+.storage-image-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.storage-image-preview { display: block; max-width: 100%; max-height: 240px; margin-bottom: var(--space-3); border: 1px solid var(--border); border-radius: 8px; }
 .storage-filename, .storage-purge-facts { overflow-wrap: anywhere; }
 .storage-purge-facts { display: grid; gap: var(--space-2); margin: var(--space-4) 0; padding-left: 20px; }
 .storage-limits { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: var(--space-3); margin: var(--space-4) 0; }
@@ -607,7 +648,7 @@ dialog.action-history-dialog { width: min(900px, calc(100vw - 30px)); }
 .storage-help-list { display: grid; gap: var(--space-2); margin: 0; padding-left: 20px; font-size: var(--text-sm); }
 @media (max-width: 720px) {
   .storage-figure { font-size: 19px; }
-  .storage-withdrawn-list > li > button { width: 100%; min-height: 44px; }
+  .storage-withdrawn-list > li > button, .storage-image-list > li > button { width: 100%; min-height: 44px; }
 }
 @media (forced-colors: active) {
   .storage-meter { border: 1px solid CanvasText; }

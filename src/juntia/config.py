@@ -88,13 +88,14 @@ class Settings(LanguageSettings):
     auth_cookie_secure: bool = True
     session_hours: int = 168
     upload_dir: Path = Path("data/uploads")
-    # Byte budgets for community action PDFs, in MiB. Every stored file counts, active or
-    # withdrawn, until the administrator purges it: 250 MiB per resident author and 2 GiB for
-    # the whole community (residents and the technical administrator, who has no own budget).
+    # Byte budgets for community action PDFs and the images pasted into texts, in MiB. Every
+    # stored file counts, active or withdrawn, until the administrator purges it: 250 MiB per
+    # resident author and 2 GiB for the whole community (residents and the technical
+    # administrator, who has no own budget).
     action_storage_user_quota_mb: int = 250
     action_storage_community_quota_mb: int = 2048
-    # Free space kept on the upload volume (1 GiB): action PDFs and statement imports that would
-    # leave less free space are refused.
+    # Free space kept on the upload volume (1 GiB): action PDFs, images and statement imports that
+    # would leave less free space are refused.
     min_free_disk_mb: int = 1024
     preview_hours: int = 24
     openai_api_key: SecretStr = SecretStr("")

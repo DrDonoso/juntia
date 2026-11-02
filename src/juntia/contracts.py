@@ -618,13 +618,43 @@ class StoredAttachmentPage(ActionPagination):
     items: list[StoredAttachmentOut]
 
 
+ImageMediaType = Literal["image/png", "image/jpeg", "image/gif", "image/webp"]
+
+
+class CommunityImageOut(Contract):
+    id: str
+    # Relative address that serves the image; Markdown texts embed it.
+    url: str
+    filename: str
+    media_type: ImageMediaType
+    size: int
+    width: int
+    height: int
+    created_at: datetime
+
+
+class StoredImageOut(CommunityImageOut):
+    scope: Literal["actions", "events"]
+    sha256: str
+    author: ActionActorOut
+    # Set when the administrator deleted the file; its address then answers 410.
+    purged_at: datetime | None
+
+
+class StoredImagePage(ActionPagination):
+    items: list[StoredImageOut]
+
+
 class StorageUsageOut(Contract):
-    # Action PDFs still on disk: stored = active + withdrawn; purged files no longer count.
+    # Files still on disk until the administrator purges them. stored = active PDFs + withdrawn
+    # PDFs + images; the byte quotas count every stored byte.
     stored_bytes: int
     active_bytes: int
     withdrawn_bytes: int
     active_files: int
     withdrawn_files: int
+    image_bytes: int
+    image_files: int
 
 
 class CommunityStorageOut(StorageUsageOut):

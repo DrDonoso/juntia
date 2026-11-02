@@ -58,7 +58,7 @@ export function ref<T>(map: Map<string, T>, key: string): T {
 
 export function emptyCommunityState(): CommunityState {
   return {
-    labels: [], actions: [], comments: [], attachments: [], actionHistory: [], events: [], eventHistory: [],
+    labels: [], actions: [], comments: [], attachments: [], actionHistory: [], images: [], events: [], eventHistory: [],
     contactTags: [], contacts: [], contactHistory: [],
     sequences: {
       label: new IdSequence(), action: new IdSequence(), comment: new IdSequence(), actionHistory: new IdSequence(),

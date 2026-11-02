@@ -36,12 +36,20 @@ export function eventUrl(event: DemoEvent, origin: string): string {
   return `${origin}/events/${event.id}`
 }
 
+/** Markdown destinations of the community's own images, as the editor inserts them (backend `OWN_IMAGE`). */
+const OWN_IMAGE = /\]\((\/api\/(?:actions|events)\/images\/[0-9A-Fa-f-]{36})\)/g
+
+/** `exported_text`: the description for other apps, with the community's image addresses made absolute. */
+export function exportedText(value: string, origin: string): string {
+  return value.replace(OWN_IMAGE, (_match, path: string) => `](${origin}${path})`)
+}
+
 /** `calendar_links`: a prefilled Google Calendar page, unless the link would be too long. */
 export function googleCalendar(event: DemoEvent, origin: string, zone: string): EventCalendarOut {
   const [start, end] = interval(event)
   const query: [string, string][] = [
     ['action', 'TEMPLATE'], ['text', event.title], ['dates', `${start}/${end}`], ['ctz', zone],
-    ['details', `${event.description}\n\n${eventUrl(event, origin)}`.trim()], ['location', event.location],
+    ['details', `${exportedText(event.description, origin)}\n\n${eventUrl(event, origin)}`.trim()], ['location', event.location],
   ]
   const url = `https://calendar.google.com/calendar/render?${query.map(([key, value]) => `${key}=${quotePlus(value)}`).join('&')}`
   return url.length > GOOGLE_URL_LIMIT ? { google_url: null, google_error: 'event_calendar_too_long' } : { google_url: url, google_error: null }
@@ -102,7 +110,7 @@ export function calendarFile(event: DemoEvent, origin: string): string {
     `UID:${escapeText(`${event.calendarUid}@juntia`)}`,
     `SEQUENCE:${event.version - 1}`,
     `CREATED:${compactInstant(event.createdAt)}`,
-    `DESCRIPTION:${escapeText(event.description)}`,
+    `DESCRIPTION:${escapeText(exportedText(event.description, origin))}`,
     `LAST-MODIFIED:${compactInstant(event.updatedAt)}`,
     `LOCATION:${escapeText(event.location)}`,
     `URL:${eventUrl(event, origin)}`,

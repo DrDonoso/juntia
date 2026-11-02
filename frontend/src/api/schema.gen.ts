@@ -204,11 +204,21 @@ export interface AuthOut {
   username: string | null
 }
 
+export interface Body_upload_action_image_api_actions_images_post {
+  file: Blob
+  upload_id: string
+}
+
 export interface Body_upload_api_admin_imports_preview_post {
   file: Blob
 }
 
 export interface Body_upload_attachment_api_actions_items__item_id__attachments_post {
+  file: Blob
+  upload_id: string
+}
+
+export interface Body_upload_event_image_api_events_images_post {
   file: Blob
   upload_id: string
 }
@@ -236,9 +246,22 @@ export interface ChangePasswordIn {
   password: string
 }
 
+export interface CommunityImageOut {
+  created_at: string
+  filename: string
+  height: number
+  id: string
+  media_type: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
+  size: number
+  url: string
+  width: number
+}
+
 export interface CommunityStorageOut {
   active_bytes: number
   active_files: number
+  image_bytes: number
+  image_files: number
   quota_bytes: number
   stored_bytes: number
   withdrawn_bytes: number
@@ -706,6 +729,8 @@ export interface ResidentStorageOut {
   account_deleted: boolean
   active_bytes: number
   active_files: number
+  image_bytes: number
+  image_files: number
   name: string
   quota_bytes: number
   stored_bytes: number
@@ -786,6 +811,8 @@ export interface StorageOut {
 export interface StorageUsageOut {
   active_bytes: number
   active_files: number
+  image_bytes: number
+  image_files: number
   stored_bytes: number
   withdrawn_bytes: number
   withdrawn_files: number
@@ -807,6 +834,28 @@ export interface StoredAttachmentOut {
 
 export interface StoredAttachmentPage {
   items: StoredAttachmentOut[]
+  page: number
+  pages: number
+  total: number
+}
+
+export interface StoredImageOut {
+  author: ActionActorOut
+  created_at: string
+  filename: string
+  height: number
+  id: string
+  media_type: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
+  purged_at: string | null
+  scope: 'actions' | 'events'
+  sha256: string
+  size: number
+  url: string
+  width: number
+}
+
+export interface StoredImagePage {
+  items: StoredImageOut[]
   page: number
   pages: number
   total: number

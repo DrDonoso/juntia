@@ -163,18 +163,19 @@ times that do not exist or happen twice at a daylight-saving change are rejected
 
 | Variable | Default | Description and rules |
 | --- | --- | --- |
-| `ACTION_STORAGE_USER_QUOTA_MB` | `250` | Storage each resident may use for the PDFs they attach to actions. |
-| `ACTION_STORAGE_COMMUNITY_QUOTA_MB` | `2048` | Storage for all action PDFs together, the technical administrator's included (the administrator has no budget of their own). |
-| `MIN_FREE_DISK_MB` | `1024` | Free space to keep on the uploads volume. Action PDF uploads and statement imports that would leave less are refused. |
+| `ACTION_STORAGE_USER_QUOTA_MB` | `250` | Storage each resident may use for the PDFs they attach to actions and the images they paste into descriptions and comments. |
+| `ACTION_STORAGE_COMMUNITY_QUOTA_MB` | `2048` | Storage for all action PDFs and pasted images together, the technical administrator's included (the administrator has no budget of their own). |
+| `MIN_FREE_DISK_MB` | `1024` | Free space to keep on the uploads volume. Uploads of PDFs and images and statement imports that would leave less are refused. |
 
 All three are whole numbers of MiB (1 MiB = 1,048,576 bytes) between 1 and 1,073,741,824; any other
-value stops the startup. Every stored action PDF counts, active or withdrawn, until the
-administrator deletes it permanently (purges it) in **Settings > Storage**. A refused upload writes
-nothing. Details, error codes and the purge are in the [deployment guide](deployment.md#storage-quotas-and-purging) and the
+value stops the startup. Every stored action PDF counts, active or withdrawn, and so does every
+pasted image, also after it is removed from its text, until the administrator deletes it
+permanently (purges it) in **Settings > Storage**. A refused upload writes nothing. Details, error
+codes and the purge are in the [deployment guide](deployment.md#storage-quotas-and-purging) and the
 [security model](security-model.md#storage-quotas-and-retention).
 
 Lowering a quota below the current usage is allowed: new uploads are then refused until enough
-withdrawn PDFs are purged.
+withdrawn PDFs or images are purged.
 
 ## Email (SMTP)
 

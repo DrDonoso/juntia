@@ -169,9 +169,9 @@ Every operation of `src/api/openapi.json` belongs to exactly one module (`{x}` i
   `POST /api/admin/imports/{preview_id}/ai`, `POST /api/admin/imports/{preview_id}/confirm`,
   `PATCH /api/admin/transactions/{transaction_id}`.
 - **community**: everything under `/api/actions/` (board, items, attachments with download and
-  preview, comments, history, labels), `GET /api/admin/action-labels`,
+  preview, comments, history, labels, images), `GET /api/admin/action-labels`,
   `GET|PATCH /api/admin/action-labels/{label_id}`, everything under `/api/events` (list, create,
-  agenda, config, item, calendar, `calendar.ics`, history), `GET|POST /api/contacts`,
+  agenda, config, item, calendar, `calendar.ics`, history, images), `GET|POST /api/contacts`,
   `GET|PATCH|DELETE /api/contacts/{contact_id}`, `GET|POST /api/contact-tags`,
   `PATCH /api/contact-tags/{tag_id}`, `GET /api/contact-history`, `GET /api/admin/contact-tags`,
   `GET|PATCH /api/admin/contact-tags/{tag_id}`, `GET /api/admin/contacts/deleted`.
@@ -184,7 +184,9 @@ Every operation of `src/api/openapi.json` belongs to exactly one module (`{x}` i
   `POST /api/auth/reset-password`, `POST /api/auth/google/start`, `POST|DELETE /api/auth/google/link`,
   `PATCH /api/admin/settings/general`, `PATCH /api/admin/settings/features/{feature}`.
 - **storage** (`handlers/storage.ts`, SEC-03): `GET /api/admin/storage`,
-  `GET /api/admin/storage/withdrawn`, `POST /api/admin/storage/attachments/{attachment_id}/purge`.
+  `GET /api/admin/storage/withdrawn`, `POST /api/admin/storage/attachments/{attachment_id}/purge`,
+  `GET /api/admin/storage/images`, `GET /api/admin/storage/images/{image_id}/file`,
+  `POST /api/admin/storage/images/{image_id}/purge`.
 
 Any other `/api` request reaches the catch-all: a 501 `not_implemented` and a console error
 starting with `[demo] Unhandled API request:`. Two guards keep it that way:
@@ -207,18 +209,23 @@ starting with `[demo] Unhandled API request:`. Two guards keep it that way:
   it is empty). In every test, an unserved request, an `/api` answer of 500 or more, an `/api`
   response that did not come from the service worker, a console error or an uncaught error fails.
 
-## Storage of action PDFs (SEC-03)
+## Storage of action PDFs and images (SEC-03)
 
-`store/storage.ts` computes everything from the community store's attachments: active and
-withdrawn PDFs use storage until the administrator purges them. The backend's default settings
-apply: 250 MiB per resident (`ACTION_STORAGE_USER_QUOTA_MB`), 2048 MiB for the community
-(`ACTION_STORAGE_COMMUNITY_QUOTA_MB`; the administrator has no quota of their own) and a 1024 MiB
-disk reserve (`MIN_FREE_DISK_MB`). The upload volume is synthetic: 64 GiB, about 41.3 GiB free, minus
-the PDFs stored now, so uploads and purges move it.
+`store/storage.ts` computes everything from the community store's attachments and images: active
+and withdrawn PDFs and every image use storage until the administrator purges them. The backend's
+default settings apply: 250 MiB per resident (`ACTION_STORAGE_USER_QUOTA_MB`), 2048 MiB for the
+community (`ACTION_STORAGE_COMMUNITY_QUOTA_MB`; the administrator has no quota of their own) and a
+1024 MiB disk reserve (`MIN_FREE_DISK_MB`). The upload volume is synthetic: 64 GiB, about 41.3 GiB
+free, minus the PDFs and images stored now, so uploads and purges move it.
 
-- Uploads check the uploader's quota, then the community's (409 `action_storage_user_quota` /
-  `action_storage_community_quota`), after the other checks and never for a retried upload id.
-  The disk reserve (507 `storage_low_space`) is not simulated: the synthetic volume never runs low.
+- Uploads of PDFs and images check the uploader's quota, then the community's (409
+  `action_storage_user_quota` / `action_storage_community_quota`), after the other checks and never
+  for a retried upload id. The disk reserve (507 `storage_low_space`) is not simulated: the
+  synthetic volume never runs low.
+- Images (`store/community-images.ts`, `handlers/community-images.ts`) are kept in memory with
+  their bytes, recognized from their header like the backend (PNG, JPEG, GIF, WebP, 10 MiB, 16,384
+  pixels a side, 40 megapixels) and served by the section they were uploaded to. The scenario has
+  none.
 - The storage page lists the residents who store PDFs (largest first; deleted accounts by the
   author name of their latest PDF) and the withdrawn PDFs still stored (`sort=largest|oldest`,
   `user_id`, 20 per page). The scenario has three, by different authors: Daniel Mensah's quote
@@ -229,3 +236,7 @@ the PDFs stored now, so uploads and purges move it.
   `purged_at`, bumps the PDF's version, empties its bytes and records an `attachment_purged` entry
   by the Technical administrator (`filename`, `size` and `sha256` to null); the action's activity
   date moves, not its version. Downloads and previews then answer 410 `action_attachment_purged`.
+- The images list (`sort=newest|largest`, `user_id`, 20 per page) shows every stored image, and the
+  administrator's copy (`/file`) answers while Actions or Events is off. An image purge (no body)
+  empties its bytes and sets `purged_at`; repeating it answers the purged image unchanged, and its
+  addresses then answer 410 `image_purged`.

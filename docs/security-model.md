@@ -317,25 +317,75 @@ an orphan after confirming it has no retained attachment record. Back up both
 volumes consistently, including withdrawn documents. The schema downgrade guard
 refuses to drop a nonempty backlog.
 
+### Markdown texts and pasted images
+
+Action and event descriptions and comments are Markdown. The browser renders them
+with `react-markdown` into React elements, never through `dangerouslySetInnerHTML`:
+raw HTML is shown as text, link schemes other than `http`, `https`, `mailto` and
+relative addresses are dropped, links to other sites open in a new tab with
+`rel="noopener noreferrer"`, and footnote identifiers are unique per text. Only
+the community's own image addresses (`/api/actions/images/<uuid>` and
+`/api/events/images/<uuid>`) are loaded as pictures; any other image is shown as a
+link or as its description, so a text cannot make readers' browsers contact other
+servers (the Content Security Policy's `img-src 'self' data:` blocks them anyway).
+The server stores texts as written and never renders them.
+
+Images are uploaded to `/api/actions/images` or `/api/events/images` and read back
+from the same section, which requires an active session and that section's switch
+for every upload and every read; an image is never served by the other section.
+Uploads are authorized before their body is received and are limited to 10 MiB
+plus a 64 KiB envelope; each image is limited to exactly 10 MiB. The server
+recognizes PNG, JPEG, GIF and WebP from the bytes (not from the name or the
+declared type), reads the dimensions from the header without decoding the
+picture, and refuses SVG, HEIC, unknown formats and pictures over 16,384 pixels a
+side or 40 megapixels, which could exhaust the memory of the browsers that show
+them. For GIFs the size includes the first frame, which browsers make room for
+even when it lies outside the declared screen. The size must appear within the
+first MiB of the file and a bounded number of segments or blocks, so a crafted
+file cannot keep the server scanning. Files are stored under server-generated
+names in `UPLOAD_DIR/images` and served `inline` with the recognized type,
+`nosniff`, `no-store` and the application's Content Security Policy; upload
+identifiers make retries idempotent, and staging and cleanup follow the PDFs'
+rules. These checks are not antivirus scanning or complete image validation.
+
+The editors turn photos upright, reduce them to 2,560 pixels a side and encode
+them again in the browser before uploading, which removes their metadata
+(camera, date, GPS position); GIFs are uploaded unchanged. The server does not
+repeat this: it stores the bytes it receives, so an image sent to the API by
+other means keeps whatever metadata it has.
+
+Images are shared with every member, like the texts that show them. Removing an
+image from a text does not delete it, because earlier versions of the text in the
+history may still show it; images have no withdrawal and no history entry of
+their own. Their bytes count against the same quotas as the PDFs (see below), and
+only the technical administrator can delete one permanently, after which its
+address answers `410 image_purged` wherever it appears. A member can paste a
+misleading picture, or one showing personal data: treat member images as
+untrusted, and ask the administrator to purge an image that must disappear.
+Calendar exports copy event descriptions as written, with the community's own
+image addresses made absolute; those addresses still require signing in.
+
 ### Storage quotas and retention
 
-Withdrawn PDFs stay on disk and remain downloadable from the history, so storage
-is bounded by bytes, not only by the number of active files:
+Withdrawn PDFs stay on disk and remain downloadable from the history, and pasted
+images stay stored after they are removed from their text, so storage is bounded
+by bytes, not only by the number of active files:
 
-- **Quotas.** Every stored action PDF, active or withdrawn, counts until it is
-  purged: against its author's quota (`ACTION_STORAGE_USER_QUOTA_MB`, 250 MiB by
-  default) and against the community quota (`ACTION_STORAGE_COMMUNITY_QUOTA_MB`,
-  2048 MiB by default), which also covers the technical administrator. Withdrawing
-  never frees quota, so repeatedly uploading and withdrawing PDFs cannot fill the
-  disk. Uploads over a quota fail with `409 action_storage_user_quota` or
+- **Quotas.** Every stored action PDF, active or withdrawn, and every stored
+  image counts until it is purged: against its author's quota
+  (`ACTION_STORAGE_USER_QUOTA_MB`, 250 MiB by default) and against the community
+  quota (`ACTION_STORAGE_COMMUNITY_QUOTA_MB`, 2048 MiB by default), which also
+  covers the technical administrator. Withdrawing a PDF or removing an image from
+  its text never frees quota, so repeatedly uploading and withdrawing cannot fill
+  the disk. Uploads over a quota fail with `409 action_storage_user_quota` or
   `409 action_storage_community_quota`, checked in that order.
 - **Serialization.** The quota check and the insert run under a lock shared by
-  every action (a transaction-level advisory lock on PostgreSQL, the single
-  writer on SQLite), so concurrent uploads cannot exceed a budget together. A
-  retry with the same upload ID is answered from the stored record and never
-  counted twice.
-- **Free-disk reserve.** Before an action PDF or a statement import is written,
-  the server checks the free space of the uploads volume and keeps
+  every upload of PDFs and images (a transaction-level advisory lock on
+  PostgreSQL, the single writer on SQLite), so concurrent uploads cannot exceed a
+  budget together. A retry with the same upload ID is answered from the stored
+  record and never counted twice.
+- **Free-disk reserve.** Before an action PDF, an image or a statement import is
+  written, the server checks the free space of the uploads volume and keeps
   `MIN_FREE_DISK_MB` (1024 MiB by default) free. It answers
   `507 storage_low_space`, which can be retried later, when the reserve would be
   crossed, when the free space cannot be read, or when the disk fills up while
@@ -385,12 +435,14 @@ positive integer before requesting anything.
 
 The **Actions** switch defaults to on. When it is off, both navigations hide
 Actions, direct pages show its disabled state, and all authenticated
-`/api/actions` requests (including downloads) return `actions_disabled` with 404.
+`/api/actions` requests (including downloads and images) return `actions_disabled` with 404.
 The server enforces the switch independently of the UI. Anonymous API requests
 still require authentication. This retains all action data, audit history and
 files for later re-enablement; it is not an erasure or backup policy. Financial
 permissions and user/session management are unchanged. The **Events** switch
-defaults to off and works the same way for `/api/events` (`events_disabled`).
+defaults to off and works the same way for `/api/events` (`events_disabled`),
+images of event descriptions included. The administrator's storage page keeps
+showing and purging images while either switch is off.
 
 **Ownership coefficients** is an administrator-controlled setting, not a
 user preference or an authorization role. With it disabled, coefficient values
@@ -468,17 +520,20 @@ worker caches banking data for home-screen installation.
 
 Keep PostgreSQL and upload storage private. Original filenames never determine
 filesystem paths; downloads resolve a validated document identifier. Uploads
-are bounded before multipart processing, and statement imports and action PDFs
-are refused when they would cross the free-disk reserve (see
+are bounded before multipart processing, and statement imports, action PDFs and
+images are refused when they would cross the free-disk reserve (see
 [storage quotas and retention](#storage-quotas-and-retention)). Bank statements
-are parsed in a time-limited child process. Financial data, action descriptions
-and comments are never a template or executable HTML.
+are parsed in a time-limited child process. Financial data, action and event
+descriptions and comments are never a template or executable HTML: texts are
+rendered as Markdown into React elements, with raw HTML shown as text.
 
 Mutation bodies have operation-specific byte limits: 16 KiB for account-access
 requests, 32 KiB for Google initiation with a return URL, 512 KiB for ordinary
-JSON, and 12 MiB for dwelling layouts. Import confirmations and PDF multipart
-requests retain the 20 MiB plus 64 KiB request envelope; each PDF is still limited
-to exactly 20 MiB. JSON budgets account for escaped supplementary Unicode.
+JSON, and 12 MiB for dwelling layouts. Image uploads have a 10 MiB plus 64 KiB
+envelope, and each image is limited to exactly 10 MiB. Import confirmations and
+PDF multipart requests retain the 20 MiB plus 64 KiB request envelope; each PDF
+is still limited to exactly 20 MiB. JSON budgets account for escaped
+supplementary Unicode.
 Declared excessive lengths are rejected immediately, and bytes are also counted
 while receiving, including chunked requests without `Content-Length`.
 
