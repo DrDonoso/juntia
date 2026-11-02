@@ -40,6 +40,9 @@ the SPA fallback (`not_found_handling: "single-page-application"`) and the custo
 `demo.juntia.drdonoso.com`. Import the GitHub repository in Workers & Pages with root directory
 `/frontend`, build command `npm run build:demo`, deploy command `npx wrangler@4 deploy` and the
 variable `NODE_VERSION=24`. From a terminal: `npm run build:demo && npx wrangler@4 deploy`.
+For non-production branch builds, use `npx wrangler@4 preview`. The empty `previews` block enables
+these isolated Previews; the static demo's assets and compatibility settings remain at the top
+level, with no Preview-specific bindings.
 
 ## Layout
 
