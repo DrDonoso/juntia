@@ -1,18 +1,21 @@
 /**
  * Storage administration routes of the demo API (src/juntia/storage_admin.py): the storage the
- * action PDFs use, per resident and for the community, with the synthetic upload volume; the
- * withdrawn PDFs that still use it; and their purge, which deletes the file but keeps its record
- * and history. Administrator only; they keep working while the Actions feature is off.
+ * action PDFs and the pasted images use, per resident and for the community, with the synthetic
+ * upload volume; the withdrawn PDFs and the images that still use it; and their purge, which
+ * deletes the file but keeps its record (and a PDF's history). Administrator only; they keep
+ * working while the Actions and Events features are off.
  */
-import type { ActionAttachmentOut, ActorOut, StorageOut, StoredAttachmentPage } from '../../api/schema.gen'
+import type { ActionAttachmentOut, ActorOut, StorageOut, StoredAttachmentPage, StoredImageOut, StoredImagePage } from '../../api/schema.gen'
 import {
   DemoApiError, actorOf, http, nowIso, pageParam, paginate, parseBody, queryChoice, queryInt, readJson, route, type HttpHandler,
   type RouteContext,
 } from '../core'
 import { communityStore } from '../store/community'
 import { ACTION_PAGE_SIZE, attachmentOut, findAction, purgeAttachment } from '../store/community-actions'
+import { findImage, purgeImage, storedImageList, storedImageOut } from '../store/community-images'
 import { storageSummary, withdrawnAttachments } from '../store/storage'
 import { uuidParam, version } from './community-contracts'
+import { imageResponse } from './community-images'
 
 function administrator({ identity }: RouteContext): ActorOut {
   if (!identity) throw new DemoApiError('authentication_required', 401)
@@ -49,5 +52,25 @@ export const storageHandlers: HttpHandler[] = [
       purgeAttachment(state, administrator(context), action, attachment, nowIso())
     }
     return attachmentOut(attachment)
+  })),
+  // Every stored image, newest or largest first: images have no withdrawal, so any can be purged.
+  http.get('/api/admin/storage/images', route('admin', ({ url }): StoredImagePage => {
+    const page = pageParam(url)
+    const sort = queryChoice(url, 'sort', ['newest', 'largest'], 'newest')
+    const userId = queryInt(url, 'user_id')
+    const { items, ...info } = paginate(storedImageList(communityStore(), sort, userId), page, ACTION_PAGE_SIZE)
+    return { ...info, items: items.map(storedImageOut) }
+  })),
+  http.get('/api/admin/storage/images/:imageId/file', route('admin', ({ params }) => {
+    const image = findImage(communityStore(), uuidParam(params, 'imageId'))
+    if (!image) throw new DemoApiError('image_not_found', 404)
+    return imageResponse(image)
+  })),
+  // Purging again answers the purged image unchanged.
+  http.post('/api/admin/storage/images/:imageId/purge', route('admin', ({ params }): StoredImageOut => {
+    const image = findImage(communityStore(), uuidParam(params, 'imageId'))
+    if (!image) throw new DemoApiError('image_not_found', 404)
+    purgeImage(image, nowIso())
+    return storedImageOut(image)
   })),
 ]

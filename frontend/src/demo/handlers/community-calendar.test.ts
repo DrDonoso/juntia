@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { DemoEvent } from '../store/community-model'
-import { GOOGLE_URL_LIMIT, calendarFile, escapeText, foldLine, googleCalendar } from './community-calendar'
+import { GOOGLE_URL_LIMIT, calendarFile, escapeText, exportedText, foldLine, googleCalendar } from './community-calendar'
 
 // References written by the backend's event_calendar.py (icalendar 7) for the same events.
 const ORIGIN = 'https://demo.example.com'
@@ -71,5 +71,19 @@ describe('Google Calendar links', () => {
     expect(googleCalendar({ ...event, description: 'x'.repeat(GOOGLE_URL_LIMIT - overhead + 1) }, ORIGIN, 'Europe/Madrid')).toEqual({
       google_url: null, google_error: 'event_calendar_too_long',
     })
+  })
+})
+
+describe('images in descriptions', () => {
+  const image = '/api/events/images/0b0f7d2e-5a1c-4c33-9a7e-2f1d6c8e9b10'
+  const other = '/api/actions/images/4c4d8a2f-0f3e-4a6b-9a33-7c0e8d1f2b45'
+  const described = { ...timed, description: `Plan:\n![Meeting point](${image})\n[Photo](${other}) ![x](https://example.org/a.png)` }
+  const expected = `Plan:\n![Meeting point](${ORIGIN}${image})\n[Photo](${ORIGIN}${other}) ![x](https://example.org/a.png)`
+
+  test('are exported with absolute addresses, like the backend', () => {
+    expect(exportedText(described.description, ORIGIN)).toBe(expected)
+    expect(googleCalendar(described, ORIGIN, 'Europe/Madrid').google_url).toContain(`details=${encodeURIComponent(expected).replaceAll('%20', '+').replace(/[!'()*]/g, character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)}`)
+    const unfolded = calendarFile(described, ORIGIN).replaceAll('\r\n ', '')
+    expect(unfolded).toContain(`DESCRIPTION:${escapeText(expected)}\r\n`)
   })
 })

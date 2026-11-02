@@ -54,6 +54,7 @@ describe('usage', () => {
     expect(usage.community).toEqual({
       quota_bytes: COMMUNITY_QUOTA_BYTES, stored_bytes: bytes(attachments), active_bytes: bytes(active),
       withdrawn_bytes: bytes(attachments) - bytes(active), active_files: active.length, withdrawn_files: 3,
+      image_bytes: 0, image_files: 0,
     })
     expect([COMMUNITY_QUOTA_BYTES, USER_QUOTA_BYTES]).toEqual([2048 * MIB, 250 * MIB])
     const administrator = attachments.filter(item => item.author.kind === 'administrator')

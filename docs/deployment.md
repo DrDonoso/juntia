@@ -32,8 +32,8 @@ deployment relies on are explained in the [security model](security-model.md).
   devices or the Internet, you also need a domain name and a reverse proxy that terminates HTTPS:
   the session cookies must then be `Secure` (`AUTH_COOKIE_SECURE=true`), which requires every
   configured origin to use `https`.
-- Disk space for two named volumes: `pgdata` (PostgreSQL) and `uploads` (statement originals and
-  community action PDFs). Action PDFs are capped by the
+- Disk space for two named volumes: `pgdata` (PostgreSQL) and `uploads` (statement originals,
+  community action PDFs and the images pasted into texts). PDFs and images are capped by the
   [storage quotas](#storage-quotas-and-purging) (2 GiB for the community by default), and uploads
   keep 1 GiB free on the volume by default.
 - Optional: an SMTP account (needed to invite residents and recover passwords), a Google OAuth web
@@ -226,9 +226,11 @@ volumes are not involved.
 Juntia bounds what it receives before doing any work:
 
 - **Body sizes per operation:** 16 KiB for sign-in and account-access requests, 32 KiB to start
-  Google sign-in, 512 KiB for ordinary JSON, 12 MiB for the dwelling layout, and 20 MiB plus 64 KiB
-  for PDF uploads and import confirmations. Each PDF is limited to exactly 20 MiB. Declared lengths
-  are checked first and bytes are counted while receiving, also without `Content-Length`.
+  Google sign-in, 512 KiB for ordinary JSON, 12 MiB for the dwelling layout, 10 MiB plus 64 KiB for
+  the images pasted into actions, comments and events, and 20 MiB plus 64 KiB for PDF uploads and
+  import confirmations. Each image is limited to exactly 10 MiB and each PDF to exactly 20 MiB.
+  Declared lengths are checked first and bytes are counted while receiving, also without
+  `Content-Length`.
 - **Early authorization:** changes to the administration, actions and events check the session
   (and the Actions or Events switch) before receiving the body.
 - **Temporary storage:** bodies above 64 KiB are spooled to a temporary file inside the container
@@ -310,9 +312,10 @@ the volumes as part of an update or a rollback.
 ## Backup and restore
 
 Back up **both** volumes together: the PostgreSQL database and the uploads volume. The uploads hold
-the original statement PDFs (top level) and every community action PDF, active or withdrawn (in
-`actions/`). Backups contain personal data: residents' names, emails, phone numbers and password
-hashes, shared contacts (deleted ones included), and the complete history of actions, events and
+the original statement PDFs (top level), every community action PDF, active or withdrawn (in
+`actions/`), and every image pasted into a description or comment (in `images/`). Backups contain
+personal data: residents' names, emails, phone numbers and password hashes, shared contacts
+(deleted ones included), the images members pasted, and the complete history of actions, events and
 contacts. Keep them encrypted, outside the web root and outside version control.
 
 ### Backup
@@ -332,8 +335,8 @@ Stopping only `api` gives a consistent copy while the database keeps running. Re
 and keep a protected copy of `.env` separately. If any command fails, start `api` again
 deliberately and treat the backup as incomplete.
 
-Purged PDFs disappear from the uploads volume, but backups taken before the purge still contain
-them until those backups expire.
+Purged PDFs and images disappear from the uploads volume, but backups taken before the purge still
+contain them until those backups expire.
 
 ### Restore
 
@@ -384,23 +387,27 @@ data. Before downgrading, handle the data they protect, or simply restore a back
 | `0018` | Purge of withdrawn action PDFs | Refused while purged records exist. |
 | `0019` | English default for the community name column (existing names are kept) | Restores the previous default. |
 | `0020` | Transaction keys of the current statement reader (stored transactions are re-keyed) | Refused while transactions exist: restore the backup taken before upgrading. |
+| `0021` | Images pasted into the Markdown of actions, comments and events | Refused while images exist, purged ones included. |
 
 ## Storage quotas and purging
 
-Community action PDFs are limited by bytes stored, not only by the 20 active PDFs per action:
+Community action PDFs and the images pasted into descriptions and comments are limited by bytes
+stored, not only by the 20 active PDFs per action:
 
-- **Per resident** (`ACTION_STORAGE_USER_QUOTA_MB`, 250 MiB by default): the PDFs a resident has
-  attached.
-- **Community-wide** (`ACTION_STORAGE_COMMUNITY_QUOTA_MB`, 2048 MiB by default): every action PDF,
-  the technical administrator's included.
-- **Free-disk reserve** (`MIN_FREE_DISK_MB`, 1024 MiB by default): action PDF uploads and statement
-  imports are refused when they would leave less free space on the uploads volume. With Docker's
-  default volumes, the uploads and the database usually share a disk, so the reserve also leaves
-  room for the database.
+- **Per resident** (`ACTION_STORAGE_USER_QUOTA_MB`, 250 MiB by default): the PDFs and images a
+  resident has uploaded.
+- **Community-wide** (`ACTION_STORAGE_COMMUNITY_QUOTA_MB`, 2048 MiB by default): every action PDF
+  and every image, the technical administrator's included.
+- **Free-disk reserve** (`MIN_FREE_DISK_MB`, 1024 MiB by default): uploads of PDFs and images and
+  statement imports are refused when they would leave less free space on the uploads volume. With
+  Docker's default volumes, the uploads and the database usually share a disk, so the reserve also
+  leaves room for the database.
 
 Every stored PDF counts, **active or withdrawn**, until the administrator purges it: withdrawing a
-PDF keeps its file, its bytes and its history. Retrying an upload with the same upload ID is never
-counted twice. Checks run in this order and a refused upload writes nothing:
+PDF keeps its file, its bytes and its history. Every image counts too, also after it is removed
+from its text, because earlier versions in the history may still show it. Retrying an upload with
+the same upload ID is never counted twice. Checks run in this order and a refused upload writes
+nothing:
 
 | Error | Status | Meaning |
 | --- | --- | --- |
@@ -412,10 +419,11 @@ The server logs a warning whenever the community quota or the disk reserve refus
 Statement imports are subject to the disk reserve only; deleting a statement deletes its original.
 
 **Monitoring.** **Settings > Storage** (`/admin/storage`) shows the community total against its
-quota, the technical administrator's PDFs, the server disk's free space against the reserve, and
-each resident against the personal quota (accounts deleted since keep their totals). Its
-**Withdrawn PDFs** list shows the withdrawn PDFs that still use space, largest or oldest withdrawal
-first, optionally for one uploader.
+quota, the technical administrator's PDFs and images, the server disk's free space against the
+reserve, and each resident against the personal quota (accounts deleted since keep their totals).
+Its **Withdrawn PDFs** list shows the withdrawn PDFs that still use space, largest or oldest
+withdrawal first, optionally for one uploader, and its **Images in texts** list shows every stored
+image with a thumbnail, newest or largest first, optionally for one uploader.
 
 **Purging** a withdrawn PDF (**Delete permanently** in that list) deletes its file for good and
 frees its bytes at once. Its record and its history stay: the action's history gains an entry,
@@ -434,6 +442,13 @@ To free space you can purge withdrawn PDFs, raise the quotas or enlarge the volu
 below the current usage is allowed; uploads are then refused until enough is purged. Migration
 `0018` refuses to downgrade while purged records exist.
 
+**Purging an image** (**Delete permanently** in **Images in texts**) works the same way, for any
+stored image: images cannot be withdrawn, and a member who removes one from a text does not delete
+it. Its file is deleted for good and its bytes are freed; its record stays, so every description,
+comment or history entry that shows it displays "Image not available" (`410 image_purged`).
+Purging again is harmless, and if the file cannot be deleted nothing changes
+(`503 image_storage_error`). Images have no history entry of their own.
+
 ## Troubleshooting
 
 | Symptom | Likely cause |
@@ -441,7 +456,7 @@ below the current usage is allowed; uploads are then refused until enough is pur
 | The container stops right after starting | A setting is invalid (the log names it: `docker compose logs api`), or the database was migrated by a newer image. |
 | `400 invalid_host` | The proxy does not keep the `Host` header, or the hostname is missing from `PUBLIC_ORIGIN`. |
 | `403 invalid_origin` when signing in | The browser's origin (scheme, hostname and port) is not exactly in `PUBLIC_ORIGIN`, or the proxy strips the `Origin` or `X-Juntia-Request` header. |
-| Uploads fail with `413` | The proxy's body limit is below 21 MiB (nginx: `client_max_body_size`). |
+| Uploads fail with `413` | The proxy's body limit is below 21 MiB (nginx: `client_max_body_size`). `413 image_too_large` with a smaller body means the image itself exceeds 10 MiB. |
 | Google sign-in fails after returning from Google | `TRUSTED_PROXY_IPS` does not match the proxy, the `Host` header was changed, or the redirect URI is not registered for that origin. |
 | `503 request_busy` | Too many simultaneous changes; the client retries after a second. |
 | `507 storage_low_space` | Free space on the uploads volume is below `MIN_FREE_DISK_MB`. |

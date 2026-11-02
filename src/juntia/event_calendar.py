@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime, timezone
 from urllib.parse import urlencode
 
@@ -7,6 +8,13 @@ from .contracts import EventCalendarOut
 from .db import CommunityEvent, aware
 
 GOOGLE_URL_LIMIT = 8000
+# Markdown destinations of the community's own images, as the editor inserts them.
+OWN_IMAGE = re.compile(r"\]\((/api/(?:actions|events)/images/[0-9A-Fa-f-]{36})\)")
+
+
+def exported_text(value: str, origin: str) -> str:
+    """The description for other apps: the community's image addresses become absolute."""
+    return OWN_IMAGE.sub(lambda match: f"]({origin}{match.group(1)})", value)
 
 
 def interval(value: CommunityEvent) -> tuple[date, date]:
@@ -29,7 +37,8 @@ def calendar_links(value: CommunityEvent, origin: str, zone: str) -> EventCalend
     google = "https://calendar.google.com/calendar/render?" + urlencode({
         "action": "TEMPLATE", "text": value.title,
         "dates": f"{compact(start)}/{compact(end)}", "ctz": zone,
-        "details": f"{value.description}\n\n{url}".strip(), "location": value.location,
+        "details": f"{exported_text(value.description, origin)}\n\n{url}".strip(),
+        "location": value.location,
     })
     if len(google) > GOOGLE_URL_LIMIT:
         return EventCalendarOut(google_url=None, google_error="event_calendar_too_long")
@@ -51,7 +60,7 @@ def calendar_file(value: CommunityEvent, origin: str) -> bytes:
     event.add("dtstart", start)
     event.add("dtend", end)
     event.add("summary", value.title)
-    event.add("description", value.description)
+    event.add("description", exported_text(value.description, origin))
     event.add("location", value.location)
     event.add("url", f"{origin}/events/{value.id}")
     calendar.add_component(event)

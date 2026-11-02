@@ -139,13 +139,13 @@ until they are done. The section is on by default and can be turned off in
 [Features](#features-switches).
 
 **Who can do what.** Every active resident and the administrator can create an action, edit any
-action, change its status, comment and attach PDFs. Only the author of a comment or a PDF, or the
-administrator, can edit, rename or withdraw that contribution. None of this grants access to the
-finances' administration or to accounts.
+action, change its status, comment, attach PDFs and paste images. Only the author of a comment or a
+PDF, or the administrator, can edit, rename or withdraw that contribution. None of this grants
+access to the finances' administration or to accounts.
 
-**Content.** An action has a title (up to 200 characters), an optional plain-text description (up
-to 20,000) and up to 20 labels (up to 100 characters each). Comments accept up to 10,000 characters
-of plain text; HTML is shown as text.
+**Content.** An action has a title (up to 200 characters), an optional description in Markdown (up
+to 20,000 characters) and up to 20 labels (up to 100 characters each). Comments accept up to 10,000
+characters of Markdown. See [Markdown and images](#markdown-and-images).
 
 ### Statuses, list and board
 
@@ -179,6 +179,34 @@ are independent from financial tags and contact tags.
 Comments appear newest first. Editing or withdrawing a comment keeps its earlier text in the
 history; a withdrawn comment links to it. A new comment never conflicts with someone editing the
 action's fields.
+
+### Markdown and images
+
+The descriptions of actions and events and the comments are written in GitHub-flavored Markdown:
+**bold**, *italics*, ~~strikethrough~~, lists and task lists, links, quotes, code, tables and
+footnotes. Single line breaks are kept, as in plain text. HTML is shown as text, links to other
+sites open in a new tab, and headings are shown smaller than the page's own headings.
+
+- **Write** and **Preview** tabs show the text as it will look before saving.
+- **Images:** paste an image (for example a screenshot), drag and drop it onto the text, or choose
+  it with **Add image** (handy on phones). The image is uploaded right away and the text receives
+  `![name](address)` where the cursor was, like on GitHub; a placeholder marks it while it uploads,
+  and saving waits until every upload has finished. Several images upload one after another. When
+  the clipboard also holds text (cells copied from a spreadsheet, for example), the text is pasted.
+- PNG, JPEG, GIF and WebP images are accepted, up to **10 MiB** each, 16,384 pixels a side and 40
+  megapixels; SVG and HEIC are not. Before uploading, the browser turns photos upright, reduces
+  them to at most **2,560 pixels** a side and saves them again, which removes their metadata
+  (camera, date, GPS position). GIFs are uploaded as they are, to keep their animation.
+- Only images uploaded this way are shown as pictures; links to images on other sites are shown as
+  links and never loaded. Selecting an image opens it at full size in a new tab.
+- Images are visible to every member, like the text that shows them. Removing an image from the
+  text does not delete it: earlier versions in the history may still show it, and it keeps counting
+  against the [storage quotas](deployment.md#storage-quotas-and-purging). Only the administrator
+  can delete an image permanently, in [Storage](#storage); the texts then show "Image not
+  available".
+- Images in an action's texts follow the Actions switch, and images in event descriptions follow
+  the Events switch.
+- The history shows the Markdown source, line by line.
 
 ### Attachments
 
@@ -231,9 +259,10 @@ changes on top of it. There are no real-time collaboration or notifications.
 ### Turning Actions off
 
 Turning **Actions** off in Features hides the section, shows "Actions turned off" on direct links
-and blocks its whole API, downloads included (`404 actions_disabled`). Actions, comments, labels,
-history and files are kept, and turning it on again restores everything. Events stay available, but
-their links to actions are hidden until Actions returns. Label administration keeps working.
+and blocks its whole API, downloads and images included (`404 actions_disabled`). Actions,
+comments, labels, history, files and images are kept, and turning it on again restores everything.
+Events stay available, but their links to actions are hidden until Actions returns. Label and
+storage administration keep working.
 
 ## Events
 
@@ -251,8 +280,9 @@ delete any event; versions stop concurrent edits from overwriting each other.
 - A multi-day event shows a full card on its first day and a **Continues** row on each following day,
   marked **Continues · Last day** on the final one. All rows open the same event.
 - An event has a title and an optional location (up to 200 characters each), an optional description
-  (up to 20,000), and either a start and end time or a range of whole days. There are no recurring
-  events, reminders, invitations, RSVPs or monthly calendar view.
+  in [Markdown, with images](#markdown-and-images) (up to 20,000), and either a start and end time or
+  a range of whole days. There are no recurring events, reminders, invitations, RSVPs or monthly
+  calendar view.
 
 <p align="center">
   <img src="screenshots/events.png" alt="Events agenda grouped by day" width="900"><br>
@@ -289,13 +319,15 @@ twice at a daylight-saving change are rejected with a field error instead of bei
 **Add to my calendar** offers a prefilled Google Calendar link and **Other calendars (.ics)**, a
 download named `event-<id>.ics` for Apple Calendar, Outlook and other apps. Both create **copies**:
 later changes or deletions in Juntia are not synchronized, and importing again may duplicate the
-event. The Google link does not need Juntia's Google sign-in. When a link would exceed 8,000
-characters, only the `.ics` file is offered.
+event. The description is copied as written, in Markdown, with the addresses of its images made
+complete (they open in Juntia, for members who are signed in). The Google link does not need
+Juntia's Google sign-in. When a link would exceed 8,000 characters, only the `.ics` file is offered.
 
 ### Turning Events off
 
 Turning **Events** off hides the section, clears its data from open browsers and blocks its API
-(`404 events_disabled`). Events, links and history are kept for when it is turned on again.
+(`404 events_disabled`), images of event descriptions included. Events, their images, links and
+history are kept for when it is turned on again.
 
 ## Neighbors
 
@@ -540,16 +572,21 @@ the address book, with their details and history.
 
 ### Storage
 
-**Storage** (`/admin/storage`) shows how much space the PDFs attached to community actions use:
+**Storage** (`/admin/storage`) shows how much space the PDFs attached to community actions and the
+images pasted into descriptions and comments use:
 
-- **Community**: the total against the community quota, with active and withdrawn PDFs;
-- **Technical administrator**: its PDFs, which count only towards the community quota;
+- **Community**: the total against the community quota, with active and withdrawn PDFs and images;
+- **Technical administrator**: its PDFs and images, which count only towards the community quota;
 - **Server disk**: the free space against the reserve kept for uploads and imports;
 - **Storage by neighbor**: each resident against the personal quota, largest first, deleted
   accounts included;
 - **Withdrawn PDFs**: the withdrawn PDFs that still use space, largest or oldest withdrawal first,
   optionally for one uploader. **Delete permanently** removes a file for good after a confirmation
   that names its action and the space it frees.
+- **Images in texts**: every stored image with a thumbnail, its size, dimensions, section and
+  uploader, newest or largest first, optionally for one uploader. **Delete permanently** removes it
+  for good after a confirmation; the texts and history entries that show it then say "Image not
+  available".
 
 The quotas, the reserve and the permanent deletion (purge) are explained in
 [storage quotas and purging](deployment.md#storage-quotas-and-purging).

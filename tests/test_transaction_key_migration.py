@@ -60,5 +60,5 @@ def test_downgrade_refuses_while_transactions_exist(admin, config):
     refused = migrate(config, "downgrade", "0019", check=False)
     assert refused.returncode != 0
     assert "Restore the backup taken before upgrading" in refused.stderr
-    assert database(config, revision) == "0020"
+    assert database(config, revision) == "0021"
     assert admin.get("/api/transactions").json()["total"] == 3

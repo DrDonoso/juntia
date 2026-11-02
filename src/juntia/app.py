@@ -18,6 +18,7 @@ from . import (
     auth,
     community_actions,
     community_events,
+    community_images,
     contacts,
     google_auth,
     queries,
@@ -129,7 +130,9 @@ def create_app(config: Settings | None = None) -> FastAPI:
     application.include_router(users.profile_router)
     application.include_router(community_actions.router)
     application.include_router(community_actions.admin_router)
+    application.include_router(community_images.actions_router)
     application.include_router(storage_admin.router)
+    application.include_router(community_images.events_router)
     application.include_router(community_events.router)
     application.include_router(contacts.router)
     application.include_router(api.public_router)

@@ -747,3 +747,45 @@ test('the action panel shows the complete timeline and opens events over the act
   expect(screen.getByRole('checkbox', { name: 'Show past events' })).toBeChecked()
   expect(screen.getByRole('link', { name: finished.title })).toBeVisible()
 })
+
+test('the event dialog renders its description as Markdown, with its images', async () => {
+  const image = '/api/events/images/0b0f7d2e-5a1c-4c33-9a7e-2f1d6c8e9b10'
+  const described = { ...item, action: null, description: `Bring **your keys**.\n\n![Meeting point](${image})` }
+  cache.setQueryData(['events', 'item', item.id], described)
+  stubEventRequests(described)
+  mount(<EventsPage />, ['/events?event=1'])
+  const dialog = await screen.findByRole('dialog', { name: item.title })
+  expect(within(dialog).getByText('your keys').tagName).toBe('STRONG')
+  expect(within(dialog).getByRole('img', { name: 'Meeting point' })).toHaveAttribute('src', image)
+  expect(within(dialog).queryByText(/\*\*your keys\*\*/)).toBeNull()
+})
+
+test('images pasted into an event description are stored with the events', async () => {
+  const user = userEvent.setup()
+  const saved = vi.fn()
+  const fetcher = vi.fn<Fetcher>(async (url, options) => {
+    if (url === '/api/events/images' && options.method === 'POST') {
+      const uploadId = String((options.body as FormData).get('upload_id'))
+      return response({
+        id: uploadId, url: `/api/events/images/${uploadId}`, filename: 'map.gif', media_type: 'image/gif', size: 14,
+        width: 1, height: 1, created_at: '2026-10-15T10:00:00Z',
+      }, 201)
+    }
+    if (url === '/api/events/1' && options.method === 'PATCH') return response({ ...item, ...JSON.parse(String(options.body)), version: 2 })
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  vi.stubGlobal('fetch', fetcher)
+  mount(<EventEditor value={item} timezone="Europe/Madrid" close={vi.fn()} saved={saved} />)
+  const description = screen.getByLabelText('Description') as HTMLTextAreaElement
+  expect(description).toHaveAttribute('name', 'description')
+  description.focus()
+  description.setSelectionRange(description.value.length, description.value.length)
+  const map = new File([new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1, 0, 1, 0, 0, 0, 0, 0x3b])], 'map.gif', { type: 'image/gif' })
+  fireEvent.paste(description, { clipboardData: { files: [map], getData: () => '' } })
+  await waitFor(() => expect(description.value).toMatch(/!\[map\]\(\/api\/events\/images\/[0-9a-f-]{36}\)$/))
+  const uploadId = String((fetcher.mock.calls[0][1].body as FormData).get('upload_id'))
+  await user.click(screen.getByRole('button', { name: 'Save event' }))
+  await waitFor(() => expect(saved).toHaveBeenCalledOnce())
+  const body = JSON.parse(String(fetcher.mock.calls.at(-1)![1].body))
+  expect(body.description).toBe(`${item.description}\n![map](/api/events/images/${uploadId})`)
+})

@@ -4,7 +4,7 @@ import { Link } from 'react-router'
 import { ApiError, api, cache, errorMessage } from './api/client'
 import type {
   ActionAttachmentOut, CommunityStorageOut, DiskSpaceOut, ResidentStorageOut, StorageOut, StorageUsageOut, StoredAttachmentOut,
-  StoredAttachmentPage,
+  StoredAttachmentPage, StoredImageOut, StoredImagePage,
 } from './api/schema.gen'
 import { byteSize } from './community-action-shared'
 import { compareText, dateTimeFormat, formatNumber, useI18n } from './i18n'
@@ -20,6 +20,7 @@ const SETTINGS = {
 
 type Level = 'normal' | 'warning' | 'full'
 type Sort = 'largest' | 'oldest'
+type ImageSort = 'newest' | 'largest'
 type Author = { id: number; name: string; deleted: boolean }
 // Kept as data, not text, so the notice follows a language switch.
 type Outcome = { kind: 'purged'; filename: string; size: number } | { kind: 'stale' }
@@ -52,6 +53,7 @@ function Breakdown({ usage }: { usage: StorageUsageOut }) {
   return <dl className="storage-breakdown">
     <div><dt>{t('storage.active')}</dt><dd>{byteSize(usage.active_bytes)} · {t('storage.files', { count: usage.active_files })}</dd></div>
     <div><dt>{t('storage.withdrawn')}</dt><dd>{byteSize(usage.withdrawn_bytes)} · {t('storage.files', { count: usage.withdrawn_files })}</dd></div>
+    <div><dt>{t('storage.images')}</dt><dd>{byteSize(usage.image_bytes)} · {t('storage.imageFiles', { count: usage.image_files })}</dd></div>
   </dl>
 }
 
@@ -118,6 +120,7 @@ function NeighborsCard({ storage }: { storage: StorageOut }) {
           <th scope="col">{t('storage.neighbors.columns.neighbor')}</th>
           <th scope="col" className="numeric">{t('storage.neighbors.columns.active')}</th>
           <th scope="col" className="numeric">{t('storage.neighbors.columns.withdrawn')}</th>
+          <th scope="col" className="numeric">{t('storage.neighbors.columns.images')}</th>
           <th scope="col">{t('storage.neighbors.columns.quota')}</th>
         </tr></thead>
         <tbody>{storage.residents.map(resident => {
@@ -127,6 +130,7 @@ function NeighborsCard({ storage }: { storage: StorageOut }) {
               {resident.account_deleted && <span className="tag">{t('storage.neighbors.deleted')}</span>}</th>
             <td className="numeric">{byteSize(resident.active_bytes)}<small>{t('storage.files', { count: resident.active_files })}</small></td>
             <td className="numeric">{byteSize(resident.withdrawn_bytes)}<small>{t('storage.files', { count: resident.withdrawn_files })}</small></td>
+            <td className="numeric">{byteSize(resident.image_bytes)}<small>{t('storage.imageFiles', { count: resident.image_files })}</small></td>
             <td className="storage-quota">{t('storage.usage', { used: byteSize(resident.stored_bytes), limit: byteSize(resident.quota_bytes) })}
               <UsageMeter label={t('storage.neighbors.meter', { name })} used={resident.stored_bytes} limit={resident.quota_bytes}
                 level={quotaLevel(resident.stored_bytes, resident.quota_bytes)} /></td>
@@ -248,6 +252,113 @@ function WithdrawnPDFs({ residents }: { residents: ResidentStorageOut[] }) {
   </section>
 }
 
+function imageFileUrl(item: StoredImageOut): string {
+  return `/api/admin/storage/images/${item.id}/file`
+}
+
+function ImagePurgeDialog({ item, close, done }: { item: StoredImageOut; close: () => void; done: (outcome: Outcome) => void }) {
+  const { t } = useI18n()
+  const operation = useAction(false)
+  // The shared message for this code is about uploads: say what failed here instead.
+  const storageFailure = operation.failure instanceof ApiError && operation.failure.code === 'image_storage_error'
+  const author = authorName(item.author, t), size = byteSize(item.size)
+  return <Modal title={t('storage.imagePurge.title')} close={close} disabled={operation.busy}>
+    <img className="storage-image-preview" src={imageFileUrl(item)} alt={item.filename} />
+    <p><strong className="storage-filename">{item.filename}</strong> · {size}</p>
+    <p className="muted">{t('storage.withdrawnPDFs.uploadedBy', { name: author })}<br />{t(`storage.storedImages.sections.${item.scope}`)}</p>
+    <ul className="storage-purge-facts">
+      <li>{t('storage.purge.forever')}</li>
+      <li>{t('storage.imagePurge.texts')}</li>
+      <li>{item.author.kind === 'resident' ? t('storage.purge.freesNeighbor', { size, name: author }) : t('storage.purge.freesCommunity', { size })}</li>
+    </ul>
+    {storageFailure ? <Notice error>{t('storage.purge.storageError')}</Notice> : operation.notice}
+    <div className="inline">
+      <button type="button" className="secondary danger" disabled={operation.busy} onClick={() => void operation.run(async () => {
+        await api<StoredImageOut>(`/admin/storage/images/${item.id}/purge`, 'POST')
+        done({ kind: 'purged', filename: item.filename, size: item.size })
+      })}><Icon name={operation.busy ? 'spinner' : 'trash'} size={16} className={operation.busy ? 'icon-spin' : undefined} />
+        {operation.busy ? t('storage.purge.deleting') : t('storage.purge.confirm')}</button>
+      <button type="button" className="secondary" disabled={operation.busy} onClick={close}>{t('common.cancel')}</button>
+    </div>
+  </Modal>
+}
+
+function StoredImages({ residents }: { residents: ResidentStorageOut[] }) {
+  const { t, rich } = useI18n()
+  const neighborName = useNeighborName()
+  const [sort, setSort] = useState<ImageSort>('newest'), [page, setPage] = useState(1)
+  const [author, setAuthor] = useState<Author | null>(null)
+  const [purging, setPurging] = useState<StoredImageOut | null>(null)
+  const [outcome, setOutcome] = useState<Outcome | null>(null)
+  const heading = useRef<HTMLHeadingElement>(null), headingId = useId()
+  const params = new URLSearchParams({ page: String(page), sort })
+  if (author) params.set('user_id', String(author.id))
+  const query = useQuery({
+    queryKey: ['admin', 'storage', 'images', params.toString()],
+    queryFn: () => api<StoredImagePage>(`/admin/storage/images?${params}`),
+    placeholderData: keepPreviousData, staleTime: 0,
+  })
+  // The deleted row took the focus with it: continue from the list, where the outcome is announced.
+  useEffect(() => { if (outcome) heading.current?.focus() }, [outcome])
+  const authors: Author[] = residents.filter(resident => resident.image_files > 0 || resident.user_id === author?.id)
+    .map(resident => ({ id: resident.user_id, name: neighborName(resident), deleted: resident.account_deleted }))
+  if (author && !authors.some(option => option.id === author.id)) authors.push(author)
+  authors.sort((left, right) => compareText(left.name, right.name))
+  function finish(next: Outcome) {
+    setPurging(null); setOutcome(next)
+    void cache.invalidateQueries({ queryKey: ['admin', 'storage'] })
+  }
+  const title = t('storage.storedImages.title')
+  return <section className="card" aria-labelledby={headingId}>
+    <h2 id={headingId} ref={heading} tabIndex={-1}>{title}</h2>
+    <p className="muted">{t('storage.storedImages.description')}</p>
+    <div className="storage-filters">
+      <label>{t('storage.storedImages.sort')}<select value={sort} onChange={event => {
+        setSort(event.target.value === 'largest' ? 'largest' : 'newest'); setPage(1)
+      }}>
+        <option value="newest">{t('storage.storedImages.sorts.newest')}</option>
+        <option value="largest">{t('storage.storedImages.sorts.largest')}</option>
+      </select></label>
+      <label>{t('storage.withdrawnPDFs.author')}<select value={author ? String(author.id) : ''} onChange={event => {
+        setAuthor(authors.find(option => String(option.id) === event.target.value) ?? null); setPage(1)
+      }}>
+        <option value="">{t('storage.withdrawnPDFs.everyone')}</option>
+        {authors.map(option => <option key={option.id} value={option.id}>
+          {option.deleted ? t('storage.withdrawnPDFs.deletedAuthor', { name: option.name }) : option.name}</option>)}
+      </select></label>
+    </div>
+    {outcome?.kind === 'purged' && <Notice>{t('storage.storedImages.purged', { filename: outcome.filename, size: byteSize(outcome.size) })}</Notice>}
+    {query.isPending && <Notice>{t('storage.storedImages.loading')}</Notice>}
+    {query.error && <><Notice error>{errorMessage(query.error)}</Notice>
+      <button type="button" className="secondary" disabled={query.isFetching} onClick={() => void query.refetch()}>{t('common.retryLoading')}</button></>}
+    {query.data && <>
+      {query.data.total > 0 && <p className="muted">{t('storage.storedImages.total', { count: query.data.total })}</p>}
+      {query.data.items.length === 0
+        ? <p className="empty">{page > 1 ? t('storage.storedImages.empty.page') : author ? t('storage.storedImages.empty.author') : t('storage.storedImages.empty.all')}</p>
+        : <ul className="action-attachment-list storage-image-list" aria-label={title} aria-busy={query.isFetching}>
+          {query.data.items.map(item => <li key={item.id}>
+            <a className="storage-image-thumb" href={imageFileUrl(item)} target="_blank" rel="noopener noreferrer"
+              aria-label={t('storage.storedImages.open', { filename: item.filename })}>
+              <img src={imageFileUrl(item)} alt="" loading="lazy" decoding="async" />
+            </a>
+            <div className="action-file-info"><strong>{item.filename}</strong>
+              <p className="muted">{t('storage.storedImages.details', {
+                size: byteSize(item.size), width: formatNumber(item.width), height: formatNumber(item.height),
+                section: t(`storage.storedImages.sections.${item.scope}`),
+              })}</p>
+              <p className="muted">{t('storage.withdrawnPDFs.uploadedBy', { name: authorName(item.author, t) })}</p>
+              <p className="muted">{rich('storage.storedImages.uploadedAt', { time: () => <WithdrawnTime value={item.created_at} /> })}</p>
+            </div>
+            <button type="button" className="secondary danger" aria-label={t('storage.storedImages.deleteLabel', { filename: item.filename })}
+              onClick={() => { setOutcome(null); setPurging(item) }}><Icon name="trash" size={16} />{t('storage.storedImages.delete')}</button>
+          </li>)}
+        </ul>}
+      <Pagination page={page} pages={query.data.pages} change={setPage} busy={query.isFetching} label={t('storage.storedImages.pagination')} />
+    </>}
+    {purging && <ImagePurgeDialog key={purging.id} item={purging} close={() => setPurging(null)} done={finish} />}
+  </section>
+}
+
 function LimitsHelp({ storage }: { storage: StorageOut }) {
   const { t } = useI18n()
   const heading = useId()
@@ -295,6 +406,7 @@ export function StoragePage() {
       <NeighborsCard storage={summary.data} />
     </>}
     <WithdrawnPDFs residents={summary.data?.residents ?? []} />
+    <StoredImages residents={summary.data?.residents ?? []} />
     {summary.data && <LimitsHelp storage={summary.data} />}
   </>
 }

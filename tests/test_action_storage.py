@@ -517,22 +517,25 @@ def test_storage_summary_reports_usage_quotas_and_free_space(
     assert summary == {
         "community": {
             "stored_bytes": 750_000, "active_bytes": 450_000, "withdrawn_bytes": 300_000,
-            "active_files": 3, "withdrawn_files": 2, "quota_bytes": 2048 * MIB,
+            "active_files": 3, "withdrawn_files": 2, "image_bytes": 0, "image_files": 0,
+            "quota_bytes": 2048 * MIB,
         },
         "administrator": {
             "stored_bytes": 100_000, "active_bytes": 0, "withdrawn_bytes": 100_000,
-            "active_files": 0, "withdrawn_files": 1,
+            "active_files": 0, "withdrawn_files": 1, "image_bytes": 0, "image_files": 0,
         },
         "residents": [
             {
                 "user_id": first["id"], "name": first["name"], "account_deleted": False,
                 "quota_bytes": resident_quota, "stored_bytes": 500_000, "active_bytes": 300_000,
                 "withdrawn_bytes": 200_000, "active_files": 1, "withdrawn_files": 1,
+                "image_bytes": 0, "image_files": 0,
             },
             {
                 "user_id": second["id"], "name": "Current Neighbor", "account_deleted": False,
                 "quota_bytes": resident_quota, "stored_bytes": 150_000, "active_bytes": 150_000,
                 "withdrawn_bytes": 0, "active_files": 2, "withdrawn_files": 0,
+                "image_bytes": 0, "image_files": 0,
             },
         ],
         "resident_quota_bytes": resident_quota,
@@ -551,7 +554,8 @@ def test_storage_summary_reports_usage_quotas_and_free_space(
     summary = admin.get("/api/admin/storage").json()
     assert summary["community"] == {
         "stored_bytes": 650_000, "active_bytes": 450_000, "withdrawn_bytes": 200_000,
-        "active_files": 3, "withdrawn_files": 1, "quota_bytes": 2048 * MIB,
+        "active_files": 3, "withdrawn_files": 1, "image_bytes": 0, "image_files": 0,
+        "quota_bytes": 2048 * MIB,
     }
     assert summary["administrator"]["stored_bytes"] == 0
     former = summary["residents"][1]

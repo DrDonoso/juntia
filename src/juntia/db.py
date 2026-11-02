@@ -407,6 +407,37 @@ class ActionEvent(Authorship, Base):
     attachment_id: Mapped[str | None] = mapped_column(ForeignKey("action_attachments.id"))
 
 
+class CommunityImage(Authorship, Base):
+    """An image pasted into the Markdown of an action, a comment or an event."""
+
+    __tablename__ = "community_images"
+    __table_args__ = (
+        author_constraint("community_image_author"),
+        CheckConstraint("scope IN ('actions', 'events')", name="community_image_scope"),
+        CheckConstraint(
+            "media_type IN ('image/png', 'image/jpeg', 'image/gif', 'image/webp')",
+            name="community_image_media_type",
+        ),
+        CheckConstraint("size > 0 AND size <= 10485760", name="community_image_size"),
+        CheckConstraint("width > 0 AND height > 0", name="community_image_dimensions"),
+        Index("ix_community_images_created", "created_at", "id"),
+    )
+    # The upload ID chosen by the browser, so a retried upload is answered from this row.
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    # The section whose API serves it: its session and feature switch apply.
+    scope: Mapped[str] = mapped_column(String(10))
+    storage_key: Mapped[str] = mapped_column(String(36), unique=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    media_type: Mapped[str] = mapped_column(String(20))
+    size: Mapped[int] = mapped_column()
+    sha256: Mapped[str] = mapped_column(String(64))
+    width: Mapped[int] = mapped_column()
+    height: Mapped[int] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # The administrator deleted the file; the row remains, so its address answers 410.
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class Contact(Base):
     __tablename__ = "contacts"
     __table_args__ = (

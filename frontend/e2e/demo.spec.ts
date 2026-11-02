@@ -209,6 +209,36 @@ test('a neighbor signs in with the filled-in form', async ({ page }) => {
   await expectNoCrash(page)
 })
 
+test('an image pasted into a comment is uploaded to the demo API and shown from it', async ({ page }) => {
+  await page.goto('/actions')
+  await explore(page)
+  await page.getByRole('link', { name: /Bike storage in the basement/ }).click()
+  const comment = page.getByLabel(en.actions.comments.new, { exact: true })
+  await comment.fill('Where the racks would go:')
+  await comment.focus()
+  // A synthetic picture drawn in the page, pasted like a screenshot.
+  await comment.evaluate(async element => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 640
+    canvas.height = 480
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('No canvas')
+    context.fillStyle = '#21639f'
+    context.fillRect(0, 0, 640, 480)
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
+    if (!blob) throw new Error('No PNG')
+    const clipboard = new DataTransfer()
+    clipboard.items.add(new File([blob], 'bike racks.png', { type: 'image/png' }))
+    element.dispatchEvent(new ClipboardEvent('paste', { clipboardData: clipboard, bubbles: true, cancelable: true }))
+  })
+  await expect(comment).toHaveValue(/^Where the racks would go:\n!\[bike racks\]\(\/api\/actions\/images\/[0-9a-f-]{36}\)$/)
+  await page.getByRole('button', { name: en.actions.comments.post, exact: true }).click()
+  const image = page.locator('.action-comment-list').getByRole('img', { name: 'bike racks' })
+  await expect(image).toBeVisible()
+  await expect.poll(() => image.evaluate(element => (element as HTMLImageElement).naturalWidth)).toBe(640)
+  await expectNoCrash(page)
+})
+
 test.describe('without service workers', () => {
   test.use({ serviceWorkers: 'block', expectedConsoleErrors: [/^The demo API could not start/] })
 

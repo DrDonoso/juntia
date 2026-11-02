@@ -1,4 +1,5 @@
-"""Storage budgets for retained uploads: the free-disk reserve and the action PDF byte quotas."""
+"""Storage budgets for retained uploads: the free-disk reserve and the byte quotas shared by the
+action PDFs and the images pasted into actions, comments and events."""
 
 import errno
 import logging
@@ -6,13 +7,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from shutil import disk_usage
 
-from sqlalchemy import BigInteger, Select, func, literal, select, update
+from sqlalchemy import BigInteger, func, literal, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from .config import Settings
 from .contracts import ActionActorOut
-from .db import ActionAttachment, State
+from .db import ActionAttachment, CommunityImage, State
 from .errors import AppError
 
 log = logging.getLogger(__name__)
@@ -50,7 +51,7 @@ def out_of_space(error: OSError) -> bool:
 
 
 async def lock_attachment_storage(db: AsyncSession) -> None:
-    """Serialize stored-byte checks across all actions until the transaction ends."""
+    """Serialize stored-byte checks across all uploads until the transaction ends."""
     dialect = db.get_bind().dialect.name
     if dialect == "postgresql":
         await db.execute(select(func.pg_advisory_xact_lock(literal(STORAGE_LOCK, BigInteger()))))
@@ -61,25 +62,29 @@ async def lock_attachment_storage(db: AsyncSession) -> None:
         raise RuntimeError("Unsupported storage database")
 
 
-def stored_bytes(*where: ColumnElement[bool]) -> Select[int]:
-    """Bytes still on disk: active and withdrawn PDFs until the administrator purges them."""
-    return select(func.coalesce(func.sum(ActionAttachment.size), 0)).where(
-        ActionAttachment.purged_at.is_(None), *where,
-    )
+async def stored_bytes(db: AsyncSession, user_id: int | None = None) -> int:
+    """Bytes still on disk, of one resident when `user_id` is set: active and withdrawn PDFs
+    and images, until the administrator purges them."""
+    total = 0
+    for table in (ActionAttachment, CommunityImage):
+        where: list[ColumnElement[bool]] = [table.purged_at.is_(None)]
+        if user_id is not None:
+            where += [table.author_kind == "resident", table.author_user_id == user_id]
+        total += await db.scalar(
+            select(func.coalesce(func.sum(table.size), 0)).where(*where)
+        ) or 0
+    return total
 
 
 async def check_attachment_quota(
     db: AsyncSession, config: Settings, actor: ActionActorOut, size: int,
 ) -> None:
-    """Check both byte budgets for a new PDF; callers hold lock_attachment_storage()."""
-    if actor.kind == "resident":
-        used = await db.scalar(stored_bytes(
-            ActionAttachment.author_kind == "resident",
-            ActionAttachment.author_user_id == actor.user_id,
-        )) or 0
+    """Check both byte budgets for a new PDF or image; callers hold lock_attachment_storage()."""
+    if actor.kind == "resident" and actor.user_id is not None:
+        used = await stored_bytes(db, actor.user_id)
         if used + size > config.action_storage_user_quota_mb * MIB:
             raise AppError("action_storage_user_quota", 409)
-    used = await db.scalar(stored_bytes()) or 0
+    used = await stored_bytes(db)
     if used + size > config.action_storage_community_quota_mb * MIB:
-        log.warning("A community action PDF was refused by the community storage quota")
+        log.warning("An upload was refused by the community storage quota")
         raise AppError("action_storage_community_quota", 409)

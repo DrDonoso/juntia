@@ -6,6 +6,8 @@ import type { ActionPage, EventActionOut, EventCalendarOut, EventConfigOut, Even
 import { Icon } from './icons'
 import { EventDateField, focusEventDateField } from './event-date-field'
 import { dateTimeFormat, t, useI18n } from './i18n'
+import { MarkdownText } from './markdown'
+import { MarkdownField } from './markdown-field'
 import { Modal, Notice, Pagination, day, focusFormField, useAction, useFeatures } from './shared'
 
 export function EventFeatureGate({ children }: { children: ReactNode }) {
@@ -333,6 +335,7 @@ export function EventEditor({ value, timezone, initialAction, close, saved }: {
   const [draft, setDraft] = useState(() => eventDraft(value, timezone, initialAction))
   const [linkChanged, setLinkChanged] = useState(false)
   const [current, setCurrent] = useState<EventOut | null>(null)
+  const [uploading, setUploading] = useState(false)
   const operation = useAction(['events']), refresh = useAction(false), features = useFeatures()
   const id = useId()
   const formRef = useRef<HTMLFormElement>(null)
@@ -367,7 +370,7 @@ export function EventEditor({ value, timezone, initialAction, close, saved }: {
   return <Modal title={base ? t('events.editor.editTitle') : t('events.editor.createTitle')} close={dismiss} disabled={busy} className="event-editor">
     <form ref={formRef} onSubmit={event => {
       event.preventDefault()
-      if (busy || stale || zoneChanged) return
+      if (busy || stale || zoneChanged || uploading) return
       void operation.run(async () => {
         const body = eventBody(draft, zone, actions && (!base || linkChanged))
         const result = await api<EventOut>(base ? `/events/${base.id}` : '/events', base ? 'PATCH' : 'POST',
@@ -378,7 +381,9 @@ export function EventEditor({ value, timezone, initialAction, close, saved }: {
     }}>
       <label>{t('events.editor.fields.title')}<input name="title" required maxLength={200} value={draft.title} disabled={busy} {...inputError('title')} onChange={event => setDraft({ ...draft, title: event.target.value })} /></label>
       {fieldError('title')}
-      <label>{t('events.editor.fields.description')}<textarea name="description" rows={4} maxLength={20000} value={draft.description} disabled={busy} {...inputError('description')} onChange={event => setDraft({ ...draft, description: event.target.value })} /></label>
+      <MarkdownField label={t('events.editor.fields.description')} scope="events" name="description" rows={4} maxLength={20000}
+        value={draft.description} disabled={busy} invalid={!!errors.description} describedBy={errors.description ? `${id}-description` : undefined}
+        change={update => setDraft(previous => ({ ...previous, description: update(previous.description) }))} onUploadingChange={setUploading} />
       {fieldError('description')}
       <label>{t('events.editor.fields.location')}<input name="location" maxLength={200} value={draft.location} disabled={busy} {...inputError('location')} onChange={event => setDraft({ ...draft, location: event.target.value })} /></label>
       {fieldError('location')}
@@ -424,7 +429,7 @@ export function EventEditor({ value, timezone, initialAction, close, saved }: {
         if (base) setDraft(previous => rebaseEventDraft(previous, base, base, zone, config.timezone))
         cache.setQueryData(['events', 'config'], config); setZone(config.timezone); operation.reset()
       })}>{t('events.editor.reloadTimeZone')}</button>}
-      <div className="inline"><button disabled={busy || stale || zoneChanged}>{operation.busy ? t('common.saving') : t('events.editor.save')}</button>
+      <div className="inline"><button disabled={busy || stale || zoneChanged || uploading}>{operation.busy ? t('common.saving') : t('events.editor.save')}</button>
         <button type="button" className="secondary" disabled={busy} onClick={dismiss}>{t('common.cancel')}</button></div>
     </form>
   </Modal>
@@ -432,6 +437,8 @@ export function EventEditor({ value, timezone, initialAction, close, saved }: {
 
 export function EventSnapshotView({ value, zone }: { value: EventSnapshot; zone: string }) {
   const { t } = useI18n()
-  return <div className="event-text"><strong>{value.title}</strong><p>{eventRange(value, zone)}</p>
-    {value.location && <p>{value.location}</p>}<p>{value.description || t('events.detail.noDescription')}</p><EventActionLink value={value} /></div>
+  return <div className="event-snapshot"><p className="event-text"><strong>{value.title}</strong></p><p>{eventRange(value, zone)}</p>
+    {value.location && <p className="event-text">{value.location}</p>}
+    {value.description ? <MarkdownText text={value.description} /> : <p>{t('events.detail.noDescription')}</p>}
+    <EventActionLink value={value} /></div>
 }

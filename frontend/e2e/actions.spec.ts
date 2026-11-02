@@ -43,7 +43,7 @@ async function expectDescriptionLayout(page: Page, title: string) {
   await expect(page.locator('.action-heading').getByRole('combobox', { name: `Status of ${title}`, exact: true })).toBeVisible()
   await expect(page.locator('.action-details select')).toHaveCount(0)
   const layout = await page.locator('.action-details').evaluate(element => {
-    const description = element.querySelector('.action-text')
+    const description = element.querySelector('.markdown, .action-text')
     const controls = document.querySelector('.action-heading-controls')
     if (!description || !controls) throw new Error('Missing description or heading controls')
     const style = getComputedStyle(element)

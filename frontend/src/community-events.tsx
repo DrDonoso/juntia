@@ -4,6 +4,7 @@ import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } 
 import { ApiError, api, errorMessage } from './api/client'
 import type { EventActionOut, EventAgendaPage, EventHistoryPage, EventOut } from './api/schema.gen'
 import { CalendarButton, EventActionLink, EventCards, EventEditor, EventFeatureGate, EventSnapshotView, cacheEvent, eventModalState, eventRange, useEventConfig, type EventModalState } from './community-event-shared'
+import { MarkdownText } from './markdown'
 import { useI18n } from './i18n'
 import { Icon } from './icons'
 import { Modal, Notice, Pagination, authorName, connectionTime, useAction, useFeatures } from './shared'
@@ -142,7 +143,8 @@ function EventDetailModal({ id, close }: { id: number; close: () => void }) {
       <div className="event-detail-fields">
         <h3>{t('events.detail.location')}</h3><p className="event-text">{value.location || t('events.detail.noLocation')}</p>
         <hr />
-        <h3>{t('events.detail.description')}</h3><p className="event-text">{value.description || t('events.detail.noDescription')}</p>
+        <h3>{t('events.detail.description')}</h3>
+        {value.description ? <MarkdownText text={value.description} /> : <p className="event-text">{t('events.detail.noDescription')}</p>}
         {features.data?.actions && !features.error && <>
           <hr />
           <h3>{t('events.detail.action')}</h3>
