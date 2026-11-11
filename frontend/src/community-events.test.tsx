@@ -608,7 +608,7 @@ test('picker lists all actions on focus, filters, and keeps the link when a sear
   expect(screen.queryByRole('button', { name: 'Remove link' })).toBeNull()
 })
 
-test('picker supports paging and mouse selection without closing when its pager receives focus', async () => {
+test('picker supports paging and mouse selection while the focus stays in the field', async () => {
   const user = userEvent.setup()
   const fetcher = vi.fn<Fetcher>(async url => {
     const page = Number(new URL(url, 'http://localhost').searchParams.get('page'))
@@ -619,10 +619,37 @@ test('picker supports paging and mouse selection without closing when its pager 
   const field = screen.getByRole('combobox', { name: 'Linked action (optional)' })
   await user.click(field)
   await user.click(await screen.findByRole('button', { name: 'Next: available actions' }))
+  // Safari never focuses a pressed button, so the list cannot rely on its pager taking the focus.
+  expect(field).toHaveFocus()
   await user.click(await screen.findByRole('option', { name: 'Last action' }))
   expect(field).toHaveValue('Last action')
   expect(field).toHaveFocus()
   expect(screen.queryByRole('listbox')).toBeNull()
+})
+
+test('picker lays out its list from the field, in the part of the dialog the keyboard leaves visible', async () => {
+  const user = userEvent.setup()
+  vi.stubGlobal('fetch', vi.fn<Fetcher>(async () => response({ items: [item.action], total: 1, page: 1, pages: 1 })))
+  const viewport = Object.assign(new EventTarget(), { offsetTop: 0, height: 800 })
+  vi.stubGlobal('visualViewport', viewport)
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    if (this instanceof HTMLDialogElement) return DOMRect.fromRect({ y: 0, width: 400, height: 800 })
+    return DOMRect.fromRect(this.getAttribute('role') === 'combobox' ? { x: 20, y: 400, width: 300, height: 40 } : {})
+  })
+  mount(<EventEditor value={item} timezone="Europe/Madrid" close={vi.fn()} saved={vi.fn()} />)
+  const field = screen.getByRole('combobox', { name: 'Linked action (optional)' })
+  await user.click(field)
+  const list = (await screen.findByRole('listbox')).parentElement!
+  // No viewport coordinates: iOS moves fixed elements while its keyboard is open.
+  expect(field.parentElement).toContainElement(list)
+  expect(list.style.top + list.style.bottom + list.style.left).toBe('')
+  expect(list).toHaveAttribute('data-placement', 'bottom')
+  expect(list.style.maxHeight).toBe('300px')
+  act(() => { Object.assign(viewport, { offsetTop: 200, height: 300 }); viewport.dispatchEvent(new Event('resize')) })
+  expect(list).toHaveAttribute('data-placement', 'top')
+  expect(list.style.maxHeight).toBe('192px')
+  act(() => { Object.assign(viewport, { offsetTop: 380, height: 100 }); viewport.dispatchEvent(new Event('scroll')) })
+  expect(list.style.maxHeight).toBe('132px')
 })
 
 test('picker exposes failed loading with a retry, not a false empty catalogue', async () => {
