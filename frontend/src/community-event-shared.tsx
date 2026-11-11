@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useLocation, type To } from 'react-router'
 import { ApiError, api, cache, codeMessage, downloadFile, errorMessage } from './api/client'
@@ -223,7 +223,7 @@ function ActionPicker({ selected, change, disabled }: {
 }) {
   const { t } = useI18n()
   const [search, setSearch] = useState(''), [page, setPage] = useState(1), [open, setOpen] = useState(false)
-  const [active, setActive] = useState(-1), [position, setPosition] = useState<CSSProperties>({})
+  const [active, setActive] = useState(-1), [layout, setLayout] = useState({ above: false, maxHeight: 300 })
   const id = useId(), field = useRef<HTMLInputElement>(null), popup = useRef<HTMLDivElement>(null)
   const options = useRef<HTMLUListElement>(null)
   const expanded = open && !disabled
@@ -234,23 +234,25 @@ function ActionPicker({ selected, change, disabled }: {
     enabled: expanded,
   })
   const suggestions = query.error ? [] : query.data?.items || []
+  // The list hangs from the field (CSS) rather than sitting at viewport coordinates: iOS moves fixed
+  // elements while its keyboard is open, which hid a fixed list. Only its side and height are measured.
   useLayoutEffect(() => {
     if (!expanded) return
     const viewport = window.visualViewport
     function reposition(event?: Event) {
-      if (!field.current || event?.target instanceof Node && popup.current?.contains(event.target)) return
-      const bounds = field.current.getBoundingClientRect()
-      const left = viewport?.offsetLeft || 0, top = viewport?.offsetTop || 0
-      const viewportWidth = viewport?.width || window.innerWidth
-      const viewportHeight = viewport?.height || window.innerHeight
-      const width = Math.min(bounds.width, viewportWidth - 16)
-      const below = top + viewportHeight - bounds.bottom - 8
-      const above = below < 180 && bounds.top - top > below
-      setPosition({
-        left: Math.max(left + 8, Math.min(bounds.left, left + viewportWidth - width - 8)), width,
-        maxHeight: Math.max(0, Math.min(300, above ? bounds.top - top - 8 : below)),
-        ...(above ? { bottom: window.innerHeight - bounds.top + 4 } : { top: bounds.bottom + 4 }),
-      })
+      const input = field.current
+      if (!input || event?.target instanceof Node && popup.current?.contains(event.target)) return
+      const bounds = input.getBoundingClientRect(), dialog = input.closest('dialog')?.getBoundingClientRect()
+      const viewportTop = viewport?.offsetTop || 0
+      const viewportBottom = viewportTop + (viewport?.height || window.innerHeight)
+      // The dialog clips the list, so only its part left visible by the keyboard counts.
+      const top = Math.max(viewportTop, dialog?.top ?? viewportTop)
+      const bottom = Math.min(viewportBottom, dialog?.bottom ?? viewportBottom)
+      const below = bottom - bounds.bottom - 8, room = bounds.top - top - 8
+      const above = below < 180 && room > below
+      // At least three options stay visible, even if the browser misreports the room.
+      const maxHeight = Math.min(300, Math.max(132, above ? room : below))
+      setLayout(previous => previous.above === above && previous.maxHeight === maxHeight ? previous : { above, maxHeight })
     }
     reposition()
     window.addEventListener('resize', reposition)
@@ -283,46 +285,50 @@ function ActionPicker({ selected, change, disabled }: {
   }}>
     <label htmlFor={id}>{t('events.picker.label')}</label>
     <div className="event-picker-control">
-      <input id={id} ref={field} role="combobox" name="action_id" autoComplete="off" aria-autocomplete="list"
-        aria-expanded={expanded} aria-controls={expanded ? `${id}-options` : undefined}
-        aria-activedescendant={expanded && suggestions[active] ? `${id}-option-${suggestions[active].id}` : undefined}
-        value={expanded ? search : selected?.title || ''} placeholder={selected?.title || t('events.picker.placeholder')}
-        maxLength={200} disabled={disabled} onFocus={openOptions} onClick={openOptions}
-        onChange={event => { setSearch(event.target.value); setPage(1); setActive(-1); setOpen(true) }}
-        onKeyDown={event => {
-          if (event.nativeEvent.isComposing) return
-          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            event.preventDefault()
-            if (!expanded) { openOptions(); return }
-            setActive(index => event.key === 'ArrowDown'
-              ? Math.min(index + 1, suggestions.length - 1)
-              : index < 0 ? suggestions.length - 1 : Math.max(0, index - 1))
-          } else if (event.key === 'Tab') {
-            setOpen(false)
-          } else if (event.key === 'Enter' && expanded) {
-            event.preventDefault()
-            const item = suggestions[active]
-            if (item) choose({ id: item.id, title: item.title })
-          }
-        }} />
+      <div className="event-picker-anchor">
+        <input id={id} ref={field} role="combobox" name="action_id" autoComplete="off" aria-autocomplete="list"
+          aria-expanded={expanded} aria-controls={expanded ? `${id}-options` : undefined}
+          aria-activedescendant={expanded && suggestions[active] ? `${id}-option-${suggestions[active].id}` : undefined}
+          value={expanded ? search : selected?.title || ''} placeholder={selected?.title || t('events.picker.placeholder')}
+          maxLength={200} disabled={disabled} onFocus={openOptions} onClick={openOptions}
+          onChange={event => { setSearch(event.target.value); setPage(1); setActive(-1); setOpen(true) }}
+          onKeyDown={event => {
+            if (event.nativeEvent.isComposing) return
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              event.preventDefault()
+              if (!expanded) { openOptions(); return }
+              setActive(index => event.key === 'ArrowDown'
+                ? Math.min(index + 1, suggestions.length - 1)
+                : index < 0 ? suggestions.length - 1 : Math.max(0, index - 1))
+            } else if (event.key === 'Tab') {
+              setOpen(false)
+            } else if (event.key === 'Enter' && expanded) {
+              event.preventDefault()
+              const item = suggestions[active]
+              if (item) choose({ id: item.id, title: item.title })
+            }
+          }} />
+        {/* Safari does not focus pressed buttons: keeping the focus in the field keeps the list open. */}
+        {expanded && <div ref={popup} className="event-picker-dropdown" data-placement={layout.above ? 'top' : 'bottom'}
+          style={{ maxHeight: layout.maxHeight }} onMouseDown={event => event.preventDefault()}>
+          {query.isPending && <Notice>{t('events.picker.loading')}</Notice>}
+          {query.error && <><Notice error>{errorMessage(query.error)}</Notice>
+            <button type="button" className="quiet" onClick={() => void query.refetch()}>{t('events.picker.retry')}</button></>}
+          {query.data && !query.error && !suggestions.length && <Notice>{t('events.picker.empty')}</Notice>}
+          <ul ref={options} id={`${id}-options`} role="listbox" aria-label={t('events.picker.options')} className="event-picker-list">
+            {suggestions.map((item, index) => <li key={item.id} id={`${id}-option-${item.id}`} role="option" tabIndex={-1}
+              aria-selected={selected?.id === item.id} data-active={active === index || undefined}
+              onClick={() => choose({ id: item.id, title: item.title })}>
+              <span>{item.title}</span>{selected?.id === item.id && <Icon name="check" size={16} />}
+            </li>)}
+          </ul>
+          {query.data && !query.error && <Pagination page={page} pages={query.data.pages}
+            change={value => { setPage(value); setActive(-1) }} busy={query.isFetching} label={t('events.picker.pagination')} />}
+        </div>}
+      </div>
       {selected && <button type="button" className="quiet icon-button" disabled={disabled}
         aria-label={t('events.picker.remove')} title={t('events.picker.remove')} onClick={() => choose(null)}><Icon name="close" size={16} /></button>}
     </div>
-    {expanded && <div ref={popup} className="event-picker-dropdown" style={position}>
-      {query.isPending && <Notice>{t('events.picker.loading')}</Notice>}
-      {query.error && <><Notice error>{errorMessage(query.error)}</Notice>
-        <button type="button" className="quiet" onClick={() => void query.refetch()}>{t('events.picker.retry')}</button></>}
-      {query.data && !query.error && !suggestions.length && <Notice>{t('events.picker.empty')}</Notice>}
-      <ul ref={options} id={`${id}-options`} role="listbox" aria-label={t('events.picker.options')} className="event-picker-list">
-        {suggestions.map((item, index) => <li key={item.id} id={`${id}-option-${item.id}`} role="option" tabIndex={-1}
-          aria-selected={selected?.id === item.id} data-active={active === index || undefined}
-          onClick={() => choose({ id: item.id, title: item.title })}>
-          <span>{item.title}</span>{selected?.id === item.id && <Icon name="check" size={16} />}
-        </li>)}
-      </ul>
-      {query.data && !query.error && <Pagination page={page} pages={query.data.pages}
-        change={value => { setPage(value); setActive(-1) }} busy={query.isFetching} label={t('events.picker.pagination')} />}
-    </div>}
   </div>
 }
 
