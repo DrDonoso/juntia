@@ -1076,6 +1076,7 @@ export interface StoredDocumentVersionOut {
   location: string[]
   media_type: string
   number: number
+  previewable: boolean
   purged_at: string | null
   sha256: string
   size: number

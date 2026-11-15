@@ -10,12 +10,14 @@ import { byteSize } from './community-action-shared'
 import { DocumentLimitsCard, DocumentNeighborsCard, DocumentStorageCard, PreviousDocumentVersions } from './documents-admin'
 import { compareText, dateTimeFormat, formatNumber, useI18n } from './i18n'
 import { Icon } from './icons'
-import { Modal, Notice, Pagination, authorName, connectionTime, useAction } from './shared'
+import { Modal, Notice, Pagination, SortableHeader, authorName, connectionTime, useAction, useTableSort } from './shared'
 
 type Level = 'normal' | 'warning' | 'full'
-type Sort = 'largest' | 'oldest'
-type ImageSort = 'newest' | 'largest'
-type Author = { id: number; name: string; deleted: boolean }
+type NeighborColumn = 'neighbor' | 'active' | 'withdrawn' | 'images' | 'quota'
+const NEIGHBOR_SIZES: Record<Exclude<NeighborColumn, 'neighbor'>, (value: ResidentStorageOut) => number> = {
+  active: value => value.active_bytes, withdrawn: value => value.withdrawn_bytes,
+  images: value => value.image_bytes, quota: value => value.stored_bytes,
+}
 // Kept as data, not text, so the notice follows a language switch.
 type Outcome = { kind: 'purged'; filename: string; size: number } | { kind: 'stale' }
 
@@ -104,20 +106,24 @@ function useNeighborName() {
 function NeighborsCard({ storage }: { storage: StorageOut }) {
   const { t } = useI18n()
   const heading = useId(), neighborName = useNeighborName()
+  const sort = useTableSort<NeighborColumn>('quota', column => column === 'neighbor' ? 'asc' : 'desc')
   const title = t('storage.neighbors.title')
+  const rows = [...storage.residents].sort((left, right) => {
+    const names = compareText(neighborName(left), neighborName(right))
+    const order = sort.key === 'neighbor' ? names : NEIGHBOR_SIZES[sort.key](left) - NEIGHBOR_SIZES[sort.key](right)
+    return (sort.direction === 'asc' ? order : -order) || names || left.user_id - right.user_id
+  })
+  const header = (column: NeighborColumn, numeric = false) => {
+    const label = t(`storage.neighbors.columns.${column}`)
+    return <SortableHeader label={label} sortLabel={t('storage.sortBy', { column: label })} numeric={numeric}
+      active={sort.key === column} direction={sort.direction} change={() => sort.change(column)} />
+  }
   return <section className="card" aria-labelledby={heading}>
     <h2 id={heading}>{title}</h2>
-    <p className="muted">{t('storage.neighbors.description', { size: byteSize(storage.resident_quota_bytes) })}</p>
-    {storage.residents.length === 0 ? <p className="empty">{t('storage.neighbors.empty')}</p>
+    {rows.length === 0 ? <p className="empty">{t('storage.neighbors.empty')}</p>
       : <div className="table-scroll"><table className="storage-table" aria-label={title}>
-        <thead><tr>
-          <th scope="col">{t('storage.neighbors.columns.neighbor')}</th>
-          <th scope="col" className="numeric">{t('storage.neighbors.columns.active')}</th>
-          <th scope="col" className="numeric">{t('storage.neighbors.columns.withdrawn')}</th>
-          <th scope="col" className="numeric">{t('storage.neighbors.columns.images')}</th>
-          <th scope="col">{t('storage.neighbors.columns.quota')}</th>
-        </tr></thead>
-        <tbody>{storage.residents.map(resident => {
+        <thead><tr>{header('neighbor')}{header('active', true)}{header('withdrawn', true)}{header('images', true)}{header('quota')}</tr></thead>
+        <tbody>{rows.map(resident => {
           const name = neighborName(resident)
           return <tr key={resident.user_id}>
             <th scope="row"><span className="storage-neighbor">{name}</span>
@@ -171,27 +177,25 @@ function WithdrawnTime({ value }: { value: string }) {
   return <time dateTime={value} title={connectionTime(value)}>{dateTimeFormat({ dateStyle: 'medium' }).format(new Date(value))}</time>
 }
 
-function WithdrawnPDFs({ residents }: { residents: ResidentStorageOut[] }) {
+// The administrator's own copy, also while Actions is turned off.
+function storedPdfUrl(item: StoredAttachmentOut, action: 'preview' | 'download'): string {
+  return `/api/admin/storage/attachments/${item.id}/${action}`
+}
+
+// The latest withdrawn first, 20 per page.
+function WithdrawnPDFs() {
   const { t, rich } = useI18n()
-  const neighborName = useNeighborName()
-  const [sort, setSort] = useState<Sort>('largest'), [page, setPage] = useState(1)
-  const [author, setAuthor] = useState<Author | null>(null)
+  const [page, setPage] = useState(1)
   const [purging, setPurging] = useState<StoredAttachmentOut | null>(null)
   const [outcome, setOutcome] = useState<Outcome | null>(null)
   const heading = useRef<HTMLHeadingElement>(null), headingId = useId()
-  const params = new URLSearchParams({ page: String(page), sort })
-  if (author) params.set('user_id', String(author.id))
   const query = useQuery({
-    queryKey: ['admin', 'storage', 'withdrawn', params.toString()],
-    queryFn: () => api<StoredAttachmentPage>(`/admin/storage/withdrawn?${params}`),
+    queryKey: ['admin', 'storage', 'withdrawn', page],
+    queryFn: () => api<StoredAttachmentPage>(`/admin/storage/withdrawn?page=${page}`),
     placeholderData: keepPreviousData, staleTime: 0,
   })
   // The deleted row took the focus with it: continue from the list, where the outcome is announced.
   useEffect(() => { if (outcome) heading.current?.focus() }, [outcome])
-  const authors: Author[] = residents.filter(resident => resident.withdrawn_files > 0 || resident.user_id === author?.id)
-    .map(resident => ({ id: resident.user_id, name: neighborName(resident), deleted: resident.account_deleted }))
-  if (author && !authors.some(option => option.id === author.id)) authors.push(author)
-  authors.sort((left, right) => compareText(left.name, right.name))
   function finish(next: Outcome) {
     setPurging(null); setOutcome(next)
     void cache.invalidateQueries({ queryKey: ['admin', 'storage'] })
@@ -201,22 +205,6 @@ function WithdrawnPDFs({ residents }: { residents: ResidentStorageOut[] }) {
   const title = t('storage.withdrawnPDFs.title')
   return <section className="card" aria-labelledby={headingId}>
     <h2 id={headingId} ref={heading} tabIndex={-1}>{title}</h2>
-    <p className="muted">{t('storage.withdrawnPDFs.description')}</p>
-    <div className="storage-filters">
-      <label>{t('storage.withdrawnPDFs.sort')}<select value={sort} onChange={event => {
-        setSort(event.target.value === 'oldest' ? 'oldest' : 'largest'); setPage(1)
-      }}>
-        <option value="largest">{t('storage.withdrawnPDFs.sorts.largest')}</option>
-        <option value="oldest">{t('storage.withdrawnPDFs.sorts.oldest')}</option>
-      </select></label>
-      <label>{t('storage.withdrawnPDFs.author')}<select value={author ? String(author.id) : ''} onChange={event => {
-        setAuthor(authors.find(option => String(option.id) === event.target.value) ?? null); setPage(1)
-      }}>
-        <option value="">{t('storage.withdrawnPDFs.everyone')}</option>
-        {authors.map(option => <option key={option.id} value={option.id}>
-          {option.deleted ? t('storage.withdrawnPDFs.deletedAuthor', { name: option.name }) : option.name}</option>)}
-      </select></label>
-    </div>
     {outcome?.kind === 'purged' && <Notice>{t('storage.withdrawnPDFs.purged', { filename: outcome.filename, size: byteSize(outcome.size) })}</Notice>}
     {outcome?.kind === 'stale' && <Notice error>{t('storage.withdrawnPDFs.stale')}</Notice>}
     {query.isPending && <Notice>{t('storage.withdrawnPDFs.loading')}</Notice>}
@@ -225,18 +213,24 @@ function WithdrawnPDFs({ residents }: { residents: ResidentStorageOut[] }) {
     {query.data && <>
       {query.data.total > 0 && <p className="muted">{t('storage.withdrawnPDFs.total', { count: query.data.total })}</p>}
       {query.data.items.length === 0
-        ? <p className="empty">{page > 1 ? t('storage.withdrawnPDFs.empty.page') : author ? t('storage.withdrawnPDFs.empty.author') : t('storage.withdrawnPDFs.empty.all')}</p>
+        ? <p className="empty">{page > 1 ? t('storage.withdrawnPDFs.empty.page') : t('storage.withdrawnPDFs.empty.all')}</p>
         : <ul className="action-attachment-list storage-withdrawn-list" aria-label={title} aria-busy={query.isFetching}>
           {query.data.items.map(item => {
             const withdrawnAt = item.withdrawn_at
             return <li key={item.id}>
               <div className="action-file-info"><strong>{item.filename}</strong>
-                <p className="muted">{byteSize(item.size)} · {t('storage.withdrawnPDFs.uploadedBy', { name: authorName(item.author, t) })}</p>
-                {withdrawnAt && <p className="muted">{rich('storage.withdrawnPDFs.withdrawnAt', { time: () => <WithdrawnTime value={withdrawnAt} /> })}</p>}
+                <p className="muted">{byteSize(item.size)} · {t('storage.withdrawnPDFs.uploadedBy', { name: authorName(item.author, t) })}
+                  {withdrawnAt && <> · {rich('storage.withdrawnPDFs.withdrawnAt', { time: () => <WithdrawnTime value={withdrawnAt} /> })}</>}</p>
                 <p><Link to={`/actions/${item.action_id}`}>#{item.action_id} · {item.action_title}</Link></p>
               </div>
-              <button type="button" className="secondary danger" aria-label={t('storage.withdrawnPDFs.deleteLabel', { filename: item.filename })}
-                onClick={() => { setOutcome(null); setPurging(item) }}><Icon name="trash" size={16} />{t('storage.withdrawnPDFs.delete')}</button>
+              <div className="storage-file-actions">
+                <a className="button secondary icon-button" href={storedPdfUrl(item, 'preview')} target="_blank" rel="noopener noreferrer"
+                  aria-label={t('actions.pdf.view', { filename: item.filename })} title={t('actions.pdf.viewTitle')}><Icon name="eye" /></a>
+                <a className="button secondary icon-button" href={storedPdfUrl(item, 'download')} download=""
+                  aria-label={t('actions.pdf.download', { filename: item.filename })} title={t('actions.pdf.downloadTitle')}><Icon name="download" /></a>
+                <button type="button" className="secondary danger" aria-label={t('storage.withdrawnPDFs.deleteLabel', { filename: item.filename })}
+                  onClick={() => { setOutcome(null); setPurging(item) }}><Icon name="trash" size={16} />{t('storage.withdrawnPDFs.delete')}</button>
+              </div>
             </li>
           })}
         </ul>}
@@ -277,27 +271,20 @@ function ImagePurgeDialog({ item, close, done }: { item: StoredImageOut; close: 
   </Modal>
 }
 
-function StoredImages({ residents }: { residents: ResidentStorageOut[] }) {
+// The newest first, 20 per page.
+function StoredImages() {
   const { t, rich } = useI18n()
-  const neighborName = useNeighborName()
-  const [sort, setSort] = useState<ImageSort>('newest'), [page, setPage] = useState(1)
-  const [author, setAuthor] = useState<Author | null>(null)
+  const [page, setPage] = useState(1)
   const [purging, setPurging] = useState<StoredImageOut | null>(null)
   const [outcome, setOutcome] = useState<Outcome | null>(null)
   const heading = useRef<HTMLHeadingElement>(null), headingId = useId()
-  const params = new URLSearchParams({ page: String(page), sort })
-  if (author) params.set('user_id', String(author.id))
   const query = useQuery({
-    queryKey: ['admin', 'storage', 'images', params.toString()],
-    queryFn: () => api<StoredImagePage>(`/admin/storage/images?${params}`),
+    queryKey: ['admin', 'storage', 'images', page],
+    queryFn: () => api<StoredImagePage>(`/admin/storage/images?page=${page}`),
     placeholderData: keepPreviousData, staleTime: 0,
   })
   // The deleted row took the focus with it: continue from the list, where the outcome is announced.
   useEffect(() => { if (outcome) heading.current?.focus() }, [outcome])
-  const authors: Author[] = residents.filter(resident => resident.image_files > 0 || resident.user_id === author?.id)
-    .map(resident => ({ id: resident.user_id, name: neighborName(resident), deleted: resident.account_deleted }))
-  if (author && !authors.some(option => option.id === author.id)) authors.push(author)
-  authors.sort((left, right) => compareText(left.name, right.name))
   function finish(next: Outcome) {
     setPurging(null); setOutcome(next)
     void cache.invalidateQueries({ queryKey: ['admin', 'storage'] })
@@ -305,22 +292,6 @@ function StoredImages({ residents }: { residents: ResidentStorageOut[] }) {
   const title = t('storage.storedImages.title')
   return <section className="card" aria-labelledby={headingId}>
     <h2 id={headingId} ref={heading} tabIndex={-1}>{title}</h2>
-    <p className="muted">{t('storage.storedImages.description')}</p>
-    <div className="storage-filters">
-      <label>{t('storage.storedImages.sort')}<select value={sort} onChange={event => {
-        setSort(event.target.value === 'largest' ? 'largest' : 'newest'); setPage(1)
-      }}>
-        <option value="newest">{t('storage.storedImages.sorts.newest')}</option>
-        <option value="largest">{t('storage.storedImages.sorts.largest')}</option>
-      </select></label>
-      <label>{t('storage.withdrawnPDFs.author')}<select value={author ? String(author.id) : ''} onChange={event => {
-        setAuthor(authors.find(option => String(option.id) === event.target.value) ?? null); setPage(1)
-      }}>
-        <option value="">{t('storage.withdrawnPDFs.everyone')}</option>
-        {authors.map(option => <option key={option.id} value={option.id}>
-          {option.deleted ? t('storage.withdrawnPDFs.deletedAuthor', { name: option.name }) : option.name}</option>)}
-      </select></label>
-    </div>
     {outcome?.kind === 'purged' && <Notice>{t('storage.storedImages.purged', { filename: outcome.filename, size: byteSize(outcome.size) })}</Notice>}
     {query.isPending && <Notice>{t('storage.storedImages.loading')}</Notice>}
     {query.error && <><Notice error>{errorMessage(query.error)}</Notice>
@@ -328,7 +299,7 @@ function StoredImages({ residents }: { residents: ResidentStorageOut[] }) {
     {query.data && <>
       {query.data.total > 0 && <p className="muted">{t('storage.storedImages.total', { count: query.data.total })}</p>}
       {query.data.items.length === 0
-        ? <p className="empty">{page > 1 ? t('storage.storedImages.empty.page') : author ? t('storage.storedImages.empty.author') : t('storage.storedImages.empty.all')}</p>
+        ? <p className="empty">{page > 1 ? t('storage.storedImages.empty.page') : t('storage.storedImages.empty.all')}</p>
         : <ul className="action-attachment-list storage-image-list" aria-label={title} aria-busy={query.isFetching}>
           {query.data.items.map(item => <li key={item.id}>
             <a className="storage-image-thumb" href={imageFileUrl(item)} target="_blank" rel="noopener noreferrer"
@@ -340,8 +311,9 @@ function StoredImages({ residents }: { residents: ResidentStorageOut[] }) {
                 size: byteSize(item.size), width: formatNumber(item.width), height: formatNumber(item.height),
                 section: t(`storage.storedImages.sections.${item.scope}`),
               })}</p>
-              <p className="muted">{t('storage.withdrawnPDFs.uploadedBy', { name: authorName(item.author, t) })}</p>
-              <p className="muted">{rich('storage.storedImages.uploadedAt', { time: () => <WithdrawnTime value={item.created_at} /> })}</p>
+              <p className="muted">{t('storage.withdrawnPDFs.uploadedBy', { name: authorName(item.author, t) })} · {rich('storage.storedImages.uploadedAt', {
+                time: () => <WithdrawnTime value={item.created_at} />,
+              })}</p>
             </div>
             <button type="button" className="secondary danger" aria-label={t('storage.storedImages.deleteLabel', { filename: item.filename })}
               onClick={() => { setOutcome(null); setPurging(item) }}><Icon name="trash" size={16} />{t('storage.storedImages.delete')}</button>
@@ -378,9 +350,9 @@ export function StoragePage() {
       <DocumentLimitsCard storage={summary.data.documents} />
       <NeighborsCard storage={summary.data} />
     </>}
-    <WithdrawnPDFs residents={summary.data?.residents ?? []} />
-    <StoredImages residents={summary.data?.residents ?? []} />
+    <WithdrawnPDFs />
+    <StoredImages />
     {summary.data && <DocumentNeighborsCard storage={summary.data.documents} />}
-    <PreviousDocumentVersions storage={summary.data?.documents} />
+    <PreviousDocumentVersions />
   </>
 }

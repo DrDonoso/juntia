@@ -677,19 +677,21 @@ images pasted into descriptions and comments use:
   size in MiB, which moves the slider; the (i) next to each name explains it on hover, focus or tap.
   **Save limits** applies them at once to new uploads, and the page warns when a quota is below
   what is already stored. **Change the limits**, on the Documents card, leads here.
-- **Storage by neighbor**: each resident against the personal quota, largest first, deleted
-  accounts included;
-- **Withdrawn PDFs**: the withdrawn PDFs that still use space, largest or oldest withdrawal first,
-  optionally for one uploader. **Delete permanently** removes a file for good after a confirmation
-  that names its action and the space it frees.
-- **Images in texts**: every stored image with a thumbnail, its size, dimensions, section and
-  uploader, newest or largest first, optionally for one uploader. **Delete permanently** removes it
-  for good after a confirmation; the texts and history entries that show it then say "Image not
-  available".
+- **Storage by neighbor**: each resident against the personal quota, deleted accounts included.
+  The neighbors using the most space come first; each column header sorts by that column, and a
+  second click reverses it;
+- **Withdrawn PDFs**: the withdrawn PDFs that still use space, the latest withdrawn first, 20 per
+  page, each with its size, uploader, withdrawal date and action. The eye opens it in a new tab and
+  the arrow downloads it, also while Actions is turned off. **Delete permanently** removes a file
+  for good after a confirmation that names its action and the space it frees.
+- **Images in texts**: every stored image with a thumbnail, its size, dimensions, section, uploader
+  and upload date, the newest first, 20 per page. **Delete permanently** removes it for good after
+  a confirmation; the texts and history entries that show it then say "Image not available".
 - **Documents**, **Documents by neighbor** and **Earlier versions of documents**: shared documents
   have their own quotas. The cards show current files, earlier versions, deleted documents not yet
-  purged, the administrator's uploads and unfinished uploads; the list of earlier versions,
-  largest or oldest first and optionally for one uploader, deletes a replaced version permanently.
+  purged, the administrator's uploads and unfinished uploads; the table of neighbors sorts like the
+  one above, and the list of earlier versions, the latest uploaded first, previews PDFs, pictures
+  and videos, downloads any version and deletes a replaced version permanently.
 
 The action quotas and the reserve are server settings; the quotas, the reserve and the permanent
 deletion (purge) are explained in [storage quotas and purging](deployment.md#storage-quotas-and-purging)

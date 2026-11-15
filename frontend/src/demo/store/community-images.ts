@@ -170,12 +170,9 @@ export function purgeImage(image: DemoCommunityImage, at: string): void {
   image.bytes = new Uint8Array(0)
 }
 
-export type ImageSort = 'newest' | 'largest'
-
-/** Stored images (not purged), of one resident when `userId` is set: newest or largest first. */
-export function storedImageList(state: CommunityState, sort: ImageSort, userId: number | null): DemoCommunityImage[] {
-  const newest = (a: DemoCommunityImage, b: DemoCommunityImage) => compareText(b.createdAt, a.createdAt) || compareText(b.id, a.id)
+/** Stored images (not purged): the newest first. */
+export function storedImageList(state: CommunityState): DemoCommunityImage[] {
   return state.images
-    .filter(image => image.purgedAt === null && (userId === null || (image.author.kind === 'resident' && image.author.user_id === userId)))
-    .sort(sort === 'largest' ? (a, b) => b.size - a.size || newest(a, b) : newest)
+    .filter(image => image.purgedAt === null)
+    .sort((a, b) => compareText(b.createdAt, a.createdAt) || compareText(b.id, a.id))
 }

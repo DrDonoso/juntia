@@ -14,6 +14,7 @@ export const storage = {
   active: 'Active',
   withdrawn: 'Withdrawn',
   images: 'Images',
+  sortBy: 'Sort by: {column}',
   community: {
     title: 'Community',
     meter: 'Community quota used',
@@ -38,7 +39,6 @@ export const storage = {
   },
   neighbors: {
     title: 'Storage by neighbor',
-    description: 'Each neighbor can keep up to {size} of PDFs and images, counting withdrawn PDFs. The neighbors using the most space come first.',
     columns: {
       neighbor: 'Neighbor',
       active: 'Active PDFs',
@@ -53,15 +53,6 @@ export const storage = {
   },
   withdrawnPDFs: {
     title: 'Withdrawn PDFs',
-    description: 'Withdrawn PDFs no longer appear in their action, but they stay in its history and keep using space until you delete them permanently.',
-    sort: 'Sort by',
-    sorts: {
-      largest: 'Largest first',
-      oldest: 'Oldest withdrawal first',
-    },
-    author: 'Uploaded by',
-    everyone: 'Everyone',
-    deletedAuthor: '{name} (deleted account)',
     loading: 'Loading withdrawn PDFs…',
     total: { one: '{count} withdrawn PDF still uses space.', other: '{count} withdrawn PDFs still use space.' },
     uploadedBy: 'Uploaded by {name}',
@@ -70,7 +61,6 @@ export const storage = {
     deleteLabel: 'Delete permanently: {filename}',
     empty: {
       all: 'There are no withdrawn PDFs using space.',
-      author: 'This neighbor has no withdrawn PDFs using space.',
       page: 'There are no withdrawn PDFs on this page.',
     },
     pagination: 'withdrawn PDFs',
@@ -79,12 +69,6 @@ export const storage = {
   },
   storedImages: {
     title: 'Images in texts',
-    description: 'Images pasted into the descriptions of actions and events and into comments. They keep using space while any text or history entry may show them, even after they are removed from the text, until you delete them permanently.',
-    sort: 'Sort by',
-    sorts: {
-      newest: 'Newest first',
-      largest: 'Largest first',
-    },
     loading: 'Loading images…',
     total: { one: '{count} image uses space.', other: '{count} images use space.' },
     details: '{size} · {width} × {height} px · {section}',
@@ -98,7 +82,6 @@ export const storage = {
     deleteLabel: 'Delete permanently: {filename}',
     empty: {
       all: 'No images are stored.',
-      author: 'This neighbor has no stored images.',
       page: 'There are no images on this page.',
     },
     pagination: 'images',
@@ -136,19 +119,19 @@ export const storage = {
     near: 'The documents quota is almost full. Delete earlier versions or deleted documents permanently to free space.',
     neighbors: {
       title: 'Documents by neighbor',
-      description: 'Each neighbor can keep up to {size} of document versions, counting earlier versions and deleted documents. The neighbors using the most space come first.',
       versions: 'Versions',
       empty: 'No neighbor has uploaded documents yet.',
     },
     previousVersions: {
       title: 'Earlier versions of documents',
-      description: 'Versions replaced by a newer upload stay downloadable from the document information and keep using space until you delete them permanently. Deleted documents are purged as a whole from Deleted documents.',
-      oldest: 'Oldest first',
       loading: 'Loading earlier versions…',
+      total: { one: '{count} earlier version uses space.', other: '{count} earlier versions use space.' },
       empty: 'There are no earlier versions using space.',
       emptyPage: 'There are no earlier versions on this page.',
       pagination: 'earlier versions',
       uploadedAt: 'Uploaded: <time></time>',
+      preview: 'Preview version {number} of {name}',
+      download: 'Download version {number} of {name}',
       deleteLabel: 'Delete permanently: version {number} of {name}',
       purgeTitle: 'Delete version permanently',
       keeps: 'The document, its other versions and its history are kept.',

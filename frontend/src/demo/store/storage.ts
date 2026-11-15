@@ -15,6 +15,7 @@ import { DemoApiError } from '../core/errors'
 import { findResident } from './core'
 import { compareText, type CommunityState, type DemoActionAttachment, type DemoCommunityImage } from './community-model'
 import { casefold } from './community-text'
+import { documentType } from './shared-document-files'
 import { findDocument, folderNames, folderPath, versionOut, type DemoDocument, type DemoDocumentVersion, type SharedDocumentsState } from './shared-documents'
 
 export const MIB = 1024 * 1024
@@ -124,18 +125,11 @@ function residentStorage(userId: number, { attachments, images }: AuthorFiles): 
   }
 }
 
-export type WithdrawnSort = 'largest' | 'oldest'
-
-/**
- * Withdrawn PDFs that still use storage (the candidates for a purge), of one resident when
- * `userId` is set: the largest first (then the oldest withdrawals), or the oldest withdrawals first.
- */
-export function withdrawnAttachments(state: CommunityState, sort: WithdrawnSort, userId: number | null): DemoActionAttachment[] {
-  const byWithdrawal = (a: DemoActionAttachment, b: DemoActionAttachment) =>
-    compareText(a.withdrawnAt ?? '', b.withdrawnAt ?? '') || compareText(a.id, b.id)
+/** Withdrawn PDFs that still use storage (the candidates for a purge): the latest withdrawn first. */
+export function withdrawnAttachments(state: CommunityState): DemoActionAttachment[] {
   return storedAttachments(state)
-    .filter(attachment => attachment.withdrawnAt !== null && (userId === null || residentAuthor(attachment.author) === userId))
-    .sort(sort === 'oldest' ? byWithdrawal : (a, b) => b.size - a.size || byWithdrawal(a, b))
+    .filter(attachment => attachment.withdrawnAt !== null)
+    .sort((a, b) => compareText(b.withdrawnAt ?? '', a.withdrawnAt ?? '') || compareText(b.id, a.id))
 }
 
 /**
@@ -200,18 +194,16 @@ function documentResident(documents: SharedDocumentsState, userId: number, versi
 }
 
 /**
- * Earlier versions of documents that still use storage (the candidates for a purge), of one
- * resident when `userId` is set: the largest first (then the oldest), or the oldest first. Deleted
- * documents are purged as a whole from Deleted documents instead.
+ * Earlier versions of documents that still use storage (the candidates for a purge): the latest
+ * uploaded first. Deleted documents are purged as a whole from Deleted documents instead.
  */
-export function previousDocumentVersions(documents: SharedDocumentsState, sort: WithdrawnSort, userId: number | null): DemoDocumentVersion[] {
-  const byAge = (a: DemoDocumentVersion, b: DemoDocumentVersion) => compareText(a.createdAt, b.createdAt) || compareText(a.id, b.id)
+export function previousDocumentVersions(documents: SharedDocumentsState): DemoDocumentVersion[] {
   return storedDocumentVersions(documents)
     .filter(version => {
       const document = versionDocument(documents, version)
-      return document.deletedAt === null && version.number !== document.currentNumber && (userId === null || residentAuthor(version.author) === userId)
+      return document.deletedAt === null && version.number !== document.currentNumber
     })
-    .sort(sort === 'oldest' ? byAge : (a, b) => b.size - a.size || byAge(a, b))
+    .sort((a, b) => compareText(b.createdAt, a.createdAt) || compareText(b.id, a.id))
 }
 
 export function storedDocumentVersionOut(documents: SharedDocumentsState, version: DemoDocumentVersion): StoredDocumentVersionOut {
@@ -219,5 +211,6 @@ export function storedDocumentVersionOut(documents: SharedDocumentsState, versio
   return {
     ...versionOut(version), document_id: document.id, document_name: document.name,
     location: folderNames(folderPath(documents, document.folderId)),
+    previewable: documentType(version.extension).previewType !== null,
   }
 }

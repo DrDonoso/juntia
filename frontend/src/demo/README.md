@@ -192,7 +192,8 @@ Every operation of `src/api/openapi.json` belongs to exactly one module (`{x}` i
   `POST /api/auth/reset-password`, `POST /api/auth/google/start`, `POST|DELETE /api/auth/google/link`,
   `PATCH /api/admin/settings/general`, `PATCH /api/admin/settings/features/{feature}`.
 - **storage** (`handlers/storage.ts`, SEC-03): `GET /api/admin/storage`,
-  `GET /api/admin/storage/withdrawn`, `POST /api/admin/storage/attachments/{attachment_id}/purge`,
+  `GET /api/admin/storage/withdrawn`, `GET /api/admin/storage/attachments/{attachment_id}/preview|download`,
+  `POST /api/admin/storage/attachments/{attachment_id}/purge`,
   `GET /api/admin/storage/images`, `GET /api/admin/storage/images/{image_id}/file`,
   `POST /api/admin/storage/images/{image_id}/purge`, `GET /api/admin/storage/document-versions`,
   `POST /api/admin/storage/document-versions/{version_id}/purge`.
@@ -202,7 +203,7 @@ Every operation of `src/api/openapi.json` belongs to exactly one module (`{x}` i
   `POST /api/admin/documents/deletions/{deletion_id}/restore|purge`,
   `GET /api/admin/documents/files/{document_id}` and its `/history`,
   `GET /api/admin/documents/folders/{folder_id}/history`,
-  `GET /api/admin/documents/versions/{version_id}/download`,
+  `GET /api/admin/documents/versions/{version_id}/download|preview`,
   `GET|PATCH /api/admin/settings/documents`.
 
 Any other `/api` request reaches the catch-all: a 501 `not_implemented` and a console error
@@ -246,16 +247,17 @@ them in its `documents` block, and their earlier versions are listed and purged 
   pixels a side, 40 megapixels) and served by the section they were uploaded to. The scenario has
   none.
 - The storage page lists the residents who store PDFs (largest first; deleted accounts by the
-  author name of their latest PDF) and the withdrawn PDFs still stored (`sort=largest|oldest`,
-  `user_id`, 20 per page). The scenario has three, by different authors: Daniel Mensah's quote
-  attached by mistake (CCTV), the administrator's draft quote (lift) and Grace Liu's outdated
-  subsidy summary (solar panels).
+  author name of their latest PDF) and the withdrawn PDFs still stored (the latest withdrawn first,
+  20 per page), which the administrator can open (`/preview`, `/download`) also while Actions is
+  off. The scenario has three, by different authors: Daniel Mensah's quote attached by mistake
+  (CCTV), the administrator's draft quote (lift) and Grace Liu's outdated subsidy summary (solar
+  panels).
 - A purge (`{version}`, administrator only) answers 409 `action_attachment_active` for active PDFs
   and 409 `action_stale` for another version, and the purged PDF unchanged when repeated. It sets
   `purged_at`, bumps the PDF's version, empties its bytes and records an `attachment_purged` entry
   by the Technical administrator (`filename`, `size` and `sha256` to null); the action's activity
   date moves, not its version. Downloads and previews then answer 410 `action_attachment_purged`.
-- The images list (`sort=newest|largest`, `user_id`, 20 per page) shows every stored image, and the
+- The images list (the newest first, 20 per page) shows every stored image, and the
   administrator's copy (`/file`) answers while Actions or Events is off. An image purge (no body)
   empties its bytes and sets `purged_at`; repeating it answers the purged image unchanged, and its
   addresses then answer 410 `image_purged`.
@@ -297,8 +299,9 @@ and 20 GiB for the community.
 - Downloads and previews answer single `Range` requests with 206, and earlier versions download as
   `Name (version N).ext`. Archives are ZIPs with stored entries built in memory by `core/zip.ts`.
 - The administrator restores deletions (at the top level when their folder is gone, numbered when
-  the name is taken) or purges them, purges earlier versions from the storage page, and sets the
-  policy and the limits; these routes work while Documents is off.
+  the name is taken) or purges them, lists the earlier versions on the storage page (the latest
+  uploaded first, with `previewable`), opens and purges them, and sets the policy and the limits;
+  these routes work while Documents is off.
 - Not simulated: the four concurrent archives (503 `document_archive_busy`), the disk reserve (507
   `storage_low_space`) and missing or unreadable stored files. The demo writes no ZIP64, so an
   archive over 4 GiB answers 422 `document_archive_too_large`, and office files with ZIP64, bzip2

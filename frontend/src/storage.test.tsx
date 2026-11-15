@@ -49,7 +49,11 @@ const stamp = '2026-10-10T10:00:00Z'
 const budget: StoredDocumentVersionOut = {
   id: 'version-1', number: 1, extension: 'xlsx', media_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   size: 60 * MiB, sha256: 'c'.repeat(64), author: { kind: 'resident', user_id: 7, name: 'Alice' }, created_at: stamp,
-  purged_at: null, document_id: 4, document_name: 'Budget.xlsx', location: ['Accounts'],
+  purged_at: null, document_id: 4, document_name: 'Budget.xlsx', location: ['Accounts'], previewable: false,
+}
+const rules: StoredDocumentVersionOut = {
+  ...budget, id: 'version-2', extension: 'pdf', media_type: 'application/pdf', size: MiB, document_id: 5,
+  document_name: 'Rules.pdf', location: [], previewable: true,
 }
 const quote: StoredAttachmentOut = {
   id: 'pdf-1', filename: 'old-quote.pdf', size: 40 * MiB, sha256: 'a'.repeat(64),
@@ -216,13 +220,15 @@ test('a disk the server cannot read is explained without an alarm', async () => 
   expect(screen.queryByRole('alert')).toBeNull()
 })
 
-test('neighbors are listed in the order returned, with their quota use and deleted accounts flagged', async () => {
-  summary.residents = [alice, ben, { ...carol, name: '' }]
+test('neighbors come sorted by quota used and can be sorted by any column, with deleted accounts flagged', async () => {
+  summary.residents = [ben, { ...carol, name: '' }, alice]
   renderPage()
   const table = await screen.findByRole('table', { name: 'Storage by neighbor' })
   expect(within(table).getAllByRole('columnheader').map(header => header.textContent)).toEqual(['Neighbor', 'Active PDFs', 'Withdrawn PDFs', 'Images', 'Quota used'])
+  expect(within(table).getByRole('columnheader', { name: 'Quota used' })).toHaveAttribute('aria-sort', 'descending')
+  const names = () => within(table).getAllByRole('row').slice(1).map(row => within(row).getByRole('rowheader').textContent)
+  expect(names()).toEqual(['Alice', 'BenDeleted account', 'Neighbor #9'])
   const rows = within(table).getAllByRole('row').slice(1)
-  expect(rows.map(row => within(row).getByRole('rowheader').textContent)).toEqual(['Alice', 'BenDeleted account', 'Neighbor #9'])
   expect(rows[0]).toHaveTextContent('200 MiB10 PDFs')
   expect(rows[0]).toHaveTextContent('40 MiB2 PDFs')
   expect(rows[0]).toHaveTextContent('240 MiB of 250 MiB used')
@@ -233,7 +239,18 @@ test('neighbors are listed in the order returned, with their quota use and delet
   expect(within(rows[1]).getByRole('meter', { name: 'Quota used by Ben' })).toHaveAttribute('data-level', 'normal')
   expect(rows[2]).toHaveTextContent('3 MiB2 images')
   expect(rows[2]).toHaveTextContent('8 MiB of 250 MiB used')
-  expect(screen.getByText('Each neighbor can keep up to 250 MiB of PDFs and images, counting withdrawn PDFs. The neighbors using the most space come first.')).toBeVisible()
+  // Sizes start with the largest; equal ones keep the order of names.
+  fireEvent.click(within(table).getByRole('button', { name: 'Sort by: Images' }))
+  expect(names()).toEqual(['Neighbor #9', 'Alice', 'BenDeleted account'])
+  expect(within(table).getByRole('columnheader', { name: 'Images' })).toHaveAttribute('aria-sort', 'descending')
+  expect(within(table).getByRole('columnheader', { name: 'Quota used' })).toHaveAttribute('aria-sort', 'none')
+  fireEvent.click(within(table).getByRole('button', { name: 'Sort by: Images' }))
+  expect(names()).toEqual(['Alice', 'BenDeleted account', 'Neighbor #9'])
+  expect(within(table).getByRole('columnheader', { name: 'Images' })).toHaveAttribute('aria-sort', 'ascending')
+  fireEvent.click(within(table).getByRole('button', { name: 'Sort by: Neighbor' }))
+  expect(within(table).getByRole('columnheader', { name: 'Neighbor' })).toHaveAttribute('aria-sort', 'ascending')
+  fireEvent.click(within(table).getByRole('button', { name: 'Sort by: Neighbor' }))
+  expect(names()).toEqual(['Neighbor #9', 'BenDeleted account', 'Alice'])
 })
 
 test('without stored PDFs the page says so', async () => {
@@ -250,9 +267,12 @@ test('without stored PDFs the page says so', async () => {
   expect(screen.queryByRole('list', { name: 'Images in texts' })).toBeNull()
 })
 
-test('shared documents have their own quotas, neighbors and earlier versions to purge', async () => {
-  summary.documents.residents = [{ user_id: 7, name: 'Alice', account_deleted: false, stored_bytes: 1946 * MiB, versions: 14 }]
-  versions = [budget]
+test('shared documents have their own quotas, neighbors and earlier versions to open and purge', async () => {
+  summary.documents.residents = [
+    { user_id: 7, name: 'Alice', account_deleted: false, stored_bytes: 1946 * MiB, versions: 14 },
+    { user_id: 9, name: 'Carol', account_deleted: false, stored_bytes: 10 * MiB, versions: 30 },
+  ]
+  versions = [rules, budget]
   renderPage()
   const documents = await findRegion('Documents')
   expect(documents.getByText('300 MiB of 20 GiB used')).toBeVisible()
@@ -260,12 +280,30 @@ test('shared documents have their own quotas, neighbors and earlier versions to 
   expect(documents.getByText('Earlier versions').nextElementSibling).toHaveTextContent('60 MiB · 2 versions')
   expect(documents.getByText('Deleted, not purged').nextElementSibling).toHaveTextContent('40 MiB · 1 file')
   expect(documents.getByText('Uploads in progress').nextElementSibling).toHaveTextContent('5 MiB · 1 upload')
-  const neighbors = within(screen.getByRole('table', { name: 'Documents by neighbor' }))
+  const table = screen.getByRole('table', { name: 'Documents by neighbor' })
+  const neighbors = within(table)
   expect(neighbors.getByRole('meter', { name: 'Quota used by Alice' })).toHaveAttribute('data-level', 'warning')
+  const names = () => neighbors.getAllByRole('rowheader').map(header => header.textContent)
+  expect(names()).toEqual(['Alice', 'Carol'])
+  expect(neighbors.getByRole('columnheader', { name: 'Quota used' })).toHaveAttribute('aria-sort', 'descending')
+  fireEvent.click(neighbors.getByRole('button', { name: 'Sort by: Versions' }))
+  expect(names()).toEqual(['Carol', 'Alice'])
   expect(documents.getByRole('link', { name: 'Change the limits' })).toHaveAttribute('href', '#document-limits')
   expect(screen.getByRole('region', { name: 'Shared documents limits' })).toHaveAttribute('id', 'document-limits')
   const earlier = await findRegion('Earlier versions of documents')
-  fireEvent.click(await earlier.findByRole('button', { name: 'Delete permanently: version 1 of Budget.xlsx' }))
+  const list = await earlier.findByRole('list', { name: 'Earlier versions of documents' })
+  expect(requests).toContain('/api/admin/storage/document-versions?page=1')
+  expect(earlier.getByText('2 earlier versions use space.')).toBeVisible()
+  const [pdf, sheet] = within(list).getAllByRole('listitem')
+  expect(pdf).toHaveTextContent('Rules.pdfVersion 1 · 1 MiB · Uploaded by Alice · Uploaded:')
+  const preview = within(pdf).getByRole('link', { name: 'Preview version 1 of Rules.pdf' })
+  expect(preview).toHaveAttribute('href', '/api/admin/documents/versions/version-2/preview')
+  expect(preview).toHaveAttribute('target', '_blank')
+  expect(within(sheet).queryByRole('link', { name: /^Preview/ })).toBeNull()
+  expect(within(sheet).getByRole('link', { name: 'Download version 1 of Budget.xlsx' }))
+    .toHaveAttribute('href', '/api/admin/documents/versions/version-1/download')
+  expect(sheet).toHaveTextContent('Accounts')
+  fireEvent.click(within(sheet).getByRole('button', { name: 'Delete permanently: version 1 of Budget.xlsx' }))
   const dialog = within(screen.getByRole('dialog', { name: 'Delete version permanently' }))
   expect(dialog.getByText('It frees 60 MiB of the documents quotas of the community and of Alice.')).toBeVisible()
   fireEvent.click(dialog.getByRole('button', { name: 'Delete permanently' }))
@@ -315,11 +353,12 @@ test('the limits of shared documents are edited with a slider or an exact size a
   expect(discard).toBeDisabled()
 })
 
-test('stored images show a thumbnail, their details and author, and can be sorted and filtered', async () => {
+test('stored images show a thumbnail, their details and author, the newest first', async () => {
   renderPage()
   const section = region('Images in texts')
   const list = await section.findByRole('list', { name: 'Images in texts' })
-  expect(requests).toContain('/api/admin/storage/images?page=1&sort=newest')
+  expect(requests).toContain('/api/admin/storage/images?page=1')
+  expect(section.queryByRole('combobox')).toBeNull()
   const entry = within(list).getByRole('listitem')
   const thumbnail = within(entry).getByRole('link', { name: 'Open Leak on the roof.jpg at full size in a new tab' })
   expect(thumbnail).toHaveAttribute('href', '/api/admin/storage/images/img-1/file')
@@ -327,15 +366,9 @@ test('stored images show a thumbnail, their details and author, and can be sorte
   expect(thumbnail.querySelector('img')).toHaveAttribute('src', '/api/admin/storage/images/img-1/file')
   expect(entry).toHaveTextContent('Leak on the roof.jpg')
   expect(entry).toHaveTextContent('2 MiB · 2,560 × 1,920 px · Actions')
-  expect(entry).toHaveTextContent('Uploaded by Carol')
+  expect(entry).toHaveTextContent('Uploaded by Carol · Uploaded: 10 Oct 2026')
   expect(within(entry).getByText('Uploaded:', { exact: false }).querySelector('time')).toHaveAttribute('datetime', stamp)
   expect(section.getByText('1 image uses space.')).toBeVisible()
-  const author = section.getByRole('combobox', { name: 'Uploaded by' })
-  expect(within(author).getAllByRole('option').map(option => option.textContent)).toEqual(['Everyone', 'Carol'])
-  fireEvent.change(section.getByRole('combobox', { name: 'Sort by' }), { target: { value: 'largest' } })
-  await waitFor(() => expect(requests).toContain('/api/admin/storage/images?page=1&sort=largest'))
-  fireEvent.change(author, { target: { value: '9' } })
-  await waitFor(() => expect(requests).toContain('/api/admin/storage/images?page=1&sort=largest&user_id=9'))
 })
 
 test('deleting an image permanently is confirmed and refreshes the usage and the list', async () => {
@@ -369,42 +402,27 @@ test('an image the server could not delete keeps the dialog open with an explana
   expect(screen.queryByText(/has been deleted permanently/)).toBeNull()
 })
 
-test('withdrawn PDFs can be sorted, filtered by neighbor and paged', async () => {
+test('withdrawn PDFs, the latest withdrawn first, can be viewed and downloaded before deleting them, page by page', async () => {
   total = 21
   renderPage()
   const section = region('Withdrawn PDFs')
   const list = await section.findByRole('list', { name: 'Withdrawn PDFs' })
-  expect(requests).toContain('/api/admin/storage/withdrawn?page=1&sort=largest')
+  expect(requests).toContain('/api/admin/storage/withdrawn?page=1')
+  expect(section.queryByRole('combobox')).toBeNull()
   const entry = within(list).getByRole('listitem')
   expect(entry).toHaveTextContent('old-quote.pdf')
-  expect(entry).toHaveTextContent('40 MiB · Uploaded by Alice')
-  const withdrawnAt = within(entry).getByText('Withdrawn:', { exact: false })
-  expect(withdrawnAt).toHaveTextContent('Withdrawn: 10 Oct 2026')
-  expect(withdrawnAt.querySelector('time')).toHaveAttribute('datetime', stamp)
+  expect(entry).toHaveTextContent('40 MiB · Uploaded by Alice · Withdrawn: 10 Oct 2026')
+  expect(within(entry).getByText('Withdrawn:', { exact: false }).querySelector('time')).toHaveAttribute('datetime', stamp)
   expect(within(entry).getByRole('link', { name: '#12 · Entrance door' })).toHaveAttribute('href', '/actions/12')
+  const view = within(entry).getByRole('link', { name: 'View old-quote.pdf (new tab)' })
+  expect(view).toHaveAttribute('href', '/api/admin/storage/attachments/pdf-1/preview')
+  expect(view).toHaveAttribute('target', '_blank')
+  expect(within(entry).getByRole('link', { name: 'Download old-quote.pdf' })).toHaveAttribute('href', '/api/admin/storage/attachments/pdf-1/download')
   expect(within(entry).getByRole('button', { name: 'Delete permanently: old-quote.pdf' })).toHaveTextContent('Delete permanently')
   expect(section.getByText('21 withdrawn PDFs still use space.')).toBeVisible()
-
-  const author = section.getByRole('combobox', { name: 'Uploaded by' })
-  expect(within(author).getAllByRole('option').map(option => option.textContent)).toEqual(['Everyone', 'Alice', 'Ben (deleted account)'])
   fireEvent.click(section.getByRole('button', { name: 'Next: withdrawn PDFs' }))
-  await waitFor(() => expect(requests).toContain('/api/admin/storage/withdrawn?page=2&sort=largest'))
+  await waitFor(() => expect(requests).toContain('/api/admin/storage/withdrawn?page=2'))
   expect(await section.findByText('There are no withdrawn PDFs on this page.')).toBeVisible()
-  fireEvent.change(section.getByRole('combobox', { name: 'Sort by' }), { target: { value: 'oldest' } })
-  await waitFor(() => expect(requests).toContain('/api/admin/storage/withdrawn?page=1&sort=oldest'))
-  fireEvent.change(author, { target: { value: '8' } })
-  await waitFor(() => expect(requests).toContain('/api/admin/storage/withdrawn?page=1&sort=oldest&user_id=8'))
-  expect(author).toHaveDisplayValue('Ben (deleted account)')
-  withdrawn = []
-  total = 0
-  // The neighbor stays selectable after their last withdrawn PDF is gone.
-  summary.residents = [alice]
-  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
-  expect(await section.findByText('This neighbor has no withdrawn PDFs using space.')).toBeVisible()
-  expect(author).toHaveDisplayValue('Ben (deleted account)')
-  fireEvent.change(author, { target: { value: '' } })
-  await waitFor(() => expect(requests.at(-1)).toBe('/api/admin/storage/withdrawn?page=1&sort=oldest'))
-  expect(await section.findByText('There are no withdrawn PDFs using space.')).toBeVisible()
 })
 
 test('a permanent deletion is confirmed, then refreshes the usage, the list and the cached actions', async () => {
@@ -500,13 +518,11 @@ test('the page renders in Spanish and follows a language switch', async () => {
     .toHaveAttribute('aria-valuetext', expect.stringMatching(/^1,25 GiB de 2 GiB usados \(62,5\s%\)$/))
   expect(region('Disco del servidor').getByText('50 GiB libres de 200 GiB')).toBeVisible()
   expect(screen.getByRole('table', { name: 'Almacenamiento por vecino' })).toHaveTextContent('Cuenta eliminada')
+  expect(screen.getByRole('button', { name: 'Ordenar por: Cuota usada' })).toBeVisible()
   const section = region('PDFs retirados')
   const entry = within(await section.findByRole('list', { name: 'PDFs retirados' })).getByRole('listitem')
-  expect(entry).toHaveTextContent('40 MiB · Subido por Alice')
-  expect(entry).toHaveTextContent('Retirado: 10 oct 2026')
-  expect(section.getByRole('combobox', { name: 'Subido por' })).toHaveDisplayValue('Todos')
-  expect(within(section.getByRole('combobox', { name: 'Ordenar por' })).getAllByRole('option').map(option => option.textContent))
-    .toEqual(['Más grandes primero', 'Retirada más antigua primero'])
+  expect(entry).toHaveTextContent('40 MiB · Subido por Alice · Retirado: 10 oct 2026')
+  expect(within(entry).getByRole('link', { name: 'Visualizar old-quote.pdf (nueva pestaña)' })).toBeVisible()
   fireEvent.click(section.getByRole('button', { name: 'Eliminar definitivamente: old-quote.pdf' }))
   const dialog = within(screen.getByRole('dialog', { name: 'Eliminar PDF definitivamente' }))
   expect(dialog.getByText('El archivo se eliminará del servidor para siempre. No se puede deshacer.')).toBeVisible()

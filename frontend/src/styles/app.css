@@ -466,7 +466,7 @@ dt { color: var(--text-muted); }dd { text-align: right; font-family: var(--font-
 .table-sort-button:hover { color: var(--primary); text-decoration: underline; }
 th[aria-sort="ascending"] .table-sort-button,
 th[aria-sort="descending"] .table-sort-button { color: var(--primary); }
-.transactions-table th.numeric .table-sort-button { width: 100%; justify-content: flex-end; }
+.transactions-table th.numeric .table-sort-button, .storage-table th.numeric .table-sort-button { width: 100%; justify-content: flex-end; }
 .action-status-control { min-width: 0; }
 .action-status-control select { width: 100%; }
 .action-status-control .notice { padding: var(--space-2); font-size: var(--text-xs); }
@@ -632,9 +632,8 @@ dialog.action-history-dialog { width: min(900px, calc(100vw - 30px)); }
 .storage-neighbor { display: block; }
 .storage-quota { min-width: 170px; white-space: nowrap; }
 .storage-quota .storage-meter { margin-bottom: 0; }
-.storage-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); margin: var(--space-4) 0; }
-.storage-filters label { flex: 1 1 200px; }
-.storage-withdrawn-list > li > button { flex-shrink: 0; }
+.storage-file-actions { display: flex; flex-shrink: 0; align-items: center; gap: var(--space-2); }
+.storage-file-actions .icon-button { width: 44px; min-height: 44px; }
 .storage-withdrawn-list .action-file-info > p:last-child { font-size: var(--text-sm); }
 .storage-image-list > li { align-items: center; }
 .storage-image-list > li > button { flex-shrink: 0; }
@@ -645,7 +644,9 @@ dialog.action-history-dialog { width: min(900px, calc(100vw - 30px)); }
 .storage-purge-facts { display: grid; gap: var(--space-2); margin: var(--space-4) 0; padding-left: 20px; }
 @media (max-width: 720px) {
   .storage-figure { font-size: 19px; }
-  .storage-withdrawn-list > li > button, .storage-image-list > li > button { width: 100%; min-height: 44px; }
+  .storage-file-actions { width: 100%; }
+  .storage-file-actions > button { flex: 1 1 auto; min-height: 44px; }
+  .storage-image-list > li > button { width: 100%; min-height: 44px; }
 }
 @media (forced-colors: active) {
   .storage-meter { border: 1px solid CanvasText; }

@@ -2,13 +2,12 @@
 purging them."""
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.elements import ColumnElement
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse
 
@@ -23,6 +22,7 @@ from .community_actions import (
     check_version,
     lock_action,
     page_info,
+    pdf_response,
     session_actor,
 )
 from .community_documents import (
@@ -64,7 +64,7 @@ from .db import (
     User,
     utcnow,
 )
-from .document_files import remove_file, stored_path
+from .document_files import TYPES, remove_file, stored_path
 from .errors import AppError
 from .storage import MIB, disk_space, lock_attachment_storage
 from .texts import ServerLanguage
@@ -248,32 +248,18 @@ async def document_storage(db: AsyncSession) -> DocumentStorageOut:
     )
 
 
-# Withdrawn PDFs that still use storage: the candidates for a purge.
+# Withdrawn PDFs that still use storage, the latest withdrawn first: the candidates for a purge.
 @router.get("/withdrawn", response_model=StoredAttachmentPage)
 async def withdrawn_attachments(
     db: DB, language: ServerLanguage, page: PageNumber = 1,
-    sort: Literal["largest", "oldest"] = "largest",
-    user_id: Annotated[int | None, Query(ge=1, le=2147483647)] = None,
 ) -> StoredAttachmentPage:
-    where: list[ColumnElement[bool]] = [
-        ActionAttachment.withdrawn_at.is_not(None), ActionAttachment.purged_at.is_(None),
-    ]
-    if user_id is not None:
-        where += [
-            ActionAttachment.author_kind == "resident", ActionAttachment.author_user_id == user_id,
-        ]
+    where = (ActionAttachment.withdrawn_at.is_not(None), ActionAttachment.purged_at.is_(None))
     total = await db.scalar(select(func.count()).select_from(ActionAttachment).where(*where))
-    order = (
-        (ActionAttachment.withdrawn_at.asc(), ActionAttachment.id.asc()) if sort == "oldest"
-        else (
-            ActionAttachment.size.desc(), ActionAttachment.withdrawn_at.asc(),
-            ActionAttachment.id.asc(),
-        )
-    )
     rows = (await db.execute(
         select(ActionAttachment, CommunityAction.title)
         .join(CommunityAction, CommunityAction.id == ActionAttachment.action_id)
-        .where(*where).order_by(*order).offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE)
+        .where(*where).order_by(ActionAttachment.withdrawn_at.desc(), ActionAttachment.id.desc())
+        .offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE)
     )).all()
     return StoredAttachmentPage(items=[
         StoredAttachmentOut(
@@ -281,6 +267,27 @@ async def withdrawn_attachments(
             action_title=title,
         ) for row, title in rows
     ], **page_info(total or 0, page))
+
+
+async def stored_pdf(
+    attachment_id: UUID, db: AsyncSession, request: Request,
+    disposition: Literal["attachment", "inline"],
+) -> FileResponse:
+    value = await db.get(ActionAttachment, str(attachment_id))
+    if value is None:
+        raise AppError("action_attachment_not_found", 404)
+    return pdf_response(value, request, disposition)
+
+
+# The administrator's copy of a stored PDF, withdrawn or not, also while Actions is turned off.
+@router.get("/attachments/{attachment_id}/preview", response_class=FileResponse)
+async def preview_stored_pdf(attachment_id: UUID, db: DB, request: Request) -> FileResponse:
+    return await stored_pdf(attachment_id, db, request, "inline")
+
+
+@router.get("/attachments/{attachment_id}/download", response_class=FileResponse)
+async def download_stored_pdf(attachment_id: UUID, db: DB, request: Request) -> FileResponse:
+    return await stored_pdf(attachment_id, db, request, "attachment")
 
 
 # Deletes a withdrawn PDF from disk and frees its bytes; the row, metadata and history remain.
@@ -321,28 +328,16 @@ async def purge_attachment(
     return attachment_out(attachment, language)
 
 
-# Every stored image, newest or largest first: images have no withdrawal, so any can be purged.
+# Every stored image, the newest first: images have no withdrawal, so any can be purged.
 @router.get("/images", response_model=StoredImagePage)
 async def stored_images(
     db: DB, language: ServerLanguage, page: PageNumber = 1,
-    sort: Literal["newest", "largest"] = "newest",
-    user_id: Annotated[int | None, Query(ge=1, le=2147483647)] = None,
 ) -> StoredImagePage:
-    where: list[ColumnElement[bool]] = [CommunityImage.purged_at.is_(None)]
-    if user_id is not None:
-        where += [
-            CommunityImage.author_kind == "resident", CommunityImage.author_user_id == user_id,
-        ]
-    total = await db.scalar(select(func.count()).select_from(CommunityImage).where(*where))
-    order = (
-        (CommunityImage.created_at.desc(), CommunityImage.id.desc()) if sort == "newest"
-        else (
-            CommunityImage.size.desc(), CommunityImage.created_at.desc(),
-            CommunityImage.id.desc(),
-        )
-    )
+    where = CommunityImage.purged_at.is_(None)
+    total = await db.scalar(select(func.count()).select_from(CommunityImage).where(where))
     rows = (await db.scalars(
-        select(CommunityImage).where(*where).order_by(*order)
+        select(CommunityImage).where(where)
+        .order_by(CommunityImage.created_at.desc(), CommunityImage.id.desc())
         .offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE)
     )).all()
     return StoredImagePage(
@@ -394,40 +389,29 @@ async def stored_version_out(
         **version_out(version, language).model_dump(), document_id=document.id,
         document_name=document.name,
         location=location_names(await chain(db, document.folder_id)),
+        previewable=TYPES[version.extension].preview_type is not None,
     )
 
 
-# Earlier versions of documents that still use storage: the candidates for a purge. Deleted
-# documents are purged as a whole from Deleted documents instead.
+# Earlier versions of documents that still use storage, the latest uploaded first: the
+# candidates for a purge. Deleted documents are purged as a whole from Deleted documents instead.
 @router.get("/document-versions", response_model=StoredDocumentVersionPage)
 async def previous_document_versions(
     db: DB, language: ServerLanguage, page: PageNumber = 1,
-    sort: Literal["largest", "oldest"] = "largest",
-    user_id: Annotated[int | None, Query(ge=1, le=2147483647)] = None,
 ) -> StoredDocumentVersionPage:
-    where: list[ColumnElement[bool]] = [
+    where = (
         DocumentVersion.purged_at.is_(None), Document.deleted_at.is_(None),
         DocumentVersion.number != Document.current_number,
-    ]
-    if user_id is not None:
-        where += [
-            DocumentVersion.author_kind == "resident", DocumentVersion.author_user_id == user_id,
-        ]
+    )
     total = await db.scalar(
         select(func.count()).select_from(DocumentVersion)
         .join(Document, Document.id == DocumentVersion.document_id).where(*where)
     )
-    order = (
-        (DocumentVersion.created_at.asc(), DocumentVersion.id.asc()) if sort == "oldest"
-        else (
-            DocumentVersion.size.desc(), DocumentVersion.created_at.asc(),
-            DocumentVersion.id.asc(),
-        )
-    )
     rows = (await db.execute(
         select(DocumentVersion, Document)
         .join(Document, Document.id == DocumentVersion.document_id)
-        .where(*where).order_by(*order).offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE)
+        .where(*where).order_by(DocumentVersion.created_at.desc(), DocumentVersion.id.desc())
+        .offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE)
     )).all()
     return StoredDocumentVersionPage(items=[
         await stored_version_out(db, version, document, language) for version, document in rows

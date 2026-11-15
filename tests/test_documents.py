@@ -700,10 +700,31 @@ def test_new_versions_keep_the_earlier_ones_until_purged(actors, enabled, config
     refused(a.get(f"/api/documents/versions/{original['id']}/preview"), 415,
             "document_preview_unavailable")
     assert [entry["kind"] for entry in history(a, budget)] == ["version_added", "created"]
+    rules = uploaded(b, "Normas.pdf", pdf("Normas v1"))
+    uploaded(b, "Normas.pdf", pdf("Normas v2"), document_id=rules["id"])
     previous = enabled.get("/api/admin/storage/document-versions").json()
-    assert [(item["id"], item["document_name"]) for item in previous["items"]] == [
-        (original["id"], "Presupuesto.xlsx"),
-    ]
+    # The latest uploaded first; the browser shows PDFs, not spreadsheets.
+    assert [
+        (item["id"], item["document_name"], item["previewable"]) for item in previous["items"]
+    ] == [(rules["current"]["id"], "Normas.pdf", True), (original["id"], "Presupuesto.xlsx", False)]
+    assert enabled.get("/api/admin/storage/document-versions?page=0").status_code == 422
+    set_flag(enabled, "documents", False)
+    refused(a.get(f"/api/documents/versions/{rules['current']['id']}/preview"), 404,
+            "documents_disabled")
+    preview = enabled.get(f"/api/admin/documents/versions/{rules['current']['id']}/preview")
+    assert (preview.status_code, preview.content) == (200, pdf("Normas v1"))
+    assert preview.headers["content-type"] == "application/pdf"
+    assert preview.headers["content-disposition"] == (
+        "inline; filename*=utf-8''Normas%20%28version%201%29.pdf"
+    )
+    refused(enabled.get(f"/api/admin/documents/versions/{original['id']}/preview"), 415,
+            "document_preview_unavailable")
+    set_flag(enabled, "documents", True)
+    assert enabled.post(
+        f"/api/admin/storage/document-versions/{rules['current']['id']}/purge",
+    ).status_code == 200
+    refused(enabled.get(f"/api/admin/documents/versions/{rules['current']['id']}/preview"), 410,
+            "document_version_purged")
     refused(enabled.post(
         f"/api/admin/storage/document-versions/{updated['current']['id']}/purge",
     ), 409, "document_version_current")

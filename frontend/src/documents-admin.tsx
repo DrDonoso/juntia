@@ -3,14 +3,14 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link, useLocation } from 'react-router'
 import { api, cache, errorMessage } from './api/client'
 import type {
-  DocumentDeletionOut, DocumentDeletionPage, DocumentInfoOut, DocumentSettings, DocumentStorageOut,
+  DocumentDeletionOut, DocumentDeletionPage, DocumentInfoOut, DocumentResidentStorageOut, DocumentSettings, DocumentStorageOut,
   StoredDocumentVersionOut, StoredDocumentVersionPage,
 } from './api/schema.gen'
 import { ActionTime, byteSize } from './community-action-shared'
 import { DocumentHistory, FileDetails, VersionList, kindIcon, locationText } from './documents'
 import { compareText, formatNumber, useI18n, type Translate } from './i18n'
 import { Icon } from './icons'
-import { Modal, Notice, Pagination, authorName, useAction } from './shared'
+import { Modal, Notice, Pagination, SortableHeader, authorName, useAction, useTableSort } from './shared'
 import { SizeField, parseSize } from './size-field'
 
 const MIB = 1024 * 1024
@@ -276,27 +276,39 @@ export function DocumentStorageCard({ storage }: { storage: DocumentStorageOut }
   </section>
 }
 
+type NeighborColumn = 'neighbor' | 'versions' | 'quota'
+
 export function DocumentNeighborsCard({ storage }: { storage: DocumentStorageOut }) {
   const { t } = useI18n()
   const heading = useId(), title = t('storage.documents.neighbors.title')
+  const sort = useTableSort<NeighborColumn>('quota', column => column === 'neighbor' ? 'asc' : 'desc')
+  const name = (resident: DocumentResidentStorageOut) => resident.name || t('storage.neighbors.unnamed', { id: resident.user_id })
+  const rows = [...storage.residents].sort((left, right) => {
+    const names = compareText(name(left), name(right))
+    const order = sort.key === 'neighbor' ? names
+      : sort.key === 'versions' ? left.versions - right.versions : left.stored_bytes - right.stored_bytes
+    return (sort.direction === 'asc' ? order : -order) || names || left.user_id - right.user_id
+  })
+  const header = (column: NeighborColumn, label: string, numeric = false) => <SortableHeader label={label}
+    sortLabel={t('storage.sortBy', { column: label })} numeric={numeric} active={sort.key === column}
+    direction={sort.direction} change={() => sort.change(column)} />
   return <section className="card" aria-labelledby={heading}>
     <h2 id={heading}>{title}</h2>
-    <p className="muted">{t('storage.documents.neighbors.description', { size: byteSize(storage.resident_quota_bytes) })}</p>
-    {storage.residents.length === 0 ? <p className="empty">{t('storage.documents.neighbors.empty')}</p>
+    {rows.length === 0 ? <p className="empty">{t('storage.documents.neighbors.empty')}</p>
       : <div className="table-scroll"><table className="storage-table" aria-label={title}>
         <thead><tr>
-          <th scope="col">{t('storage.neighbors.columns.neighbor')}</th>
-          <th scope="col" className="numeric">{t('storage.documents.neighbors.versions')}</th>
-          <th scope="col">{t('storage.neighbors.columns.quota')}</th>
+          {header('neighbor', t('storage.neighbors.columns.neighbor'))}
+          {header('versions', t('storage.documents.neighbors.versions'), true)}
+          {header('quota', t('storage.neighbors.columns.quota'))}
         </tr></thead>
-        <tbody>{storage.residents.map(resident => {
-          const name = resident.name || t('storage.neighbors.unnamed', { id: resident.user_id })
+        <tbody>{rows.map(resident => {
+          const residentName = name(resident)
           return <tr key={resident.user_id}>
-            <th scope="row"><span className="storage-neighbor">{name}</span>
+            <th scope="row"><span className="storage-neighbor">{residentName}</span>
               {resident.account_deleted && <span className="tag">{t('storage.neighbors.deleted')}</span>}</th>
             <td className="numeric">{formatNumber(resident.versions)}</td>
             <td className="storage-quota">{t('storage.usage', { used: byteSize(resident.stored_bytes), limit: byteSize(storage.resident_quota_bytes) })}
-              <Meter label={t('storage.neighbors.meter', { name })} used={resident.stored_bytes} limit={storage.resident_quota_bytes} /></td>
+              <Meter label={t('storage.neighbors.meter', { name: residentName })} used={resident.stored_bytes} limit={storage.resident_quota_bytes} /></td>
           </tr>
         })}</tbody>
       </table></div>}
@@ -328,47 +340,25 @@ function VersionPurgeDialog({ item, close, done }: { item: StoredDocumentVersion
   </Modal>
 }
 
-type Author = { id: number; name: string; deleted: boolean }
+// The administrator's own copies, also while Documents is turned off.
+const versionUrl = (item: StoredDocumentVersionOut, action: 'preview' | 'download') => `/api/admin/documents/versions/${item.id}/${action}`
 
-export function PreviousDocumentVersions({ storage }: { storage: DocumentStorageOut | undefined }) {
+// The latest uploaded first, 20 per page.
+export function PreviousDocumentVersions() {
   const { t, rich } = useI18n()
-  const [sort, setSort] = useState<'largest' | 'oldest'>('largest'), [page, setPage] = useState(1)
-  const [author, setAuthor] = useState<Author | null>(null)
+  const [page, setPage] = useState(1)
   const [purging, setPurging] = useState<StoredDocumentVersionOut | null>(null)
   const [outcome, setOutcome] = useState<{ name: string; number: number; size: number } | null>(null)
   const heading = useRef<HTMLHeadingElement>(null), headingId = useId()
-  const params = new URLSearchParams({ page: String(page), sort })
-  if (author) params.set('user_id', String(author.id))
   const query = useQuery({
-    queryKey: ['admin', 'storage', 'document-versions', params.toString()],
-    queryFn: () => api<StoredDocumentVersionPage>(`/admin/storage/document-versions?${params}`),
+    queryKey: ['admin', 'storage', 'document-versions', page],
+    queryFn: () => api<StoredDocumentVersionPage>(`/admin/storage/document-versions?page=${page}`),
     placeholderData: keepPreviousData, staleTime: 0,
   })
   useEffect(() => { if (outcome) heading.current?.focus() }, [outcome])
-  const authors: Author[] = (storage?.residents ?? []).map(resident => ({
-    id: resident.user_id, name: resident.name || t('storage.neighbors.unnamed', { id: resident.user_id }), deleted: resident.account_deleted,
-  }))
-  if (author && !authors.some(option => option.id === author.id)) authors.push(author)
-  authors.sort((left, right) => compareText(left.name, right.name))
   const title = t('storage.documents.previousVersions.title')
   return <section className="card" aria-labelledby={headingId}>
     <h2 id={headingId} ref={heading} tabIndex={-1}>{title}</h2>
-    <p className="muted">{t('storage.documents.previousVersions.description')}</p>
-    <div className="storage-filters">
-      <label>{t('storage.withdrawnPDFs.sort')}<select value={sort} onChange={event => {
-        setSort(event.target.value === 'oldest' ? 'oldest' : 'largest'); setPage(1)
-      }}>
-        <option value="largest">{t('storage.withdrawnPDFs.sorts.largest')}</option>
-        <option value="oldest">{t('storage.documents.previousVersions.oldest')}</option>
-      </select></label>
-      <label>{t('storage.withdrawnPDFs.author')}<select value={author ? String(author.id) : ''} onChange={event => {
-        setAuthor(authors.find(option => String(option.id) === event.target.value) ?? null); setPage(1)
-      }}>
-        <option value="">{t('storage.withdrawnPDFs.everyone')}</option>
-        {authors.map(option => <option key={option.id} value={option.id}>
-          {option.deleted ? t('storage.withdrawnPDFs.deletedAuthor', { name: option.name }) : option.name}</option>)}
-      </select></label>
-    </div>
     {outcome && <Notice>{t('storage.documents.previousVersions.purged', {
       name: outcome.name, number: outcome.number, size: byteSize(outcome.size),
     })}</Notice>}
@@ -376,18 +366,28 @@ export function PreviousDocumentVersions({ storage }: { storage: DocumentStorage
     {query.error && <><Notice error>{errorMessage(query.error)}</Notice>
       <button type="button" className="secondary" disabled={query.isFetching} onClick={() => void query.refetch()}>{t('common.retryLoading')}</button></>}
     {query.data && <>
+      {query.data.total > 0 && <p className="muted">{t('storage.documents.previousVersions.total', { count: query.data.total })}</p>}
       {query.data.items.length === 0 ? <p className="empty">{page > 1 ? t('storage.documents.previousVersions.emptyPage') : t('storage.documents.previousVersions.empty')}</p>
         : <ul className="action-attachment-list storage-withdrawn-list" aria-label={title} aria-busy={query.isFetching}>
-          {query.data.items.map(item => <li key={item.id}>
-            <div className="action-file-info"><strong>{item.document_name}</strong>
-              <p className="muted">{t('documents.info.versionNumber', { number: item.number })} · {byteSize(item.size)} · {t('storage.withdrawnPDFs.uploadedBy', { name: authorName(item.author, t) })}</p>
-              <p className="muted">{rich('storage.documents.previousVersions.uploadedAt', { time: () => <ActionTime value={item.created_at} /> })}</p>
-              <p className="muted">{locationText(item.location, t)}</p>
-            </div>
-            <button type="button" className="secondary danger" aria-label={t('storage.documents.previousVersions.deleteLabel', {
-              name: item.document_name, number: item.number,
-            })} onClick={() => { setOutcome(null); setPurging(item) }}><Icon name="trash" size={16} />{t('storage.withdrawnPDFs.delete')}</button>
-          </li>)}
+          {query.data.items.map(item => {
+            const labels = { name: item.document_name, number: item.number }
+            return <li key={item.id}>
+              <div className="action-file-info"><strong>{item.document_name}</strong>
+                <p className="muted">{t('documents.info.versionNumber', { number: item.number })} · {byteSize(item.size)} · {t('storage.withdrawnPDFs.uploadedBy', { name: authorName(item.author, t) })} · {rich('storage.documents.previousVersions.uploadedAt', {
+                  time: () => <ActionTime value={item.created_at} />,
+                })}</p>
+                <p className="muted">{locationText(item.location, t)}</p>
+              </div>
+              <div className="storage-file-actions">
+                {item.previewable && <a className="button secondary icon-button" href={versionUrl(item, 'preview')} target="_blank" rel="noopener noreferrer"
+                  aria-label={t('storage.documents.previousVersions.preview', labels)} title={t('documents.card.previewTitle')}><Icon name="eye" /></a>}
+                <a className="button secondary icon-button" href={versionUrl(item, 'download')} download=""
+                  aria-label={t('storage.documents.previousVersions.download', labels)} title={t('documents.menu.download')}><Icon name="download" /></a>
+                <button type="button" className="secondary danger" aria-label={t('storage.documents.previousVersions.deleteLabel', labels)}
+                  onClick={() => { setOutcome(null); setPurging(item) }}><Icon name="trash" size={16} />{t('storage.withdrawnPDFs.delete')}</button>
+              </div>
+            </li>
+          })}
         </ul>}
       <Pagination page={page} pages={query.data.pages} change={setPage} busy={query.isFetching} label={t('storage.documents.previousVersions.pagination')} />
     </>}

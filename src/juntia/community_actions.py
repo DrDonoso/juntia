@@ -787,7 +787,12 @@ async def attachment_response(
     disposition: Literal["attachment", "inline"],
 ) -> FileResponse:
     await get_action(db, item_id)
-    value = await get_attachment(db, item_id, attachment_id)
+    return pdf_response(await get_attachment(db, item_id, attachment_id), request, disposition)
+
+
+def pdf_response(
+    value: ActionAttachment, request: Request, disposition: Literal["attachment", "inline"],
+) -> FileResponse:
     if value.purged_at is not None:
         raise AppError("action_attachment_purged", 410)
     path = pdf_path(settings(request).upload_dir, value.storage_key)

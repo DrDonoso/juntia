@@ -150,6 +150,27 @@ export function Pagination({ page, pages, change, busy = false, label }: {
     {page > pages && <button type="button" className="quiet" disabled={busy} onClick={() => change(1)}>{t('common.pagination.first')}</button>}
   </nav>
 }
+export type SortDirection = 'asc' | 'desc'
+// A table sorted in the page: another column starts in its own first direction, the same one flips.
+export function useTableSort<Key extends string>(initial: Key, first: (key: Key) => SortDirection) {
+  const [sort, setSort] = useState(() => ({ key: initial, direction: first(initial) }))
+  function change(key: Key) {
+    setSort(current => current.key === key
+      ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+      : { key, direction: first(key) })
+  }
+  return { ...sort, change }
+}
+export function SortableHeader({ label, sortLabel, active, direction, numeric = false, change }: {
+  label: string; sortLabel: string; active: boolean; direction: SortDirection; numeric?: boolean; change: () => void
+}) {
+  return <th scope="col" className={numeric ? 'numeric' : undefined} aria-label={label}
+    aria-sort={active ? direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
+    <button type="button" className="table-sort-button" aria-label={sortLabel} onClick={change}>
+      {label}<Icon name={active ? direction === 'asc' ? 'arrow-up' : 'arrow-down' : 'sort'} size={14} />
+    </button>
+  </th>
+}
 export type DatePeriod = { start: string; end: string }
 export function currentYearPeriod(): DatePeriod {
   const year = new Date().getFullYear()

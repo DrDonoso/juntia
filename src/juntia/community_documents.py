@@ -1495,6 +1495,13 @@ async def admin_download_version(
     )
 
 
+@admin_router.get("/versions/{version_id}/preview", response_class=FileResponse)
+async def admin_preview_version(
+    version_id: UUID, db: DB, request: Request, language: ServerLanguage,
+) -> FileResponse:
+    return await version_response(version_id, db, request, "inline", language, deleted=True)
+
+
 async def open_deletion(db: AsyncSession, deletion_id: UUID) -> DocumentDeletion:
     value = await db.get(DocumentDeletion, str(deletion_id), populate_existing=True)
     if value is None:

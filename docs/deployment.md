@@ -427,9 +427,10 @@ Statement imports are subject to the disk reserve only; deleting a statement del
 **Monitoring.** **Settings > Storage** (`/admin/storage`) shows the community total against its
 quota, the technical administrator's PDFs and images, the server disk's free space against the
 reserve, and each resident against the personal quota (accounts deleted since keep their totals).
-Its **Withdrawn PDFs** list shows the withdrawn PDFs that still use space, largest or oldest
-withdrawal first, optionally for one uploader, and its **Images in texts** list shows every stored
-image with a thumbnail, newest or largest first, optionally for one uploader.
+Its **Withdrawn PDFs** list shows the withdrawn PDFs that still use space, the latest withdrawn
+first, 20 per page, each with its uploader, an eye to view it in a new tab and a download button,
+also while Actions is turned off; its **Images in texts** list shows every stored image with a
+thumbnail, the newest first. The tables of residents sort by any column.
 
 **Purging** a withdrawn PDF (**Delete permanently** in that list) deletes its file for good and
 frees its bytes at once. Its record and its history stay: the action's history gains an entry,
@@ -524,7 +525,8 @@ administrator can:
 
 Replacing a file with a new version keeps the earlier versions, downloadable from **Info**. **Settings
 > Storage** shows the documents quotas, each neighbor's usage, unfinished uploads, and an **Earlier
-versions of documents** list where the administrator can purge earlier versions one by one; the
+versions of documents** list, the latest uploaded first, where the administrator can preview or
+download each earlier version and purge them one by one, also while Documents is turned off; the
 current version of a file is only purged with the file. Migration `0022` refuses to downgrade while
 documents exist, purged ones included.
 

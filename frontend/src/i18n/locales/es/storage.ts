@@ -14,6 +14,7 @@ export const storage: Messages<typeof source> = {
   active: 'Activos',
   withdrawn: 'Retirados',
   images: 'Imágenes',
+  sortBy: 'Ordenar por: {column}',
   community: {
     title: 'Comunidad',
     meter: 'Cuota de la comunidad usada',
@@ -38,7 +39,6 @@ export const storage: Messages<typeof source> = {
   },
   neighbors: {
     title: 'Almacenamiento por vecino',
-    description: 'Cada vecino puede guardar hasta {size} de PDFs e imágenes, contando los PDFs retirados. Primero aparecen los vecinos que más espacio usan.',
     columns: {
       neighbor: 'Vecino',
       active: 'PDFs activos',
@@ -53,15 +53,6 @@ export const storage: Messages<typeof source> = {
   },
   withdrawnPDFs: {
     title: 'PDFs retirados',
-    description: 'Los PDFs retirados ya no aparecen en su actuación, pero siguen en su histórico y ocupan espacio hasta que los elimines definitivamente.',
-    sort: 'Ordenar por',
-    sorts: {
-      largest: 'Más grandes primero',
-      oldest: 'Retirada más antigua primero',
-    },
-    author: 'Subido por',
-    everyone: 'Todos',
-    deletedAuthor: '{name} (cuenta eliminada)',
     loading: 'Cargando PDFs retirados…',
     total: { one: '{count} PDF retirado sigue ocupando espacio.', other: '{count} PDFs retirados siguen ocupando espacio.' },
     uploadedBy: 'Subido por {name}',
@@ -70,7 +61,6 @@ export const storage: Messages<typeof source> = {
     deleteLabel: 'Eliminar definitivamente: {filename}',
     empty: {
       all: 'No hay PDFs retirados ocupando espacio.',
-      author: 'Este vecino no tiene PDFs retirados ocupando espacio.',
       page: 'No hay PDFs retirados en esta página.',
     },
     pagination: 'PDFs retirados',
@@ -79,12 +69,6 @@ export const storage: Messages<typeof source> = {
   },
   storedImages: {
     title: 'Imágenes de los textos',
-    description: 'Imágenes pegadas en las descripciones de actuaciones y eventos y en los comentarios. Ocupan espacio mientras algún texto o el histórico puedan mostrarlas, también después de quitarlas del texto, hasta que las elimines definitivamente.',
-    sort: 'Ordenar por',
-    sorts: {
-      newest: 'Más recientes primero',
-      largest: 'Más grandes primero',
-    },
     loading: 'Cargando imágenes…',
     total: { one: '{count} imagen ocupa espacio.', other: '{count} imágenes ocupan espacio.' },
     details: '{size} · {width} × {height} px · {section}',
@@ -98,7 +82,6 @@ export const storage: Messages<typeof source> = {
     deleteLabel: 'Eliminar definitivamente: {filename}',
     empty: {
       all: 'No hay imágenes guardadas.',
-      author: 'Este vecino no tiene imágenes guardadas.',
       page: 'No hay imágenes en esta página.',
     },
     pagination: 'imágenes',
@@ -136,19 +119,19 @@ export const storage: Messages<typeof source> = {
     near: 'La cuota de documentos está casi llena. Elimina definitivamente versiones anteriores o documentos eliminados para liberar espacio.',
     neighbors: {
       title: 'Documentos por vecino',
-      description: 'Cada vecino puede guardar hasta {size} en versiones de documentos, contando las versiones anteriores y los documentos eliminados. Primero aparecen los vecinos que más espacio usan.',
       versions: 'Versiones',
       empty: 'Ningún vecino ha subido documentos todavía.',
     },
     previousVersions: {
       title: 'Versiones anteriores de documentos',
-      description: 'Las versiones sustituidas por una subida más reciente se pueden descargar desde la información del documento y siguen ocupando espacio hasta que las eliminas definitivamente. Los documentos eliminados se purgan completos desde Documentos eliminados.',
-      oldest: 'Más antiguas primero',
       loading: 'Cargando versiones anteriores…',
+      total: { one: '{count} versión anterior ocupa espacio.', other: '{count} versiones anteriores ocupan espacio.' },
       empty: 'No hay versiones anteriores que ocupen espacio.',
       emptyPage: 'No hay versiones anteriores en esta página.',
       pagination: 'versiones anteriores',
       uploadedAt: 'Subida: <time></time>',
+      preview: 'Previsualizar la versión {number} de {name}',
+      download: 'Descargar la versión {number} de {name}',
       deleteLabel: 'Eliminar definitivamente la versión {number} de {name}',
       purgeTitle: 'Eliminar versión definitivamente',
       keeps: 'Se conservan el documento, sus demás versiones y su historial.',

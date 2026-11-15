@@ -1096,6 +1096,8 @@ class StoredDocumentVersionOut(DocumentVersionOut):
     document_id: int
     document_name: str
     location: list[str]
+    # Whether the browser can show it (PDFs, pictures and videos), as for current versions.
+    previewable: bool
 
 
 class StoredDocumentVersionPage(ActionPagination):

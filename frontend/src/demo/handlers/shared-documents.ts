@@ -230,6 +230,7 @@ const administrationHandlers: HttpHandler[] = [
   })),
   // The administrator's copy of any stored version, deleted documents' included.
   http.get('/api/admin/documents/versions/:versionId/download', route('admin', context => download(context, 'attachment', { deleted: true }))),
+  http.get('/api/admin/documents/versions/:versionId/preview', route('admin', context => download(context, 'inline', { deleted: true }))),
   http.post('/api/admin/documents/deletions/:deletionId/restore', route('admin', context => {
     restoreDeletion(sharedDocumentsStore(), author(context), uuidParam(context.params, 'deletionId'), nowIso())
   }, { status: 204 })),
