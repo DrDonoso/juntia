@@ -43,9 +43,9 @@ All screenshots show synthetic data from the [demo](https://demo.juntia.drdonoso
 - The residents' sidebar groups **Finances** (Overview, Transactions), **Management** (Actions,
   Events and Documents, when they are on) and **Community** (Neighbors, Contacts).
 - The administration sidebar groups **Finances** (Import, Classify transactions, Rules, Categories
-  and tags, Manage statements) and **Settings** (General, Features, Dwellings, Users, Community
-  labels, Deleted contacts, Deleted documents, Storage). **Community portal** opens the residents'
-  pages with the same session.
+  and tags, Manage statements), **Settings** (General, Features, Dwellings, Users, Community labels,
+  Storage) and **Housekeeping** (Free up space, Deleted documents, Deleted contacts). **Community
+  portal** opens the residents' pages with the same session.
 - The administration is not linked from the residents' navigation, on any screen size: open `/admin`
   directly. Its sign-in and server-side authorization are independent of that.
 - Old bookmarks such as `/admin/actions`, `/admin/actions/<id>`, `/admin/neighbors` and
@@ -59,6 +59,8 @@ All screenshots show synthetic data from the [demo](https://demo.juntia.drdonoso
   to it are the **Hide amounts** button (residents' pages) and the light and dark theme button. The
   navigation and the avatar menu work with the keyboard and return the focus when closed with
   Escape.
+- Dialogs close with their **Close** button, Escape or a click outside them, except while they are
+  saving or deleting something.
 
 ## Languages
 
@@ -203,8 +205,8 @@ sites open in a new tab, and headings are shown smaller than the page's own head
 - Images are visible to every member, like the text that shows them. Removing an image from the
   text does not delete it: earlier versions in the history may still show it, and it keeps counting
   against the [storage quotas](deployment.md#storage-quotas-and-purging). Only the administrator
-  can delete an image permanently, in [Storage](#storage); the texts then show "Image not
-  available".
+  can delete an image permanently, in [Free up space](#free-up-space); the texts then show "Image
+  not available".
 - Images in an action's texts follow the Actions switch, and images in event descriptions follow
   the Events switch.
 - The history shows the Markdown source, line by line.
@@ -226,9 +228,9 @@ sites open in a new tab, and headings are shown smaller than the page's own head
 - PDF contents never change: to correct a document, upload a new one and withdraw the old one.
 - **Withdrawing** frees an active slot but **does not erase the file**: it stays visible and
   downloadable to every member in the history, and keeps counting against the quotas, until the
-  administrator deletes it permanently in [Storage](#storage). The interface warns about this
-  before withdrawing. A permanently deleted PDF keeps its name, size and checksum in the history
-  and is shown as "Permanently deleted", but it can no longer be opened or downloaded.
+  administrator deletes it permanently in [Free up space](#free-up-space). The interface warns
+  about this before withdrawing. A permanently deleted PDF keeps its name, size and checksum in the
+  history and is shown as "Permanently deleted", but it can no longer be opened or downloaded.
 - Size and format checks are not antivirus scanning: a PDF from another resident is not necessarily
   trustworthy.
 
@@ -293,7 +295,8 @@ delete any event; versions stop concurrent edits from overwriting each other.
 ### Event details
 
 - An event opens in a dialog over the current page (the agenda or an action), which keeps its
-  filters, page and scroll position. **Close**, Escape or the browser's Back button return to it.
+  filters, page and scroll position. **Close**, Escape, a click outside it or the browser's Back
+  button return to it.
 - The address gains an `event=<id>` parameter, so reloading or sharing it opens the same dialog.
   Links to `/events/<id>`, such as those in calendar exports, open the agenda with that event.
 - The dialog shows **Location**, **Description** and **Related action**, and offers **Edit event**,
@@ -411,7 +414,8 @@ what, not what changed inside the files, which are never compared.
 
 Turning **Documents** off hides the section, clears its data from open browsers and blocks its API
 (`404 documents_disabled`). Folders, files, their versions and history are kept for when it is
-turned on again, and **Deleted documents** and **Storage** keep working in the administration.
+turned on again, and **Storage**, **Free up space** and **Deleted documents** keep working in the
+administration.
 
 ## Neighbors
 
@@ -651,10 +655,56 @@ not affect the percentages in the finances.
 - New labels come from the action and contact forms; there is no global deletion. Financial tags are
   managed separately in **Categories and tags**. This page keeps working while Actions is off.
 
-### Deleted contacts
+### Storage
 
-**Deleted contacts** (`/admin/deleted-contacts`) is a read-only archive of the contacts removed from
-the address book, with their details and history.
+**Storage** (`/admin/storage`) shows how much space the PDFs attached to community actions, the
+images pasted into descriptions and comments and the shared documents use, and sets the limits of
+shared documents:
+
+- **Community**: the total against the community quota, with active and withdrawn PDFs and images;
+- **Technical administrator**: its PDFs and images, which count only towards the community quota;
+- **Documents**: shared documents have their own quotas. The card shows current files, earlier
+  versions, deleted documents not yet purged, the administrator's uploads and unfinished uploads;
+- **Server disk**: the free space against the reserve kept for uploads and imports;
+- **Shared documents limits**: the largest file and video that can be uploaded to
+  [Documents](#documents) and the documents quotas per neighbor and for the community. Each has a
+  slider between its minimum and maximum, which stops at round sizes, and a box to type an exact
+  size in MiB, which moves the slider; the (i) next to each name explains it on hover, focus or tap.
+  **Save limits** applies them at once to new uploads, and the page warns when a quota is below
+  what is already stored. **Change the limits**, on the Documents card, leads here.
+- **Storage by neighbor**: each resident, deleted accounts included, against the personal quota of
+  PDFs and images and against the documents quota, with the number of document versions they keep.
+  The neighbors using the most space come first; each column header sorts by that column, and a
+  second click reverses it.
+
+The action quotas and the reserve are server settings; the quotas, the reserve and the permanent
+deletion (purge) are explained in [storage quotas and purging](deployment.md#storage-quotas-and-purging)
+and, for documents, in [shared documents](deployment.md#shared-documents).
+
+<p align="center">
+  <img src="screenshots/storage.png" alt="Storage page: the limits of shared documents, each with a slider between its minimum and maximum, a box for an exact size in MiB and an (i) explanation, above a sortable table of each neighbor against the PDFs and images quota and the documents quota" width="900"><br>
+  <sub><b>Storage</b> in the administration (synthetic demo data).</sub>
+</p>
+
+### Free up space
+
+**Housekeeping** gathers what keeps using space or is kept as an archive: **Free up space**,
+[Deleted documents](#deleted-documents) and [Deleted contacts](#deleted-contacts).
+
+**Free up space** (`/admin/cleanup`) lists the files that stay on the server until the
+administrator deletes them permanently, each list 5 per page with a box that finds files by name,
+ignoring capitals and accents:
+
+- **Withdrawn PDFs**: the withdrawn PDFs that still use space, the latest withdrawn first, each with
+  its size, uploader, withdrawal date and action. The eye opens it in a new tab and the arrow
+  downloads it, also while Actions is turned off. **Delete permanently** removes a file for good
+  after a confirmation that names its action and the space it frees.
+- **Images in texts**: every stored image with a thumbnail, its size, dimensions, section, uploader
+  and upload date, the newest first. **Delete permanently** removes it for good after a
+  confirmation; the texts and history entries that show it then say "Image not available".
+- **Earlier versions of documents**: the replaced versions of shared documents, the latest uploaded
+  first. Each can be previewed (PDFs, pictures, videos, text and CSV files), downloaded and deleted
+  permanently; the current version of a file is only deleted with the file.
 
 ### Deleted documents
 
@@ -666,46 +716,10 @@ exists; a number is added to its name if it is in use there). **Delete permanent
 files, every version included, for good after a confirmation that shows the space it frees; its
 name and history stay. The page keeps working while Documents is off.
 
-### Storage
+### Deleted contacts
 
-**Storage** (`/admin/storage`) shows how much space the PDFs attached to community actions and the
-images pasted into descriptions and comments use:
-
-- **Community**: the total against the community quota, with active and withdrawn PDFs and images;
-- **Technical administrator**: its PDFs and images, which count only towards the community quota;
-- **Server disk**: the free space against the reserve kept for uploads and imports;
-- **Shared documents limits**: the largest file and video that can be uploaded to
-  [Documents](#documents) and the documents quotas per neighbor and for the community. Each has a
-  slider between its minimum and maximum, which stops at round sizes, and a box to type an exact
-  size in MiB, which moves the slider; the (i) next to each name explains it on hover, focus or tap.
-  **Save limits** applies them at once to new uploads, and the page warns when a quota is below
-  what is already stored. **Change the limits**, on the Documents card, leads here.
-- **Storage by neighbor**: each resident, deleted accounts included, against the personal quota of
-  PDFs and images and against the documents quota, with the number of document versions they keep.
-  The neighbors using the most space come first; each column header sorts by that column, and a
-  second click reverses it;
-- **Withdrawn PDFs**: the withdrawn PDFs that still use space, the latest withdrawn first, 5 per
-  page, each with its size, uploader, withdrawal date and action. The eye opens it in a new tab and
-  the arrow downloads it, also while Actions is turned off. **Delete permanently** removes a file
-  for good after a confirmation that names its action and the space it frees.
-- **Images in texts**: every stored image with a thumbnail, its size, dimensions, section, uploader
-  and upload date, the newest first, 5 per page. **Delete permanently** removes it for good after
-  a confirmation; the texts and history entries that show it then say "Image not available".
-- **Documents** and **Earlier versions of documents**: shared documents have their own quotas. The
-  card shows current files, earlier versions, deleted documents not yet purged, the
-  administrator's uploads and unfinished uploads; the list of earlier versions, the latest uploaded
-  first and 5 per page, previews PDFs, pictures, videos, text and CSV files, downloads any version
-  and deletes a replaced version permanently.
-
-The three lists have a box that finds files by name, ignoring capitals and accents. The action
-quotas and the reserve are server settings; the quotas, the reserve and the permanent deletion
-(purge) are explained in [storage quotas and purging](deployment.md#storage-quotas-and-purging)
-and, for documents, in [shared documents](deployment.md#shared-documents).
-
-<p align="center">
-  <img src="screenshots/storage.png" alt="Storage page: the limits of shared documents, each with a slider between its minimum and maximum, a box for an exact size in MiB and an (i) explanation, above a sortable table of each neighbor against the PDFs and images quota and the documents quota" width="900"><br>
-  <sub><b>Storage</b> in the administration (synthetic demo data).</sub>
-</p>
+**Deleted contacts** (`/admin/deleted-contacts`) is a read-only archive of the contacts removed from
+the address book, with their details and history.
 
 ## Home-screen installation
 

@@ -9,7 +9,7 @@ import type {
 } from './api/schema.gen'
 import { setLanguage } from './i18n'
 import { sizeStops } from './size-field'
-import { StoragePage } from './storage'
+import { CleanupPage, StoragePage } from './storage'
 
 const MiB = 1024 ** 2, GiB = 1024 ** 3
 const alice: ResidentStorageOut = {
@@ -154,6 +154,16 @@ function renderPage() {
   return render(<QueryClientProvider client={cache}><MemoryRouter initialEntries={['/admin/storage']}><StoragePage /></MemoryRouter></QueryClientProvider>)
 }
 
+function renderCleanup() {
+  return render(<QueryClientProvider client={cache}><MemoryRouter initialEntries={['/admin/cleanup']}><CleanupPage /></MemoryRouter></QueryClientProvider>)
+}
+
+// A purge must refresh the Storage page's usage, which is not shown here.
+function cachedSummary() {
+  cache.setQueryData(['admin', 'storage', 'summary'], usage)
+  return () => cache.getQueryState(['admin', 'storage', 'summary'])?.isInvalidated
+}
+
 function region(name: string) {
   return within(screen.getByRole('region', { name }))
 }
@@ -185,6 +195,9 @@ test('the summary shows the community, administrator and disk usage with accessi
   expect(disk.getByRole('meter', { name: 'Server disk space used' })).toHaveAttribute('aria-valuetext', '150 GiB of 200 GiB used (75%)')
   expect(disk.getByText('Reserve').nextElementSibling).toHaveTextContent('1 GiB')
   expect(screen.queryByRole('alert')).toBeNull()
+  // The files to delete permanently have a page of their own.
+  expect(screen.queryByRole('region', { name: 'Withdrawn PDFs' })).toBeNull()
+  expect(requests.filter(request => /^\/api\/admin\/storage\/(withdrawn|images|document-versions)/.test(request))).toEqual([])
 })
 
 test.each([
@@ -270,23 +283,36 @@ test('one table shows each neighbor against both quotas, sorted by any column, w
   expect(names()).toEqual(['Neighbor #9', 'Dora', 'BenDeleted account', 'Alice'])
 })
 
-test('without stored files the page says so', async () => {
+test('without stored files the storage page says so', async () => {
   summary = { ...summary, residents: [] }
-  withdrawn = []
-  images = []
   renderPage()
   expect(await screen.findByText('No neighbor has stored files yet.')).toBeVisible()
-  expect(await screen.findByText('There are no withdrawn PDFs using space.')).toBeVisible()
-  expect(await screen.findByText('No images are stored.')).toBeVisible()
-  expect(screen.queryByText(/still uses? space/)).toBeNull()
   expect(screen.queryByRole('table')).toBeNull()
-  expect(screen.queryByRole('list', { name: 'Withdrawn PDFs' })).toBeNull()
-  expect(screen.queryByRole('list', { name: 'Images in texts' })).toBeNull()
 })
 
-test('shared documents have their own quotas and earlier versions to find, open and purge', async () => {
+test('Free up space lists the files to delete permanently, says when there are none and refreshes on demand', async () => {
+  withdrawn = []
+  images = []
+  renderCleanup()
+  expect(screen.getByRole('heading', { name: 'Free up space', level: 1 })).toBeVisible()
+  expect(screen.getByText('ADMINISTRATION')).toBeVisible()
+  expect(await screen.findByText('There are no withdrawn PDFs using space.')).toBeVisible()
+  expect(await screen.findByText('No images are stored.')).toBeVisible()
+  expect(await screen.findByText('There are no earlier versions using space.')).toBeVisible()
+  expect(screen.queryByText(/still uses? space/)).toBeNull()
+  expect(screen.queryByRole('list', { name: 'Withdrawn PDFs' })).toBeNull()
+  expect(screen.queryByRole('list', { name: 'Images in texts' })).toBeNull()
+  // The usage is on the Storage page.
+  expect(requests).not.toContain('/api/admin/storage')
+  withdrawn = [quote]
+  const refresh = screen.getByRole('button', { name: 'Refresh' })
+  await waitFor(() => expect(refresh).toBeEnabled())
+  fireEvent.click(refresh)
+  expect(await within(screen.getByRole('region', { name: 'Withdrawn PDFs' })).findByText('old-quote.pdf')).toBeVisible()
+})
+
+test('shared documents have their own quotas, with a link to their limits', async () => {
   summary.documents.residents = [{ user_id: 7, name: 'Alice', account_deleted: false, stored_bytes: 1946 * MiB, versions: 14 }]
-  versions = [rules, budget]
   renderPage()
   const documents = await findRegion('Documents')
   expect(documents.getByText('300 MiB of 20 GiB used')).toBeVisible()
@@ -297,6 +323,12 @@ test('shared documents have their own quotas and earlier versions to find, open 
   expect(screen.queryByRole('table', { name: 'Documents by neighbor' })).toBeNull()
   expect(documents.getByRole('link', { name: 'Change the limits' })).toHaveAttribute('href', '#document-limits')
   expect(screen.getByRole('region', { name: 'Shared documents limits' })).toHaveAttribute('id', 'document-limits')
+})
+
+test('earlier versions of documents can be found, opened and purged', async () => {
+  versions = [rules, budget]
+  const summaryInvalidated = cachedSummary()
+  renderCleanup()
   const earlier = await findRegion('Earlier versions of documents')
   const list = await earlier.findByRole('list', { name: 'Earlier versions of documents' })
   expect(requests).toContain('/api/admin/storage/document-versions?page=1')
@@ -320,6 +352,7 @@ test('shared documents have their own quotas and earlier versions to find, open 
   expect(await earlier.findByText('Version 1 of Budget.xlsx has been deleted permanently. 60 MiB freed.')).toBeVisible()
   expect(requests).toContain('POST /api/admin/storage/document-versions/version-1/purge undefined')
   expect(await earlier.findByText('No file name contains “Budget”.')).toBeVisible()
+  expect(summaryInvalidated()).toBe(true)
 })
 
 test('the limits of shared documents are edited with a slider or an exact size and saved together', async () => {
@@ -364,7 +397,7 @@ test('the limits of shared documents are edited with a slider or an exact size a
 })
 
 test('stored images show a thumbnail, their details and author, the newest first', async () => {
-  renderPage()
+  renderCleanup()
   const section = region('Images in texts')
   const list = await section.findByRole('list', { name: 'Images in texts' })
   expect(requests).toContain('/api/admin/storage/images?page=1')
@@ -382,7 +415,8 @@ test('stored images show a thumbnail, their details and author, the newest first
 })
 
 test('deleting an image permanently is confirmed and refreshes the usage and the list', async () => {
-  renderPage()
+  const summaryInvalidated = cachedSummary()
+  renderCleanup()
   const section = region('Images in texts')
   const remove = await section.findByRole('button', { name: 'Delete permanently: Leak on the roof.jpg' })
   fireEvent.click(remove)
@@ -392,19 +426,19 @@ test('deleting an image permanently is confirmed and refreshes the usage and the
   expect(dialog.getByText('The file will be deleted from the server forever. This cannot be undone.')).toBeVisible()
   expect(dialog.getByText('The descriptions, comments and history entries that show it will say "Image not available" instead.')).toBeVisible()
   expect(dialog.getByText('It frees 2 MiB of the community quota and of the quota of Carol.')).toBeVisible()
-  const before = requests.filter(request => request === '/api/admin/storage').length
+  expect(summaryInvalidated()).toBe(false)
   fireEvent.click(dialog.getByRole('button', { name: 'Delete permanently' }))
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   expect(requests.filter(request => request.startsWith('POST'))).toEqual(['POST /api/admin/storage/images/img-1/purge undefined'])
   expect(section.getByText('Leak on the roof.jpg has been deleted permanently. 2 MiB freed.')).toHaveAttribute('role', 'status')
   expect(section.getByRole('heading', { name: 'Images in texts' })).toHaveFocus()
   expect(await section.findByText('No images are stored.')).toBeVisible()
-  await waitFor(() => expect(requests.filter(request => request === '/api/admin/storage').length).toBe(before + 1))
+  expect(summaryInvalidated()).toBe(true)
 })
 
 test('an image the server could not delete keeps the dialog open with an explanation', async () => {
   purgeImage = () => reply({ code: 'image_storage_error' }, 503)
-  renderPage()
+  renderCleanup()
   fireEvent.click(await screen.findByRole('button', { name: 'Delete permanently: Leak on the roof.jpg' }))
   const dialog = within(screen.getByRole('dialog', { name: 'Delete image permanently' }))
   fireEvent.click(dialog.getByRole('button', { name: 'Delete permanently' }))
@@ -414,7 +448,7 @@ test('an image the server could not delete keeps the dialog open with an explana
 
 test('withdrawn PDFs, the latest withdrawn first, can be viewed and downloaded before deleting them, page by page', async () => {
   total = 21
-  renderPage()
+  renderCleanup()
   const section = region('Withdrawn PDFs')
   const list = await section.findByRole('list', { name: 'Withdrawn PDFs' })
   expect(requests).toContain('/api/admin/storage/withdrawn?page=1')
@@ -444,7 +478,8 @@ test('withdrawn PDFs, the latest withdrawn first, can be viewed and downloaded b
 
 test('a permanent deletion is confirmed, then refreshes the usage, the list and the cached actions', async () => {
   cache.setQueryData(['actions', 'history', 12, 1], { items: [], total: 0, page: 1, pages: 1 })
-  renderPage()
+  const summaryInvalidated = cachedSummary()
+  renderCleanup()
   const section = region('Withdrawn PDFs')
   const remove = await section.findByRole('button', { name: 'Delete permanently: old-quote.pdf' })
   remove.focus()
@@ -459,8 +494,8 @@ test('a permanent deletion is confirmed, then refreshes the usage, the list and 
   expect(screen.queryByRole('dialog')).toBeNull()
   expect(remove).toHaveFocus()
   expect(requests.filter(request => request.startsWith('POST'))).toEqual([])
+  expect(summaryInvalidated()).toBe(false)
 
-  const before = requests.filter(request => request === '/api/admin/storage').length
   fireEvent.click(remove)
   dialog = within(screen.getByRole('dialog', { name: 'Delete PDF permanently' }))
   fireEvent.click(dialog.getByRole('button', { name: 'Delete permanently' }))
@@ -469,13 +504,13 @@ test('a permanent deletion is confirmed, then refreshes the usage, the list and 
   expect(section.getByText('old-quote.pdf has been deleted permanently. 40 MiB freed.')).toHaveAttribute('role', 'status')
   expect(section.getByRole('heading', { name: 'Withdrawn PDFs' })).toHaveFocus()
   expect(await section.findByText('There are no withdrawn PDFs using space.')).toBeVisible()
-  await waitFor(() => expect(requests.filter(request => request === '/api/admin/storage').length).toBe(before + 1))
+  expect(summaryInvalidated()).toBe(true)
   expect(cache.getQueryState(['actions', 'history', 12, 1])?.isInvalidated).toBe(true)
 })
 
 test('the technical administrator\'s PDFs free only the community quota', async () => {
   withdrawn = [{ ...quote, size: 1536 * 1024, author: { kind: 'administrator', user_id: null, name: 'ops-admin' } }]
-  renderPage()
+  renderCleanup()
   fireEvent.click(await screen.findByRole('button', { name: 'Delete permanently: old-quote.pdf' }))
   const dialog = within(screen.getByRole('dialog', { name: 'Delete PDF permanently' }))
   expect(dialog.getByText('It frees 1.5 MiB of the community quota.')).toBeVisible()
@@ -485,7 +520,7 @@ test('the technical administrator\'s PDFs free only the community quota', async 
 
 test('a PDF changed meanwhile is not deleted: the list reloads and says why', async () => {
   purge = () => reply({ code: 'action_stale' }, 409)
-  renderPage()
+  renderCleanup()
   const section = region('Withdrawn PDFs')
   fireEvent.click(await section.findByRole('button', { name: 'Delete permanently: old-quote.pdf' }))
   const lists = requests.filter(request => request.startsWith('/api/admin/storage/withdrawn')).length
@@ -503,7 +538,7 @@ test.each([
   { code: 'internal_error', status: 500, message: 'The operation could not be completed. Contact the administrator.' },
 ])('other failures keep the dialog open with their message ($code)', async ({ code, status, message }) => {
   purge = () => reply({ code }, status)
-  renderPage()
+  renderCleanup()
   fireEvent.click(await screen.findByRole('button', { name: 'Delete permanently: old-quote.pdf' }))
   const dialog = within(screen.getByRole('dialog', { name: 'Delete PDF permanently' }))
   fireEvent.click(dialog.getByRole('button', { name: 'Delete permanently' }))
@@ -512,20 +547,19 @@ test.each([
   expect(screen.queryByText(/has been deleted permanently/)).toBeNull()
 })
 
-test('a failed summary can be retried while the withdrawn PDFs stay available', async () => {
+test('a failed summary can be retried', async () => {
   let fail = true
   vi.stubGlobal('fetch', vi.fn((input: string, options?: RequestInit) => input === '/api/admin/storage' && fail
     ? Promise.resolve(reply({ code: 'internal_error' }, 500)) : respond(input, options)))
   renderPage()
   expect(await screen.findByText('The operation could not be completed. Contact the administrator.')).toHaveAttribute('role', 'alert')
-  expect(await screen.findByRole('button', { name: 'Delete permanently: old-quote.pdf' })).toBeVisible()
   fail = false
   fireEvent.click(screen.getByRole('button', { name: 'Retry loading' }))
   expect(await screen.findByText('1.25 GiB of 2 GiB used')).toBeVisible()
   expect(screen.queryByRole('alert')).toBeNull()
 })
 
-test('the page renders in Spanish and follows a language switch', async () => {
+test('the storage page renders in Spanish and follows a language switch', async () => {
   setLanguage('es')
   renderPage()
   expect(screen.getByRole('heading', { name: 'Almacenamiento', level: 1 })).toBeVisible()
@@ -536,6 +570,16 @@ test('the page renders in Spanish and follows a language switch', async () => {
   expect(region('Disco del servidor').getByText('50 GiB libres de 200 GiB')).toBeVisible()
   expect(screen.getByRole('table', { name: 'Almacenamiento por vecino' })).toHaveTextContent('Cuenta eliminada')
   expect(screen.getByRole('button', { name: 'Ordenar por: Cuota de PDFs e imágenes' })).toBeVisible()
+
+  act(() => setLanguage('en'))
+  expect(screen.getByRole('heading', { name: 'Storage', level: 1 })).toBeVisible()
+  expect(region('Community').getByText('1.25 GiB of 2 GiB used')).toBeVisible()
+})
+
+test('Free up space renders in Spanish and follows a language switch', async () => {
+  setLanguage('es')
+  renderCleanup()
+  expect(screen.getByRole('heading', { name: 'Liberar espacio', level: 1 })).toBeVisible()
   const section = region('PDFs retirados')
   const entry = within(await section.findByRole('list', { name: 'PDFs retirados' })).getByRole('listitem')
   expect(entry).toHaveTextContent('40 MiB · Subido por Alice · Retirado: 10 oct 2026')
@@ -547,7 +591,6 @@ test('the page renders in Spanish and follows a language switch', async () => {
   expect(await section.findByText('old-quote.pdf se ha eliminado definitivamente. Se han liberado 40 MiB.')).toBeVisible()
 
   act(() => setLanguage('en'))
-  expect(screen.getByRole('heading', { name: 'Storage', level: 1 })).toBeVisible()
+  expect(screen.getByRole('heading', { name: 'Free up space', level: 1 })).toBeVisible()
   expect(section.getByText('old-quote.pdf has been deleted permanently. 40 MiB freed.')).toBeVisible()
-  expect(region('Community').getByText('1.25 GiB of 2 GiB used')).toBeVisible()
 })

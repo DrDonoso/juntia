@@ -237,7 +237,6 @@ export const documents = {
     deleted: {
       title: 'Deleted documents',
       description: 'Files and folders deleted from Documents. Residents no longer see them; they keep using storage until you restore them or delete them permanently.',
-      list: 'Deletions, newest first',
       loading: 'Loading deleted documents…',
       empty: 'There are no deleted documents waiting to be restored or purged.',
       emptyPage: 'There are no deleted documents on this page.',

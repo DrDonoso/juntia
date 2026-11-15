@@ -427,11 +427,12 @@ Statement imports are subject to the disk reserve only; deleting a statement del
 **Monitoring.** **Settings > Storage** (`/admin/storage`) shows the community total against its
 quota, the technical administrator's PDFs and images, the server disk's free space against the
 reserve, and each resident against the personal quota and the documents quota (accounts deleted
-since keep their totals), in a table that sorts by any column. Its **Withdrawn PDFs** list shows the
-withdrawn PDFs that still use space, the latest withdrawn first, 5 per page, each with its uploader,
-an eye to view it in a new tab and a download button, also while Actions is turned off; its
-**Images in texts** list shows every stored image with a thumbnail, the newest first. Both lists
-find files by name, ignoring capitals and accents.
+since keep their totals), in a table that sorts by any column. **Housekeeping > Free up space**
+(`/admin/cleanup`) lists what can be purged: its **Withdrawn PDFs** list shows the withdrawn PDFs
+that still use space, the latest withdrawn first, 5 per page, each with its uploader, an eye to view
+it in a new tab and a download button, also while Actions is turned off; its **Images in texts**
+list shows every stored image with a thumbnail, the newest first. Both lists find files by name,
+ignoring capitals and accents.
 
 **Purging** a withdrawn PDF (**Delete permanently** in that list) deletes its file for good and
 frees its bytes at once. Its record and its history stay: the action's history gains an entry,
@@ -524,14 +525,14 @@ administrator can:
   uploads backup brought back. If a file cannot be deleted, nothing changes (`503
   document_storage_error`).
 
-Replacing a file with a new version keeps the earlier versions, downloadable from **Info**. **Settings
-> Storage** shows the documents quotas, each neighbor's usage, unfinished uploads, and an **Earlier
-versions of documents** list, the latest uploaded first, 5 per page and searchable by name, where
-the administrator can preview or download each earlier version and purge them one by one, also
-while Documents is turned off; the current version of a file is only purged with the file. Text and
-CSV files are previewed in Juntia's own viewer, which reads their first MiB as plain text (UTF-8,
-UTF-16 with a byte order mark, or Windows-1252). Migration `0022` refuses to downgrade while
-documents exist, purged ones included.
+Replacing a file with a new version keeps the earlier versions, downloadable from **Info**.
+**Settings > Storage** shows the documents quotas, each neighbor's usage and unfinished uploads.
+**Housekeeping > Free up space** has an **Earlier versions of documents** list, the latest uploaded
+first, 5 per page and searchable by name, where the administrator can preview or download each
+earlier version and purge them one by one, also while Documents is turned off; the current version
+of a file is only purged with the file. Text and CSV files are previewed in Juntia's own viewer,
+which reads their first MiB as plain text (UTF-8, UTF-16 with a byte order mark, or Windows-1252).
+Migration `0022` refuses to downgrade while documents exist, purged ones included.
 
 ## Troubleshooting
 

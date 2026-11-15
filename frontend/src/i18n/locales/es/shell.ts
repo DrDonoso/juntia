@@ -27,6 +27,7 @@ export const shell: Messages<typeof source> = {
     management: 'Gestión',
     community: 'Información',
     settings: 'Configuración',
+    housekeeping: 'Mantenimiento',
   },
   links: {
     overview: 'Resumen',
@@ -49,6 +50,7 @@ export const shell: Messages<typeof source> = {
     deletedContacts: 'Contactos eliminados',
     deletedDocuments: 'Documentos eliminados',
     storage: 'Almacenamiento',
+    cleanup: 'Liberar espacio',
     communityPortal: 'Portal de la comunidad',
   },
   footer: {

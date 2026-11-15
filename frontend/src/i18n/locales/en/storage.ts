@@ -4,7 +4,11 @@
 export const storage = {
   eyebrow: 'ADMINISTRATION',
   title: 'Storage',
-  description: 'PDFs attached to community actions, images pasted into descriptions and comments, and shared documents stay on the server, also after they are withdrawn, replaced or deleted. Check how much space they use and delete them permanently to free it.',
+  description: 'Check how much server space the PDFs attached to community actions, the images pasted into descriptions and comments and the shared documents use, and set the limits of shared documents.',
+  cleanup: {
+    title: 'Free up space',
+    description: 'Withdrawn PDFs, images in texts and earlier versions of documents keep using space on the server until you delete them permanently.',
+  },
   refresh: 'Refresh',
   loading: 'Loading storage usage…',
   usage: '{used} of {limit} used',

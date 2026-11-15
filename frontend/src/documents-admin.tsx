@@ -199,7 +199,7 @@ export function DeletedDocumentsPage() {
     <div className="page-heading"><div><p className="eyebrow">{t('admin.eyebrow')}</p><h1>{title}</h1>
       <p className="muted">{t('documents.admin.deleted.description')}</p></div></div>
     <section className="card" aria-labelledby={headingId}>
-      <h2 id={headingId} ref={heading} tabIndex={-1}>{t('documents.admin.deleted.list')}</h2>
+      <h2 id={headingId} ref={heading} tabIndex={-1}>{title}</h2>
       {outcome && <Notice>{outcome}</Notice>}
       {query.isPending && <Notice>{t('documents.admin.deleted.loading')}</Notice>}
       {query.error && <><Notice error>{errorMessage(query.error)}</Notice>

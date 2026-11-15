@@ -26,6 +26,7 @@ export const shell = {
     management: 'Management',
     community: 'Community',
     settings: 'Settings',
+    housekeeping: 'Housekeeping',
   },
   links: {
     overview: 'Overview',
@@ -48,6 +49,7 @@ export const shell = {
     deletedContacts: 'Deleted contacts',
     deletedDocuments: 'Deleted documents',
     storage: 'Storage',
+    cleanup: 'Free up space',
     communityPortal: 'Community portal',
   },
   footer: {

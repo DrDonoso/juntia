@@ -394,7 +394,7 @@ by bytes, not only by the number of active files:
   whenever the community quota or the reserve refuses an upload. Installations
   already over a quota refuse new uploads until enough is purged.
 - **Purge.** Only the technical administrator can purge, through
-  `/api/admin/storage` (the **Storage** page), with the usual Origin and
+  `/api/admin/storage` (the **Free up space** page), with the usual Origin and
   anti-CSRF checks; it keeps working while Actions is off. Only withdrawn PDFs
   can be purged (`409 action_attachment_active`). A purge deletes the file but
   keeps the attachment record and adds an `attachment_purged` history event,
@@ -511,7 +511,7 @@ members but keeps its files and history; only the technical administrator can
 see deleted documents, restore them or purge them. Purging deletes the files
 of every version inside the database transaction, keeps names and history, and
 cannot be undone except from a backup; earlier versions of a file can also be
-purged one by one from the **Storage** page. Migration `0022` refuses to
+purged one by one from the **Free up space** page. Migration `0022` refuses to
 downgrade while any document data exists.
 
 ## Deployment controls

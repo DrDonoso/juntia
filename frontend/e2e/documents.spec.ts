@@ -108,7 +108,9 @@ test('neighbors share folders and files, preview PDFs, follow their history and 
     const viewer = ana.getByRole('dialog', { name: 'Rules.txt' })
     await expect(viewer.getByText('Quiet hours from 22:00 to 08:00.')).toBeVisible()
     expect((await new AxeBuilder({ page: ana }).analyze()).violations).toEqual([])
-    await viewer.getByRole('button', { name: 'Close' }).click()
+    // Like any dialog, a click outside it closes the viewer.
+    await ana.mouse.click(5, 5)
+    await expect(viewer).toHaveCount(0)
     const previewPath = await folder.getByRole('link', { name: 'Preview General meeting.pdf' }).getAttribute('href')
     expect(previewPath).toMatch(/^\/api\/documents\/versions\/[0-9a-f-]{36}\/preview$/)
     const preview = await ana.request.get(previewPath ?? '')

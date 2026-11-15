@@ -1,4 +1,4 @@
-import { useState, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useId } from 'react'
+import { useState, type MouseEvent, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useId } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import { Button, Tooltip, TooltipTrigger } from 'react-aria-components'
@@ -257,6 +257,12 @@ export function useAction(queryKey?: readonly unknown[] | false) {
   function reset() { setError(''); setSuccess(''); setFailure(null) }
   return { busy, run, failure, reset, notice: <>{error && <Notice error>{error}</Notice>}{success && <Notice>{success}</Notice>}</> }
 }
+// A modal dialog's backdrop is part of the dialog element: its clicks target the dialog, outside its box.
+function onBackdrop(event: MouseEvent<HTMLDialogElement>): boolean {
+  if (event.target !== event.currentTarget) return false
+  const box = event.currentTarget.getBoundingClientRect()
+  return event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom
+}
 export function Modal({ title, close, children, disabled = false, className, restoreFocusRef, actions }: {
   title: string; close: () => void; children: ReactNode; disabled?: boolean; className?: string
   restoreFocusRef?: RefObject<HTMLElement | null>
@@ -266,6 +272,8 @@ export function Modal({ title, close, children, disabled = false, className, res
   const { t } = useI18n()
   const ref = useRef<HTMLDialogElement>(null)
   const openerRef = useRef<Element | null>(null)
+  // Only a click that also started on the backdrop closes: selecting text and releasing outside must not.
+  const pressedBackdrop = useRef(false)
   useLayoutEffect(() => {
     const dialog = ref.current
     openerRef.current = restoreFocusRef?.current ?? document.activeElement
@@ -282,6 +290,11 @@ export function Modal({ title, close, children, disabled = false, className, res
     // React bubbles cancel from nested dialogs; only the topmost one should close.
     if (event.target !== event.currentTarget) return
     event.preventDefault(); if (!disabled) close()
+  }} onMouseDown={event => { pressedBackdrop.current = onBackdrop(event) }} onClick={event => {
+    // Nested dialogs bubble here too, but their backdrop clicks target them, not this one.
+    const backdrop = pressedBackdrop.current && onBackdrop(event)
+    pressedBackdrop.current = false
+    if (backdrop && !disabled) close()
   }}>
     <header><h2>{title}</h2>{actions ? <div className="dialog-actions">{actions}{closeButton}</div> : closeButton}</header>
     {children}

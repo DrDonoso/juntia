@@ -363,17 +363,22 @@ function StoredImages() {
   </section>
 }
 
+function RefreshButton() {
+  const { t } = useI18n()
+  const fetching = useIsFetching({ queryKey: ['admin', 'storage'] }) > 0
+  return <button type="button" className="secondary" disabled={fetching} onClick={() => void cache.invalidateQueries({ queryKey: ['admin', 'storage'] })}>
+    <Icon name="refresh" size={16} />{t('storage.refresh')}</button>
+}
+
 export function StoragePage() {
   const { t } = useI18n()
   const summary = useQuery({
     queryKey: ['admin', 'storage', 'summary'], queryFn: () => api<StorageOut>('/admin/storage'), staleTime: 0,
   })
-  const fetching = useIsFetching({ queryKey: ['admin', 'storage'] }) > 0
   return <>
     <div className="page-heading"><div><p className="eyebrow">{t('storage.eyebrow')}</p><h1>{t('storage.title')}</h1>
       <p className="muted">{t('storage.description')}</p></div>
-      <button type="button" className="secondary" disabled={fetching} onClick={() => void cache.invalidateQueries({ queryKey: ['admin', 'storage'] })}>
-        <Icon name="refresh" size={16} />{t('storage.refresh')}</button>
+      <RefreshButton />
     </div>
     {summary.isPending && <Notice>{t('storage.loading')}</Notice>}
     {summary.error && <><Notice error>{errorMessage(summary.error)}</Notice>
@@ -388,6 +393,17 @@ export function StoragePage() {
       <DocumentLimitsCard storage={summary.data.documents} />
       <NeighborsCard storage={summary.data} />
     </>}
+  </>
+}
+
+// The files that keep using space until the administrator deletes them permanently.
+export function CleanupPage() {
+  const { t } = useI18n()
+  return <>
+    <div className="page-heading"><div><p className="eyebrow">{t('storage.eyebrow')}</p><h1>{t('storage.cleanup.title')}</h1>
+      <p className="muted">{t('storage.cleanup.description')}</p></div>
+      <RefreshButton />
+    </div>
     <WithdrawnPDFs />
     <StoredImages />
     <PreviousDocumentVersions />

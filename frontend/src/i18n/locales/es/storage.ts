@@ -4,7 +4,11 @@ import type { storage as source } from '../en/storage'
 export const storage: Messages<typeof source> = {
   eyebrow: 'ADMINISTRACIÓN',
   title: 'Almacenamiento',
-  description: 'Los PDFs adjuntos a las actuaciones, las imágenes pegadas en descripciones y comentarios y los documentos compartidos se guardan en el servidor, también después de retirarlos, sustituirlos o eliminarlos. Consulta cuánto espacio ocupan y elimínalos definitivamente para liberarlo.',
+  description: 'Consulta cuánto espacio del servidor ocupan los PDFs adjuntos a las actuaciones, las imágenes pegadas en descripciones y comentarios y los documentos compartidos, y ajusta los límites de los documentos compartidos.',
+  cleanup: {
+    title: 'Liberar espacio',
+    description: 'Los PDFs retirados, las imágenes de los textos y las versiones anteriores de los documentos siguen ocupando espacio en el servidor hasta que los eliminas definitivamente.',
+  },
   refresh: 'Actualizar',
   loading: 'Cargando el uso del almacenamiento…',
   usage: '{used} de {limit} usados',

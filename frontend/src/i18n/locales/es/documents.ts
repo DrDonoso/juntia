@@ -239,7 +239,6 @@ export const documents: Messages<typeof source> = {
     deleted: {
       title: 'Documentos eliminados',
       description: 'Archivos y carpetas eliminados de Documentos. Los vecinos ya no los ven; siguen ocupando espacio hasta que los restauras o los eliminas definitivamente.',
-      list: 'Eliminaciones, de la más reciente a la más antigua',
       loading: 'Cargando documentos eliminados…',
       empty: 'No hay documentos eliminados pendientes de restaurar o purgar.',
       emptyPage: 'No hay documentos eliminados en esta página.',

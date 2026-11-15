@@ -21,7 +21,7 @@ test('reader, account binding, imports, rules, administration and responsive acc
   await page.getByLabel('Password', { exact: true }).fill(process.env.E2E_ADMIN_PASSWORD || 'synthetic-browser-test-password')
   await page.getByRole('button', { name: 'Sign in to administration' }).click()
   await expect(page.getByRole('heading', { name: 'Import statement' })).toBeVisible()
-  await expect(page.getByRole('navigation', { name: 'Administration navigation' }).getByRole('link')).toHaveCount(13)
+  await expect(page.getByRole('navigation', { name: 'Administration navigation' }).getByRole('link')).toHaveCount(14)
   await expect(page.getByRole('navigation', { name: 'Administration navigation' }).getByRole('link', { name: 'Community labels', exact: true })).toHaveAttribute('href', '/admin/labels')
   await expect(mainNavigation).toHaveCount(0)
   await expect(mainNavigation.locator('a[href^="/admin"]')).toHaveCount(0)
@@ -123,7 +123,7 @@ test('reader, account binding, imports, rules, administration and responsive acc
   expect((await page.request.get('/statements')).status()).toBe(404)
   await expect(page.locator('.sidebar-foot')).toHaveCount(0)
   await expect(page.locator('header.topbar')).not.toContainText('Dark mode')
-  for (const route of ['/', '/transactions', '/admin/catalog', '/admin/statements', '/admin/general', '/admin/storage']) {
+  for (const route of ['/', '/transactions', '/admin/catalog', '/admin/statements', '/admin/general', '/admin/storage', '/admin/cleanup']) {
     await page.goto(route)
     await expect(page.locator('main h1')).toBeVisible()
     await page.waitForLoadState('networkidle')
@@ -170,7 +170,7 @@ test('reader, account binding, imports, rules, administration and responsive acc
   await page.goto('/admin/general')
   await expect(page.getByRole('heading', { name: 'General', exact: true, level: 1 })).toBeVisible()
   await page.getByRole('button', { name: 'Navigation menu', exact: true }).click()
-  await expect(page.getByRole('navigation', { name: 'Administration navigation' }).getByRole('link')).toHaveCount(13)
+  await expect(page.getByRole('navigation', { name: 'Administration navigation' }).getByRole('link')).toHaveCount(14)
   await page.getByRole('button', { name: 'Navigation menu', exact: true }).click()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])

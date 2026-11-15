@@ -170,7 +170,7 @@ times that do not exist or happen twice at a daylight-saving change are rejected
 All three are whole numbers of MiB (1 MiB = 1,048,576 bytes) between 1 and 1,073,741,824; any other
 value stops the startup. Every stored action PDF counts, active or withdrawn, and so does every
 pasted image, also after it is removed from its text, until the administrator deletes it
-permanently (purges it) in **Settings > Storage**. A refused upload writes nothing. Details, error
+permanently (purges it) in **Housekeeping > Free up space**. A refused upload writes nothing. Details, error
 codes and the purge are in the [deployment guide](deployment.md#storage-quotas-and-purging) and the
 [security model](security-model.md#storage-quotas-and-retention).
 

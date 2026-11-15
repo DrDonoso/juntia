@@ -19,6 +19,7 @@ const RulesPage = lazy(() => import('./admin').then(m => ({ default: m.RulesPage
 const CatalogPage = lazy(() => import('./admin').then(m => ({ default: m.CatalogPage })))
 const CommunityLabelsPage = lazy(() => import('./community-labels').then(m => ({ default: m.CommunityLabelsPage })))
 const StoragePage = lazy(() => import('./storage').then(m => ({ default: m.StoragePage })))
+const CleanupPage = lazy(() => import('./storage').then(m => ({ default: m.CleanupPage })))
 const GeneralPage = lazy(() => import('./admin').then(m => ({ default: m.GeneralPage })))
 const FeaturesPage = lazy(() => import('./admin').then(m => ({ default: m.FeaturesPage })))
 const UsersPage = lazy(() => import('./users').then(m => ({ default: m.UsersPage })))
@@ -203,9 +204,12 @@ export function Shell() {
             <NavLink to="/admin/dwellings"><Icon name="home" />{t('shell.links.dwellings')}</NavLink>
             <NavLink to="/admin/users"><Icon name="user" />{t('shell.links.users')}</NavLink>
             <NavLink to="/admin/labels"><Icon name="tag" />{t('shell.links.communityLabels')}</NavLink>
-            <NavLink to="/admin/deleted-contacts"><Icon name="file-text" />{t('shell.links.deletedContacts')}</NavLink>
-            <NavLink to="/admin/deleted-documents"><Icon name="folder" />{t('shell.links.deletedDocuments')}</NavLink>
             <NavLink to="/admin/storage"><Icon name="dashboard" />{t('shell.links.storage')}</NavLink>
+          </NavigationGroup>
+          <NavigationGroup title={t('shell.groups.housekeeping')}>
+            <NavLink to="/admin/cleanup"><Icon name="trash" />{t('shell.links.cleanup')}</NavLink>
+            <NavLink to="/admin/deleted-documents"><Icon name="folder" />{t('shell.links.deletedDocuments')}</NavLink>
+            <NavLink to="/admin/deleted-contacts"><Icon name="file-text" />{t('shell.links.deletedContacts')}</NavLink>
           </NavigationGroup>
         </nav>}
       </> : reader.data?.authenticated && <nav aria-label={t('shell.navigation.main')}>
@@ -280,6 +284,7 @@ function App() {
       <Route path="deleted-contacts" element={<ContactsPage deleted />} />
       <Route path="deleted-documents" element={<DeletedDocumentsPage />} />
       <Route path="storage" element={<StoragePage />} />
+      <Route path="cleanup" element={<CleanupPage />} />
       <Route path="neighbors" element={<LegacyCommunityRedirect />} />
       <Route path="contacts" element={<LegacyCommunityRedirect />} />
       <Route path="actions" element={<LegacyCommunityRedirect />} /><Route path="actions/:itemId" element={<LegacyCommunityRedirect />} />
