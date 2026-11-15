@@ -253,6 +253,7 @@ describe('administration', () => {
     expect(page).toMatchObject({ total: 2, page: 1, pages: 1 })
     expect(page.items.map(item => item.id)).toEqual([second.id, first.id])
     expect(page.items[1]).toEqual({ ...first, scope: 'actions', sha256: sha256Hex(png(10, 10, 500)), author: OLIVIA, purged_at: null })
+    expect((await demoRequest<StoredImagePage>('GET', '/api/admin/storage/images?q=SECOND')).body.items.map(item => item.id)).toEqual([second.id])
     expect((await demoRequest('GET', '/api/admin/storage/images?page=0')).status).toBe(422)
     const summary = (await demoRequest<StorageOut>('GET', '/api/admin/storage')).body
     expect(summary.community).toMatchObject({ image_files: 2, image_bytes: first.size + second.size })

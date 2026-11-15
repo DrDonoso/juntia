@@ -257,9 +257,11 @@ export function useAction(queryKey?: readonly unknown[] | false) {
   function reset() { setError(''); setSuccess(''); setFailure(null) }
   return { busy, run, failure, reset, notice: <>{error && <Notice error>{error}</Notice>}{success && <Notice>{success}</Notice>}</> }
 }
-export function Modal({ title, close, children, disabled = false, className, restoreFocusRef }: {
+export function Modal({ title, close, children, disabled = false, className, restoreFocusRef, actions }: {
   title: string; close: () => void; children: ReactNode; disabled?: boolean; className?: string
   restoreFocusRef?: RefObject<HTMLElement | null>
+  // Controls shown in the header, before the close button.
+  actions?: ReactNode
 }) {
   const { t } = useI18n()
   const ref = useRef<HTMLDialogElement>(null)
@@ -275,12 +277,13 @@ export function Modal({ title, close, children, disabled = false, className, res
     const opener = openerRef.current
     if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
   }, [])
+  const closeButton = <button type="button" className="quiet icon-button" disabled={disabled} onClick={close} aria-label={t('common.close')}><Icon name="close" /></button>
   return <dialog ref={ref} className={className} aria-label={title} onCancel={event => {
     // React bubbles cancel from nested dialogs; only the topmost one should close.
     if (event.target !== event.currentTarget) return
     event.preventDefault(); if (!disabled) close()
   }}>
-    <header><h2>{title}</h2><button type="button" className="quiet icon-button" disabled={disabled} onClick={close} aria-label={t('common.close')}><Icon name="close" /></button></header>
+    <header><h2>{title}</h2>{actions ? <div className="dialog-actions">{actions}{closeButton}</div> : closeButton}</header>
     {children}
   </dialog>
 }

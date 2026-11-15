@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router'
@@ -13,11 +13,12 @@ import { extensionOf, uploads, useUploads, type UploadEntry } from './document-u
 import { compareText, dateTimeFormat, formatNumber, useI18n, type Translate } from './i18n'
 import { Icon, type IconName } from './icons'
 import { Modal, Notice, Pagination, authorName, useAction, useFeatures } from './shared'
+import { TextPreview, isTextFile, plainClick } from './text-preview'
 
 export type DocumentKind = DocumentOut['kind']
 export type DocumentItem = { kind: 'folder'; value: DocumentFolderOut } | { kind: 'file'; value: DocumentOut }
 type Sort = 'name' | 'modified' | 'size'
-type Dialog = { kind: 'folder' } | { kind: 'rename' | 'move' | 'delete' | 'info'; item: DocumentItem }
+type Dialog = { kind: 'folder' } | { kind: 'rename' | 'move' | 'delete' | 'info'; item: DocumentItem } | { kind: 'view'; file: DocumentOut }
 
 const KIND_ICONS: Record<DocumentKind, IconName> = {
   pdf: 'file-text', image: 'image', video: 'video', document: 'file-text', spreadsheet: 'table',
@@ -206,7 +207,8 @@ function FolderView({ folderId }: { folderId: number | null }) {
         {items.length === 0 ? <p className="empty">{folderId === null ? t('documents.empty.root') : t('documents.empty.folder')}</p>
           : <ul className="document-grid" aria-label={t('documents.list.label', { folder: folderName })} data-selecting={chosen.length > 0 || undefined}>
             {items.map(item => <DocumentCard key={itemKey(item)} item={item} selected={selected.has(itemKey(item))}
-              toggle={() => toggle(item)} act={action => act(action, item)} newVersion={newVersion} />)}
+              toggle={() => toggle(item)} act={action => act(action, item)} newVersion={newVersion}
+              view={file => { setMessage(''); setDialog({ kind: 'view', file }) }} />)}
           </ul>}
       </section>
     </>}
@@ -225,6 +227,8 @@ function FolderView({ folderId }: { folderId: number | null }) {
         if (dialog.item.kind === 'file') newVersion(dialog.item.value)
         setDialog(null)
       } : undefined} />}
+    {dialog?.kind === 'view' && <TextPreview name={dialog.file.name} extension={dialog.file.current.extension} size={dialog.file.current.size}
+      path={`/documents/versions/${dialog.file.current.id}/preview`} download={downloadUrl(dialog.file.current.id)} close={() => setDialog(null)} />}
   </>
 }
 
@@ -302,16 +306,25 @@ export function ItemMenu({ label, options }: { label: string; options: MenuOptio
   </div>
 }
 
-function DocumentCard({ item, selected, toggle, act, newVersion }: {
+function DocumentCard({ item, selected, toggle, act, newVersion, view }: {
   item: DocumentItem; selected: boolean; toggle: () => void
   act: (action: 'rename' | 'move' | 'delete' | 'info') => void; newVersion: (file: DocumentOut) => void
+  view: (file: DocumentOut) => void
 }) {
   const { t } = useI18n()
   const name = item.value.name
   const options: MenuOption[] = []
+  const text = item.kind === 'file' && item.value.previewable && isTextFile(item.value.current.extension) ? item.value : null
+  const viewText = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!text || !plainClick(event)) return
+    event.preventDefault()
+    view(text)
+  }
   if (item.kind === 'file') {
     const file = item.value
-    if (file.previewable) options.push({ id: 'preview', label: t('documents.menu.preview'), icon: 'eye', href: previewUrl(file.current.id), newTab: true })
+    if (file.previewable) options.push(text
+      ? { id: 'preview', label: t('documents.menu.preview'), icon: 'eye', run: () => view(file) }
+      : { id: 'preview', label: t('documents.menu.preview'), icon: 'eye', href: previewUrl(file.current.id), newTab: true })
     options.push({ id: 'download', label: t('documents.menu.download'), icon: 'download', href: downloadUrl(file.current.id) })
   } else {
     options.push({ id: 'download', label: t('documents.menu.downloadFolder'), icon: 'download', href: archiveUrl([item]) })
@@ -335,7 +348,7 @@ function DocumentCard({ item, selected, toggle, act, newVersion }: {
       ? <Link className="document-open" to={`/documents/folders/${item.value.id}`}>
         <Icon name="folder" size={40} className="document-icon document-icon-folder" /><span className="document-name">{name}</span></Link>
       : <a className="document-open" href={item.value.previewable ? previewUrl(item.value.current.id) : downloadUrl(item.value.current.id)}
-        {...item.value.previewable ? { target: '_blank', rel: 'noopener noreferrer' } : { download: '' }}>
+        {...item.value.previewable ? { target: '_blank', rel: 'noopener noreferrer' } : { download: '' }} onClick={viewText}>
         <Icon name={kindIcon(item.value.kind)} size={40} className={`document-icon document-icon-${item.value.kind}`} />
         <span className="document-name">{name}</span></a>}
     <p className="document-meta">{item.kind === 'folder'
@@ -345,7 +358,8 @@ function DocumentCard({ item, selected, toggle, act, newVersion }: {
     </p>
     <div className="document-card-actions">
       {item.kind === 'file' && item.value.previewable && <a className="button quiet icon-button" href={previewUrl(item.value.current.id)}
-        target="_blank" rel="noopener noreferrer" aria-label={t('documents.card.preview', { name })} title={t('documents.card.previewTitle')}>
+        target="_blank" rel="noopener noreferrer" aria-label={t('documents.card.preview', { name })}
+        title={text ? t('documents.card.viewTitle') : t('documents.card.previewTitle')} onClick={viewText}>
         <Icon name="eye" /></a>}
       <ItemMenu label={t('documents.menu.label', { name })} options={options} />
     </div>
@@ -606,17 +620,45 @@ export function DocumentHistory({ path, queryKey, folder }: { path: string; quer
   })
   return <section className="document-history" aria-labelledby={heading}>
     <h3 id={heading}>{t('documents.history.title')}</h3>
-    <p className="muted">{t('documents.history.help')}</p>
     {query.isPending && <Notice>{t('documents.history.loading')}</Notice>}
     {query.error && <Notice error>{errorMessage(query.error)}</Notice>}
     {query.data && <>
-      <ol className="contact-events document-events">{query.data.items.map(event => <li key={event.id}>
-        <header><strong>{authorName(event.author, t)}</strong><ActionTime value={event.created_at} /></header>
+      <ol className="document-timeline">{query.data.items.map(event => <li key={event.id}>
+        <ActionTime value={event.created_at} />
+        <strong>{authorName(event.author, t)}</strong>
         <p>{eventText(event, folder, t)}</p>
       </li>)}</ol>
       <Pagination page={page} pages={query.data.pages} change={setPage} busy={query.isFetching} label={t('documents.history.pagination')} />
     </>}
   </section>
+}
+
+const HISTORY_HIDDEN = 'juntia_document_history_hidden'
+
+function historyShown(): boolean {
+  try { return localStorage.getItem(HISTORY_HIDDEN) !== '1' } catch { return true }
+}
+
+/** The details of a file or folder and, unless people hide it, its history as a timeline beside them. */
+export function DocumentInfoDialog({ title, close, history, children }: {
+  title: string; close: () => void; history: ReactNode; children: ReactNode
+}) {
+  const { t } = useI18n()
+  const [shown, setShown] = useState(historyShown)
+  const id = useId()
+  function toggle() {
+    const next = !shown
+    setShown(next)
+    try { localStorage.setItem(HISTORY_HIDDEN, next ? '0' : '1') } catch { /* Then the choice lasts until the page reloads. */ }
+  }
+  return <Modal title={title} close={close} className={`document-info${shown ? ' with-history' : ''}`}
+    actions={<button type="button" className="secondary document-history-toggle" aria-expanded={shown} aria-controls={shown ? id : undefined}
+      onClick={toggle}><Icon name="history" size={18} />{shown ? t('documents.history.hide') : t('documents.history.show')}</button>}>
+    <div className="document-info-layout">
+      <div className="document-info-main">{children}</div>
+      {shown && <div id={id} className="document-info-history">{history}</div>}
+    </div>
+  </Modal>
 }
 
 export function VersionList({ versions, current, download }: {
@@ -655,7 +697,8 @@ function InfoDialog({ item, close, newVersion }: { item: DocumentItem; close: ()
     queryFn: ({ signal }) => api<DocumentInfoOut | DocumentFolderInfoOut>(path, 'GET', undefined, signal),
   })
   const value = query.data
-  return <Modal title={t('documents.info.title', { name: item.value.name })} close={close} className="document-info">
+  return <DocumentInfoDialog title={t('documents.info.title', { name: item.value.name })} close={close}
+    history={<DocumentHistory path={path} queryKey={['documents', item.kind, item.value.id]} folder={item.kind === 'folder'} />}>
     {query.isPending && <Notice>{t('documents.info.loading')}</Notice>}
     {query.error && <Notice error>{errorMessage(query.error)}</Notice>}
     {value && 'current' in value && <>
@@ -672,9 +715,7 @@ function InfoDialog({ item, close, newVersion }: { item: DocumentItem; close: ()
       <div><dt>{t('documents.info.createdBy')}</dt><dd>{authorName(value.author, t)} · <ActionTime value={value.created_at} /></dd></div>
       <div><dt>{t('documents.info.modified')}</dt><dd><ActionTime value={value.updated_at} /></dd></div>
     </dl>}
-    {value && <p className="muted">{value.can_manage ? t('documents.info.canManage') : t('documents.info.cannotManage')}</p>}
-    <DocumentHistory path={path} queryKey={['documents', item.kind, item.value.id]} folder={item.kind === 'folder'} />
-  </Modal>
+  </DocumentInfoDialog>
 }
 
 export { shortDate as documentDate }

@@ -3,15 +3,16 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link, useLocation } from 'react-router'
 import { api, cache, errorMessage } from './api/client'
 import type {
-  DocumentDeletionOut, DocumentDeletionPage, DocumentInfoOut, DocumentResidentStorageOut, DocumentSettings, DocumentStorageOut,
+  DocumentDeletionOut, DocumentDeletionPage, DocumentInfoOut, DocumentSettings, DocumentStorageOut,
   StoredDocumentVersionOut, StoredDocumentVersionPage,
 } from './api/schema.gen'
 import { ActionTime, byteSize } from './community-action-shared'
-import { DocumentHistory, FileDetails, VersionList, kindIcon, locationText } from './documents'
-import { compareText, formatNumber, useI18n, type Translate } from './i18n'
+import { DocumentHistory, DocumentInfoDialog, FileDetails, VersionList, kindIcon, locationText } from './documents'
+import { formatNumber, useI18n, type Translate } from './i18n'
 import { Icon } from './icons'
-import { Modal, Notice, Pagination, SortableHeader, authorName, useAction, useTableSort } from './shared'
+import { Modal, Notice, Pagination, authorName, useAction } from './shared'
 import { SizeField, parseSize } from './size-field'
+import { TextPreview, isTextFile, plainClick } from './text-preview'
 
 const MIB = 1024 * 1024
 const POLICIES: readonly DocumentSettings['manage_policy'][] = ['creator', 'administrator', 'everyone']
@@ -134,7 +135,9 @@ function DeletedInfo({ item, close }: { item: DocumentDeletionOut; close: () => 
     enabled: item.document_id !== null,
   })
   const path = item.document_id !== null ? `/admin/documents/files/${item.document_id}` : `/admin/documents/folders/${item.folder_id}`
-  return <Modal title={t('documents.info.title', { name: item.name })} close={close} className="document-info">
+  return <DocumentInfoDialog title={t('documents.info.title', { name: item.name })} close={close}
+    history={<DocumentHistory path={path} queryKey={['admin', 'documents', item.folder_id !== null ? 'folder' : 'file', item.folder_id ?? item.document_id]}
+      folder={item.folder_id !== null} />}>
     {item.folder_id !== null && <dl className="document-details">
       <div><dt>{t('documents.info.contents')}</dt><dd>{contents(item, t)}</dd></div>
       <div><dt>{t('documents.info.location')}</dt><dd>{locationText(item.location, t)}</dd></div>
@@ -148,9 +151,7 @@ function DeletedInfo({ item, close }: { item: DocumentDeletionOut; close: () => 
       <VersionList versions={file.data.versions} current={file.data.current.number}
         download={version => `/api/admin/documents/versions/${version.id}/download`} />
     </>}
-    <DocumentHistory path={path} queryKey={['admin', 'documents', item.folder_id !== null ? 'folder' : 'file', item.folder_id ?? item.document_id]}
-      folder={item.folder_id !== null} />
-  </Modal>
+  </DocumentInfoDialog>
 }
 
 function DeletionDialog({ item, kind, close, done }: {
@@ -269,49 +270,9 @@ export function DocumentStorageCard({ storage }: { storage: DocumentStorageOut }
       <div><dt>{t('storage.documents.administrator')}</dt><dd>{byteSize(storage.administrator_bytes)}</dd></div>
       <div><dt>{t('storage.documents.uploads')}</dt><dd>{byteSize(storage.upload_bytes)} · {t('storage.documents.uploadCount', { count: storage.uploads })}</dd></div>
     </dl>
-    <p className="muted storage-hint">{t('storage.documents.hint')}</p>
     <p className="storage-hint"><a href="#document-limits">{t('storage.documents.change')}</a></p>
     {state === 'full' && <Notice error>{t('storage.documents.full')}</Notice>}
     {state === 'warning' && <p className="notice warning" role="status">{t('storage.documents.near')}</p>}
-  </section>
-}
-
-type NeighborColumn = 'neighbor' | 'versions' | 'quota'
-
-export function DocumentNeighborsCard({ storage }: { storage: DocumentStorageOut }) {
-  const { t } = useI18n()
-  const heading = useId(), title = t('storage.documents.neighbors.title')
-  const sort = useTableSort<NeighborColumn>('quota', column => column === 'neighbor' ? 'asc' : 'desc')
-  const name = (resident: DocumentResidentStorageOut) => resident.name || t('storage.neighbors.unnamed', { id: resident.user_id })
-  const rows = [...storage.residents].sort((left, right) => {
-    const names = compareText(name(left), name(right))
-    const order = sort.key === 'neighbor' ? names
-      : sort.key === 'versions' ? left.versions - right.versions : left.stored_bytes - right.stored_bytes
-    return (sort.direction === 'asc' ? order : -order) || names || left.user_id - right.user_id
-  })
-  const header = (column: NeighborColumn, label: string, numeric = false) => <SortableHeader label={label}
-    sortLabel={t('storage.sortBy', { column: label })} numeric={numeric} active={sort.key === column}
-    direction={sort.direction} change={() => sort.change(column)} />
-  return <section className="card" aria-labelledby={heading}>
-    <h2 id={heading}>{title}</h2>
-    {rows.length === 0 ? <p className="empty">{t('storage.documents.neighbors.empty')}</p>
-      : <div className="table-scroll"><table className="storage-table" aria-label={title}>
-        <thead><tr>
-          {header('neighbor', t('storage.neighbors.columns.neighbor'))}
-          {header('versions', t('storage.documents.neighbors.versions'), true)}
-          {header('quota', t('storage.neighbors.columns.quota'))}
-        </tr></thead>
-        <tbody>{rows.map(resident => {
-          const residentName = name(resident)
-          return <tr key={resident.user_id}>
-            <th scope="row"><span className="storage-neighbor">{residentName}</span>
-              {resident.account_deleted && <span className="tag">{t('storage.neighbors.deleted')}</span>}</th>
-            <td className="numeric">{formatNumber(resident.versions)}</td>
-            <td className="storage-quota">{t('storage.usage', { used: byteSize(resident.stored_bytes), limit: byteSize(storage.resident_quota_bytes) })}
-              <Meter label={t('storage.neighbors.meter', { name: residentName })} used={resident.stored_bytes} limit={storage.resident_quota_bytes} /></td>
-          </tr>
-        })}</tbody>
-      </table></div>}
   </section>
 }
 
@@ -343,22 +304,28 @@ function VersionPurgeDialog({ item, close, done }: { item: StoredDocumentVersion
 // The administrator's own copies, also while Documents is turned off.
 const versionUrl = (item: StoredDocumentVersionOut, action: 'preview' | 'download') => `/api/admin/documents/versions/${item.id}/${action}`
 
-// The latest uploaded first, 20 per page.
+// The latest uploaded first, 5 per page.
 export function PreviousDocumentVersions() {
   const { t, rich } = useI18n()
-  const [page, setPage] = useState(1)
+  const [page, setPage] = useState(1), [search, setSearch] = useState('')
   const [purging, setPurging] = useState<StoredDocumentVersionOut | null>(null)
+  const [viewing, setViewing] = useState<StoredDocumentVersionOut | null>(null)
   const [outcome, setOutcome] = useState<{ name: string; number: number; size: number } | null>(null)
   const heading = useRef<HTMLHeadingElement>(null), headingId = useId()
+  const q = search.trim()
+  const params = new URLSearchParams({ page: String(page) })
+  if (q) params.set('q', q)
   const query = useQuery({
-    queryKey: ['admin', 'storage', 'document-versions', page],
-    queryFn: () => api<StoredDocumentVersionPage>(`/admin/storage/document-versions?page=${page}`),
+    queryKey: ['admin', 'storage', 'document-versions', page, q],
+    queryFn: () => api<StoredDocumentVersionPage>(`/admin/storage/document-versions?${params}`),
     placeholderData: keepPreviousData, staleTime: 0,
   })
   useEffect(() => { if (outcome) heading.current?.focus() }, [outcome])
   const title = t('storage.documents.previousVersions.title')
   return <section className="card" aria-labelledby={headingId}>
     <h2 id={headingId} ref={heading} tabIndex={-1}>{title}</h2>
+    <label className="storage-search">{t('storage.documents.previousVersions.search')}<input type="search" maxLength={200} value={search}
+      onChange={event => { setSearch(event.target.value); setPage(1) }} /></label>
     {outcome && <Notice>{t('storage.documents.previousVersions.purged', {
       name: outcome.name, number: outcome.number, size: byteSize(outcome.size),
     })}</Notice>}
@@ -366,8 +333,10 @@ export function PreviousDocumentVersions() {
     {query.error && <><Notice error>{errorMessage(query.error)}</Notice>
       <button type="button" className="secondary" disabled={query.isFetching} onClick={() => void query.refetch()}>{t('common.retryLoading')}</button></>}
     {query.data && <>
-      {query.data.total > 0 && <p className="muted">{t('storage.documents.previousVersions.total', { count: query.data.total })}</p>}
-      {query.data.items.length === 0 ? <p className="empty">{page > 1 ? t('storage.documents.previousVersions.emptyPage') : t('storage.documents.previousVersions.empty')}</p>
+      {query.data.total > 0 && <p className="muted">{q ? t('storage.search.results', { count: query.data.total })
+        : t('storage.documents.previousVersions.total', { count: query.data.total })}</p>}
+      {query.data.items.length === 0 ? <p className="empty">{page > 1 ? t('storage.documents.previousVersions.emptyPage')
+        : q ? t('storage.search.empty', { query: q }) : t('storage.documents.previousVersions.empty')}</p>
         : <ul className="action-attachment-list storage-withdrawn-list" aria-label={title} aria-busy={query.isFetching}>
           {query.data.items.map(item => {
             const labels = { name: item.document_name, number: item.number }
@@ -380,7 +349,12 @@ export function PreviousDocumentVersions() {
               </div>
               <div className="storage-file-actions">
                 {item.previewable && <a className="button secondary icon-button" href={versionUrl(item, 'preview')} target="_blank" rel="noopener noreferrer"
-                  aria-label={t('storage.documents.previousVersions.preview', labels)} title={t('documents.card.previewTitle')}><Icon name="eye" /></a>}
+                  aria-label={t('storage.documents.previousVersions.preview', labels)}
+                  title={isTextFile(item.extension) ? t('documents.card.viewTitle') : t('documents.card.previewTitle')} onClick={event => {
+                    if (!isTextFile(item.extension) || !plainClick(event)) return
+                    event.preventDefault()
+                    setViewing(item)
+                  }}><Icon name="eye" /></a>}
                 <a className="button secondary icon-button" href={versionUrl(item, 'download')} download=""
                   aria-label={t('storage.documents.previousVersions.download', labels)} title={t('documents.menu.download')}><Icon name="download" /></a>
                 <button type="button" className="secondary danger" aria-label={t('storage.documents.previousVersions.deleteLabel', labels)}
@@ -391,6 +365,9 @@ export function PreviousDocumentVersions() {
         </ul>}
       <Pagination page={page} pages={query.data.pages} change={setPage} busy={query.isFetching} label={t('storage.documents.previousVersions.pagination')} />
     </>}
+    {viewing && <TextPreview name={`${viewing.document_name} · ${t('documents.info.versionNumber', { number: viewing.number })}`}
+      extension={viewing.extension} size={viewing.size} path={`/admin/documents/versions/${viewing.id}/preview`}
+      download={versionUrl(viewing, 'download')} close={() => setViewing(null)} />}
     {purging && <VersionPurgeDialog key={purging.id} item={purging} close={() => setPurging(null)} done={() => {
       setOutcome({ name: purging.document_name, number: purging.number, size: purging.size })
       setPurging(null)

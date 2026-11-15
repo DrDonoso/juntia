@@ -38,6 +38,7 @@ export const documents = {
     version: 'Version {number}',
     preview: 'Preview {name}',
     previewTitle: 'Preview in a new tab',
+    viewTitle: 'Preview',
   },
   menu: {
     label: 'Options for {name}',
@@ -142,12 +143,11 @@ export const documents = {
     current: 'Current',
     downloadVersion: 'Download version {number}',
     purged: 'Deleted permanently: <time></time>',
-    canManage: 'You can rename, move, replace and delete this item.',
-    cannotManage: 'Only the people the administrator allows can rename, move, replace or delete this item.',
   },
   history: {
     title: 'History',
-    help: 'Who created, uploaded, renamed, moved, deleted or restored it, newest first. The contents of the files are not compared.',
+    show: 'Show history',
+    hide: 'Hide history',
     loading: 'Loading the history…',
     pagination: 'History pages',
     createdFolder: 'Created the folder in {location}.',
@@ -163,6 +163,13 @@ export const documents = {
     purged: 'Deleted it permanently.',
     purgedWith: 'Deleted it permanently together with the folder “{folder}”.',
     versionPurged: 'Deleted version {number} ({size}) permanently.',
+  },
+  viewer: {
+    loading: 'Loading the file…',
+    partial: 'Only the first {size} of the file are shown. Download it to see all of it.',
+    rows: 'Only the first {count} rows are shown.',
+    empty: 'The file is empty.',
+    column: 'Column {number}',
   },
   kinds: {
     pdf: 'PDF',

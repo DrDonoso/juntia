@@ -116,9 +116,11 @@ async function respond(input: string, options: RequestInit = {}) {
     return reply(settings)
   }
   if (input.startsWith('/api/admin/storage/withdrawn?')) {
-    const page = Number(new URL(input, 'http://localhost').searchParams.get('page'))
-    const count = total ?? withdrawn.length
-    const body: StoredAttachmentPage = { items: page === 1 ? withdrawn : [], total: count, page, pages: Math.max(1, Math.ceil(count / 20)) }
+    const params = new URL(input, 'http://localhost').searchParams
+    const page = Number(params.get('page')), q = params.get('q')
+    const found = q === null ? withdrawn : withdrawn.filter(item => item.filename.includes(q))
+    const count = q === null ? total ?? found.length : found.length
+    const body: StoredAttachmentPage = { items: page === 1 ? found : [], total: count, page, pages: Math.max(1, Math.ceil(count / 5)) }
     return reply(body)
   }
   if (input === '/api/admin/storage/attachments/pdf-1/purge' && options.method === 'POST') {
@@ -135,8 +137,10 @@ async function respond(input: string, options: RequestInit = {}) {
     return purgeImage()
   }
   if (input.startsWith('/api/admin/storage/document-versions?')) {
-    const page = Number(new URL(input, 'http://localhost').searchParams.get('page'))
-    const body: StoredDocumentVersionPage = { items: page === 1 ? versions : [], total: versions.length, page, pages: 1 }
+    const params = new URL(input, 'http://localhost').searchParams
+    const page = Number(params.get('page')), q = params.get('q')
+    const found = q === null ? versions : versions.filter(item => item.document_name.includes(q))
+    const body: StoredDocumentVersionPage = { items: page === 1 ? found : [], total: found.length, page, pages: 1 }
     return reply(body)
   }
   if (input === '/api/admin/storage/document-versions/version-1/purge' && options.method === 'POST') {
@@ -175,12 +179,11 @@ test('the summary shows the community, administrator and disk usage with accessi
   expect(community.getByText('Images').nextElementSibling).toHaveTextContent('0 B · 0 images')
   const administrator = region('Technical administrator')
   expect(administrator.getByText('15 MiB stored')).toBeVisible()
-  expect(administrator.getByText('No quota of its own: these PDFs and images count only towards the community quota.')).toBeVisible()
   expect(administrator.getByText('Withdrawn').nextElementSibling).toHaveTextContent('5 MiB · 1 PDF')
   const disk = region('Server disk')
   expect(disk.getByText('50 GiB free of 200 GiB')).toBeVisible()
   expect(disk.getByRole('meter', { name: 'Server disk space used' })).toHaveAttribute('aria-valuetext', '150 GiB of 200 GiB used (75%)')
-  expect(disk.getByText('1 GiB are kept free as a reserve. Below it, uploads of PDFs, images and documents and statement imports are refused.')).toBeVisible()
+  expect(disk.getByText('Reserve').nextElementSibling).toHaveTextContent('1 GiB')
   expect(screen.queryByRole('alert')).toBeNull()
 })
 
@@ -216,49 +219,63 @@ test('a disk the server cannot read is explained without an alarm', async () => 
   expect(disk.getByText('The server cannot read the free space of its upload folder right now. While it cannot, uploads of PDFs, images and documents and statement imports are refused.'))
     .toHaveAttribute('role', 'status')
   expect(disk.queryByRole('meter')).toBeNull()
-  expect(disk.getByText(/^1 GiB are kept free/)).toBeVisible()
+  expect(disk.getByText('Reserve').nextElementSibling).toHaveTextContent('1 GiB')
   expect(screen.queryByRole('alert')).toBeNull()
 })
 
-test('neighbors come sorted by quota used and can be sorted by any column, with deleted accounts flagged', async () => {
+test('one table shows each neighbor against both quotas, sorted by any column, with deleted accounts flagged', async () => {
   summary.residents = [ben, { ...carol, name: '' }, alice]
+  // Dora only uploaded shared documents.
+  summary.documents.residents = [
+    { user_id: 7, name: 'Alice', account_deleted: false, stored_bytes: 1946 * MiB, versions: 14 },
+    { user_id: 10, name: 'Dora', account_deleted: false, stored_bytes: 30 * MiB, versions: 3 },
+  ]
   renderPage()
   const table = await screen.findByRole('table', { name: 'Storage by neighbor' })
-  expect(within(table).getAllByRole('columnheader').map(header => header.textContent)).toEqual(['Neighbor', 'Active PDFs', 'Withdrawn PDFs', 'Images', 'Quota used'])
-  expect(within(table).getByRole('columnheader', { name: 'Quota used' })).toHaveAttribute('aria-sort', 'descending')
+  expect(within(table).getAllByRole('columnheader').map(header => header.textContent)).toEqual([
+    'Neighbor', 'Active PDFs', 'Withdrawn PDFs', 'Images', 'PDFs and images quota', 'Documents quota',
+  ])
+  expect(within(table).getByRole('columnheader', { name: 'PDFs and images quota' })).toHaveAttribute('aria-sort', 'descending')
   const names = () => within(table).getAllByRole('row').slice(1).map(row => within(row).getByRole('rowheader').textContent)
-  expect(names()).toEqual(['Alice', 'BenDeleted account', 'Neighbor #9'])
+  expect(names()).toEqual(['Alice', 'BenDeleted account', 'Neighbor #9', 'Dora'])
   const rows = within(table).getAllByRole('row').slice(1)
   expect(rows[0]).toHaveTextContent('200 MiB10 PDFs')
   expect(rows[0]).toHaveTextContent('40 MiB2 PDFs')
   expect(rows[0]).toHaveTextContent('240 MiB of 250 MiB used')
-  const meter = within(rows[0]).getByRole('meter', { name: 'Quota used by Alice' })
+  const meter = within(rows[0]).getByRole('meter', { name: 'PDFs and images quota used by Alice' })
   expect(meter).toHaveAttribute('aria-valuetext', '240 MiB of 250 MiB used (96%)')
   expect(meter).toHaveAttribute('data-level', 'warning')
+  expect(within(rows[0]).getByRole('meter', { name: 'Documents quota used by Alice' })).toHaveAttribute('data-level', 'warning')
+  expect(rows[0]).toHaveTextContent('14 versions')
   expect(within(rows[1]).getByText('Deleted account')).toHaveClass('tag')
-  expect(within(rows[1]).getByRole('meter', { name: 'Quota used by Ben' })).toHaveAttribute('data-level', 'normal')
+  expect(within(rows[1]).getByRole('meter', { name: 'PDFs and images quota used by Ben' })).toHaveAttribute('data-level', 'normal')
+  expect(rows[1]).toHaveTextContent('0 B of 2 GiB used0 versions')
   expect(rows[2]).toHaveTextContent('3 MiB2 images')
   expect(rows[2]).toHaveTextContent('8 MiB of 250 MiB used')
+  expect(rows[3]).toHaveTextContent('0 B of 250 MiB used')
+  expect(rows[3]).toHaveTextContent('30 MiB of 2 GiB used3 versions')
   // Sizes start with the largest; equal ones keep the order of names.
   fireEvent.click(within(table).getByRole('button', { name: 'Sort by: Images' }))
-  expect(names()).toEqual(['Neighbor #9', 'Alice', 'BenDeleted account'])
+  expect(names()).toEqual(['Neighbor #9', 'Alice', 'BenDeleted account', 'Dora'])
   expect(within(table).getByRole('columnheader', { name: 'Images' })).toHaveAttribute('aria-sort', 'descending')
-  expect(within(table).getByRole('columnheader', { name: 'Quota used' })).toHaveAttribute('aria-sort', 'none')
+  expect(within(table).getByRole('columnheader', { name: 'PDFs and images quota' })).toHaveAttribute('aria-sort', 'none')
   fireEvent.click(within(table).getByRole('button', { name: 'Sort by: Images' }))
-  expect(names()).toEqual(['Alice', 'BenDeleted account', 'Neighbor #9'])
+  expect(names()).toEqual(['Alice', 'BenDeleted account', 'Dora', 'Neighbor #9'])
   expect(within(table).getByRole('columnheader', { name: 'Images' })).toHaveAttribute('aria-sort', 'ascending')
+  fireEvent.click(within(table).getByRole('button', { name: 'Sort by: Documents quota' }))
+  expect(names()).toEqual(['Alice', 'Dora', 'BenDeleted account', 'Neighbor #9'])
   fireEvent.click(within(table).getByRole('button', { name: 'Sort by: Neighbor' }))
   expect(within(table).getByRole('columnheader', { name: 'Neighbor' })).toHaveAttribute('aria-sort', 'ascending')
   fireEvent.click(within(table).getByRole('button', { name: 'Sort by: Neighbor' }))
-  expect(names()).toEqual(['Neighbor #9', 'BenDeleted account', 'Alice'])
+  expect(names()).toEqual(['Neighbor #9', 'Dora', 'BenDeleted account', 'Alice'])
 })
 
-test('without stored PDFs the page says so', async () => {
+test('without stored files the page says so', async () => {
   summary = { ...summary, residents: [] }
   withdrawn = []
   images = []
   renderPage()
-  expect(await screen.findByText('No neighbor has stored PDFs or images yet.')).toBeVisible()
+  expect(await screen.findByText('No neighbor has stored files yet.')).toBeVisible()
   expect(await screen.findByText('There are no withdrawn PDFs using space.')).toBeVisible()
   expect(await screen.findByText('No images are stored.')).toBeVisible()
   expect(screen.queryByText(/still uses? space/)).toBeNull()
@@ -267,11 +284,8 @@ test('without stored PDFs the page says so', async () => {
   expect(screen.queryByRole('list', { name: 'Images in texts' })).toBeNull()
 })
 
-test('shared documents have their own quotas, neighbors and earlier versions to open and purge', async () => {
-  summary.documents.residents = [
-    { user_id: 7, name: 'Alice', account_deleted: false, stored_bytes: 1946 * MiB, versions: 14 },
-    { user_id: 9, name: 'Carol', account_deleted: false, stored_bytes: 10 * MiB, versions: 30 },
-  ]
+test('shared documents have their own quotas and earlier versions to find, open and purge', async () => {
+  summary.documents.residents = [{ user_id: 7, name: 'Alice', account_deleted: false, stored_bytes: 1946 * MiB, versions: 14 }]
   versions = [rules, budget]
   renderPage()
   const documents = await findRegion('Documents')
@@ -280,14 +294,7 @@ test('shared documents have their own quotas, neighbors and earlier versions to 
   expect(documents.getByText('Earlier versions').nextElementSibling).toHaveTextContent('60 MiB · 2 versions')
   expect(documents.getByText('Deleted, not purged').nextElementSibling).toHaveTextContent('40 MiB · 1 file')
   expect(documents.getByText('Uploads in progress').nextElementSibling).toHaveTextContent('5 MiB · 1 upload')
-  const table = screen.getByRole('table', { name: 'Documents by neighbor' })
-  const neighbors = within(table)
-  expect(neighbors.getByRole('meter', { name: 'Quota used by Alice' })).toHaveAttribute('data-level', 'warning')
-  const names = () => neighbors.getAllByRole('rowheader').map(header => header.textContent)
-  expect(names()).toEqual(['Alice', 'Carol'])
-  expect(neighbors.getByRole('columnheader', { name: 'Quota used' })).toHaveAttribute('aria-sort', 'descending')
-  fireEvent.click(neighbors.getByRole('button', { name: 'Sort by: Versions' }))
-  expect(names()).toEqual(['Carol', 'Alice'])
+  expect(screen.queryByRole('table', { name: 'Documents by neighbor' })).toBeNull()
   expect(documents.getByRole('link', { name: 'Change the limits' })).toHaveAttribute('href', '#document-limits')
   expect(screen.getByRole('region', { name: 'Shared documents limits' })).toHaveAttribute('id', 'document-limits')
   const earlier = await findRegion('Earlier versions of documents')
@@ -303,13 +310,16 @@ test('shared documents have their own quotas, neighbors and earlier versions to 
   expect(within(sheet).getByRole('link', { name: 'Download version 1 of Budget.xlsx' }))
     .toHaveAttribute('href', '/api/admin/documents/versions/version-1/download')
   expect(sheet).toHaveTextContent('Accounts')
-  fireEvent.click(within(sheet).getByRole('button', { name: 'Delete permanently: version 1 of Budget.xlsx' }))
+  fireEvent.change(earlier.getByRole('searchbox', { name: 'Search earlier versions by name' }), { target: { value: ' Budget ' } })
+  await waitFor(() => expect(requests).toContain('/api/admin/storage/document-versions?page=1&q=Budget'))
+  expect(await earlier.findByText('1 result')).toBeVisible()
+  fireEvent.click(within(list).getByRole('button', { name: 'Delete permanently: version 1 of Budget.xlsx' }))
   const dialog = within(screen.getByRole('dialog', { name: 'Delete version permanently' }))
   expect(dialog.getByText('It frees 60 MiB of the documents quotas of the community and of Alice.')).toBeVisible()
   fireEvent.click(dialog.getByRole('button', { name: 'Delete permanently' }))
   expect(await earlier.findByText('Version 1 of Budget.xlsx has been deleted permanently. 60 MiB freed.')).toBeVisible()
   expect(requests).toContain('POST /api/admin/storage/document-versions/version-1/purge undefined')
-  expect(await earlier.findByText('There are no earlier versions using space.')).toBeVisible()
+  expect(await earlier.findByText('No file name contains “Budget”.')).toBeVisible()
 })
 
 test('the limits of shared documents are edited with a slider or an exact size and saved together', async () => {
@@ -423,6 +433,13 @@ test('withdrawn PDFs, the latest withdrawn first, can be viewed and downloaded b
   fireEvent.click(section.getByRole('button', { name: 'Next: withdrawn PDFs' }))
   await waitFor(() => expect(requests).toContain('/api/admin/storage/withdrawn?page=2'))
   expect(await section.findByText('There are no withdrawn PDFs on this page.')).toBeVisible()
+  // A search starts again from the first page.
+  const search = section.getByRole('searchbox', { name: 'Search withdrawn PDFs by name' })
+  fireEvent.change(search, { target: { value: 'quote' } })
+  await waitFor(() => expect(requests).toContain('/api/admin/storage/withdrawn?page=1&q=quote'))
+  expect(await section.findByText('1 result')).toBeVisible()
+  fireEvent.change(search, { target: { value: 'invoice' } })
+  expect(await section.findByText('No file name contains “invoice”.')).toBeVisible()
 })
 
 test('a permanent deletion is confirmed, then refreshes the usage, the list and the cached actions', async () => {
@@ -518,7 +535,7 @@ test('the page renders in Spanish and follows a language switch', async () => {
     .toHaveAttribute('aria-valuetext', expect.stringMatching(/^1,25 GiB de 2 GiB usados \(62,5\s%\)$/))
   expect(region('Disco del servidor').getByText('50 GiB libres de 200 GiB')).toBeVisible()
   expect(screen.getByRole('table', { name: 'Almacenamiento por vecino' })).toHaveTextContent('Cuenta eliminada')
-  expect(screen.getByRole('button', { name: 'Ordenar por: Cuota usada' })).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Ordenar por: Cuota de PDFs e imágenes' })).toBeVisible()
   const section = region('PDFs retirados')
   const entry = within(await section.findByRole('list', { name: 'PDFs retirados' })).getByRole('listitem')
   expect(entry).toHaveTextContent('40 MiB · Subido por Alice · Retirado: 10 oct 2026')

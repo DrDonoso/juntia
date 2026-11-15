@@ -40,6 +40,7 @@ export const documents: Messages<typeof source> = {
     version: 'Versión {number}',
     preview: 'Previsualizar {name}',
     previewTitle: 'Previsualizar en una pestaña nueva',
+    viewTitle: 'Previsualizar',
   },
   menu: {
     label: 'Opciones de {name}',
@@ -144,12 +145,11 @@ export const documents: Messages<typeof source> = {
     current: 'Actual',
     downloadVersion: 'Descargar la versión {number}',
     purged: 'Eliminada definitivamente: <time></time>',
-    canManage: 'Puedes cambiar el nombre, mover, sustituir y eliminar este elemento.',
-    cannotManage: 'Solo las personas que permite la administración pueden cambiar el nombre, mover, sustituir o eliminar este elemento.',
   },
   history: {
     title: 'Historial',
-    help: 'Quién lo creó, lo subió, le cambió el nombre, lo movió, lo eliminó o lo restauró, de lo más reciente a lo más antiguo. No se compara el contenido de los archivos.',
+    show: 'Ver historial',
+    hide: 'Ocultar historial',
     loading: 'Cargando el historial…',
     pagination: 'Páginas del historial',
     createdFolder: 'Creó la carpeta en {location}.',
@@ -165,6 +165,13 @@ export const documents: Messages<typeof source> = {
     purged: 'Lo eliminó definitivamente.',
     purgedWith: 'Lo eliminó definitivamente junto con la carpeta «{folder}».',
     versionPurged: 'Eliminó definitivamente la versión {number} ({size}).',
+  },
+  viewer: {
+    loading: 'Cargando el archivo…',
+    partial: 'Solo se muestra el primer {size} del archivo. Descárgalo para verlo entero.',
+    rows: 'Solo se muestran las primeras {count} filas.',
+    empty: 'El archivo está vacío.',
+    column: 'Columna {number}',
   },
   kinds: {
     pdf: 'PDF',

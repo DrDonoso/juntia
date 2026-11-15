@@ -707,6 +707,8 @@ def test_new_versions_keep_the_earlier_ones_until_purged(actors, enabled, config
     assert [
         (item["id"], item["document_name"], item["previewable"]) for item in previous["items"]
     ] == [(rules["current"]["id"], "Normas.pdf", True), (original["id"], "Presupuesto.xlsx", False)]
+    found = enabled.get("/api/admin/storage/document-versions", params={"q": "presupuésto"}).json()
+    assert ([item["id"] for item in found["items"]], found["total"]) == ([original["id"]], 1)
     assert enabled.get("/api/admin/storage/document-versions?page=0").status_code == 422
     set_flag(enabled, "documents", False)
     refused(a.get(f"/api/documents/versions/{rules['current']['id']}/preview"), 404,
@@ -738,6 +740,23 @@ def test_new_versions_keep_the_earlier_ones_until_purged(actors, enabled, config
     assert history(a, budget)[0]["kind"] == "version_purged"
     assert enabled.get("/api/admin/storage/document-versions").json()["items"] == []
     assert len(stored(config, ".xlsx")) == 1
+
+
+def test_text_and_csv_files_are_previewed_as_plain_text(enabled):
+    # The viewer reads the encoding itself: spreadsheets save CSV files in Windows-1252 too.
+    for name, content in (
+        ("Normas.txt", "Silencio de 22:00 a 8:00\n".encode()),
+        ("Cuotas.csv", "vivienda;cuota\n1º A;45,00\n".encode("cp1252")),
+    ):
+        document = uploaded(enabled, name, content)
+        assert (document["kind"], document["previewable"]) == ("text", True)
+        path = f"/api/documents/versions/{document['current']['id']}/preview"
+        preview = enabled.get(path)
+        assert (preview.status_code, preview.content) == (200, content)
+        assert preview.headers["content-type"].startswith("text/plain")
+        assert preview.headers["content-disposition"].startswith("inline;")
+        part = enabled.get(path, headers={"range": "bytes=0-4"})
+        assert (part.status_code, part.content) == (206, content[:5])
 
 
 def test_archives_keep_the_folder_structure(enabled, config):

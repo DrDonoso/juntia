@@ -634,6 +634,7 @@ dialog.action-history-dialog { width: min(900px, calc(100vw - 30px)); }
 .storage-quota .storage-meter { margin-bottom: 0; }
 .storage-file-actions { display: flex; flex-shrink: 0; align-items: center; gap: var(--space-2); }
 .storage-file-actions .icon-button { width: 44px; min-height: 44px; }
+.storage-search { max-width: 420px; margin: var(--space-3) 0; }
 .storage-withdrawn-list .action-file-info > p:last-child { font-size: var(--text-sm); }
 .storage-image-list > li { align-items: center; }
 .storage-image-list > li > button { flex-shrink: 0; }
@@ -702,6 +703,28 @@ dialog.action-history-dialog { width: min(900px, calc(100vw - 30px)); }
 .document-tree label { display: flex; align-items: center; gap: var(--space-2); min-height: 40px; overflow-wrap: anywhere; }
 .document-tree input:disabled + .icon, .document-tree input:disabled ~ span { opacity: .55; }
 dialog.document-info, dialog.document-move { width: min(720px, calc(100vw - 30px)); }
+dialog.document-info.with-history { width: min(1080px, calc(100vw - 30px)); }
+.dialog-actions { display: flex; align-items: center; gap: var(--space-2); }
+.document-history-toggle[aria-expanded="true"] { background: rgba(var(--primary-rgb), .08); border-color: rgba(var(--primary-rgb), .35); color: var(--primary); }
+.document-info-layout { display: grid; gap: var(--space-5); }
+.document-info.with-history .document-info-layout { grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); }
+.document-info-main { min-width: 0; }
+.document-info-history { min-width: 0; padding-left: var(--space-5); border-left: 1px solid var(--border); }
+.document-info-history h3 { margin-top: 0; }
+/* The history as a timeline: a line with a dot for each change. */
+.document-timeline { position: relative; display: grid; gap: var(--space-4); margin: var(--space-3) 0 0; padding: 0 0 0 22px; list-style: none; }
+.document-timeline::before { content: ''; position: absolute; top: 6px; bottom: 6px; left: 6px; width: 2px; border-radius: 1px; background: var(--border); }
+.document-timeline > li { position: relative; display: grid; gap: 2px; min-width: 0; font-size: var(--text-sm); overflow-wrap: anywhere; }
+.document-timeline > li::before { content: ''; position: absolute; top: 3px; left: -21px; width: 12px; height: 12px; box-sizing: border-box; border: 2px solid var(--primary); border-radius: 50%; background: var(--surface); }
+.document-timeline time { color: var(--text-muted); font-size: var(--text-xs); }
+.document-timeline p { margin: 0; }
+/* Text and CSV files shown in the portal (text-preview.tsx) */
+dialog.text-preview-dialog { width: min(1100px, calc(100vw - 30px)); }
+.text-preview, .text-preview-table { max-height: 65vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.text-preview pre { margin: 0; padding: var(--space-4); font-family: var(--font-num); font-size: var(--text-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
+.text-preview-table table { font-size: var(--text-sm); }
+.text-preview-table th, .text-preview-table td { white-space: nowrap; }
+.text-preview-table thead th { position: sticky; top: 0; z-index: 1; }
 .document-details { display: grid; gap: var(--space-2); margin: 0 0 var(--space-4); font-size: var(--text-sm); }
 .document-details > div { display: grid; grid-template-columns: minmax(110px, 30%) minmax(0, 1fr); gap: var(--space-3); }
 .document-details dt { color: var(--text-muted); }
@@ -709,8 +732,6 @@ dialog.document-info, dialog.document-move { width: min(720px, calc(100vw - 30px
 .document-versions { display: grid; gap: var(--space-2); margin: var(--space-3) 0; padding: 0; list-style: none; }
 .document-versions > li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: 8px; }
 .document-versions .tag { margin-left: var(--space-2); }
-.document-history { margin-top: var(--space-5); }
-.document-events > li > p { margin: 0; font-size: var(--text-sm); overflow-wrap: anywhere; }
 .document-policy fieldset { display: grid; gap: var(--space-3); border: 0; padding: 0; margin: var(--space-3) 0 0; }
 .document-policy p a { text-decoration: underline; text-underline-offset: 3px; }
 .document-policy-option { align-items: flex-start; gap: var(--space-3); }
@@ -746,6 +767,8 @@ dialog.document-info, dialog.document-move { width: min(720px, calc(100vw - 30px
   .document-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: var(--space-3); }
   .document-selection { top: calc(var(--topbar-height) + var(--space-1)); }
   .document-details > div { grid-template-columns: 1fr; gap: 0; }
+  .document-info.with-history .document-info-layout { grid-template-columns: minmax(0, 1fr); }
+  .document-info-history { padding: var(--space-4) 0 0; border-left: 0; border-top: 1px solid var(--border); }
 }
 @media (prefers-reduced-motion: reduce) {
   .document-card { transition: none; }

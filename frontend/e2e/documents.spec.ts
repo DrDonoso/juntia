@@ -103,7 +103,12 @@ test('neighbors share folders and files, preview PDFs, follow their history and 
     await expect(queue.getByText(/^This type of file is not accepted/)).toBeVisible()
     const folder = ana.getByRole('list', { name: 'Folders and files in Minutes 2026' })
     await expect(folder.getByRole('listitem')).toHaveCount(2)
-    await expect(folder.getByRole('link', { name: 'Preview Rules.txt' })).toHaveCount(0)
+    // Text files open in the portal's own viewer.
+    await folder.getByRole('link', { name: 'Preview Rules.txt' }).click()
+    const viewer = ana.getByRole('dialog', { name: 'Rules.txt' })
+    await expect(viewer.getByText('Quiet hours from 22:00 to 08:00.')).toBeVisible()
+    expect((await new AxeBuilder({ page: ana }).analyze()).violations).toEqual([])
+    await viewer.getByRole('button', { name: 'Close' }).click()
     const previewPath = await folder.getByRole('link', { name: 'Preview General meeting.pdf' }).getAttribute('href')
     expect(previewPath).toMatch(/^\/api\/documents\/versions\/[0-9a-f-]{36}\/preview$/)
     const preview = await ana.request.get(previewPath ?? '')
@@ -134,7 +139,7 @@ test('neighbors share folders and files, preview PDFs, follow their history and 
     const shared = leo.getByRole('list', { name: 'Folders and files in Documents' })
     await expect(shared.getByRole('link', { name: 'Minutes 2026', exact: true })).toBeVisible()
     await leo.getByRole('button', { name: 'Options for Community rules.txt', exact: true }).click()
-    await expect(leo.getByRole('menu').getByRole('menuitem')).toHaveText(['Download', 'Select', 'Info'])
+    await expect(leo.getByRole('menu').getByRole('menuitem')).toHaveText(['Preview', 'Download', 'Select', 'Info'])
     await leo.getByRole('menuitem', { name: 'Info', exact: true }).click()
     const info = leo.getByRole('dialog', { name: 'Info: Community rules.txt' })
     const history = info.getByRole('region', { name: 'History' })
@@ -143,7 +148,6 @@ test('neighbors share folders and files, preview PDFs, follow their history and 
       /Ana Documents.*Renamed it from “Rules\.txt” to “Community rules\.txt”\.$/,
       /Ana Documents.*Uploaded the file \(33 B\) to Documents \/ Minutes 2026\.$/,
     ])
-    await expect(info.getByText('Only the people the administrator allows can rename, move, replace or delete this item.')).toBeVisible()
     await info.getByRole('button', { name: 'Close' }).click()
     await leo.getByRole('checkbox', { name: 'Select Minutes 2026' }).check()
     await leo.getByRole('checkbox', { name: 'Select Community rules.txt' }).check()
@@ -172,7 +176,7 @@ test('neighbors share folders and files, preview PDFs, follow their history and 
     await admin.getByRole('dialog', { name: 'Restore “Community rules.txt”?' }).getByRole('button', { name: 'Restore' }).click()
     await expect(admin.getByText('“Community rules.txt” restored.')).toBeVisible()
     await leo.reload()
-    await expect(shared.getByRole('link', { name: 'Community rules.txt' })).toBeVisible()
+    await expect(shared.getByRole('link', { name: 'Community rules.txt', exact: true })).toBeVisible()
 
     // When every neighbor may change documents, Leo deletes Ana's PDF and the administrator purges it.
     await admin.goto('/admin/features')

@@ -64,7 +64,7 @@ function checkEventGeneration(generation: number | null) {
   if (generation !== null && generation !== eventGeneration) throw new ApiError('event_features_changed', 409)
 }
 
-async function request(path: string, method: string, body?: unknown, signal?: AbortSignal) {
+async function request(path: string, method: string, body?: unknown, signal?: AbortSignal, headers: Record<string, string> = {}) {
   const generation = identityGeneration
   // A feature change must not turn an acknowledged write into an apparent failed save.
   const eventRevision = method === 'GET' && /^\/events(?:\/|\?|$)/.test(path) ? eventGeneration : null
@@ -77,7 +77,7 @@ async function request(path: string, method: string, body?: unknown, signal?: Ab
   const binary = body instanceof Blob || body instanceof ArrayBuffer || ArrayBuffer.isView(body)
   const options: RequestInit = {
     method, credentials: 'same-origin', ...(signal ? { signal } : {}),
-    headers: method === 'GET' ? {} : {
+    headers: method === 'GET' ? headers : {
       'X-Juntia-Request': '1',
       ...(multipart ? {} : { 'Content-Type': binary ? 'application/octet-stream' : 'application/json' }),
     },
@@ -136,6 +136,17 @@ export async function api(path: string, method = 'GET', body?: unknown, signal?:
   checkIdentity(generation, identityBound)
   checkEventGeneration(eventRevision)
   return result
+}
+
+/** The first `limit` bytes of a file, or all of it when it is shorter: servers that ignore the range send it whole. */
+export async function readBytes(path: string, limit: number, signal?: AbortSignal): Promise<Uint8Array> {
+  const { response, generation, identityBound, eventRevision } = await request(path, 'GET', undefined, signal, {
+    Range: `bytes=0-${limit - 1}`,
+  })
+  const bytes = new Uint8Array(await response.arrayBuffer())
+  checkIdentity(generation, identityBound)
+  checkEventGeneration(eventRevision)
+  return bytes.subarray(0, limit)
 }
 
 export async function downloadFile(path: string, filename: string): Promise<void> {

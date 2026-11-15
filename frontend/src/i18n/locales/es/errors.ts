@@ -178,7 +178,7 @@ export const errors: Messages<typeof source> = {
     document_folder_deleted: 'La carpeta de destino se eliminó durante la subida. El archivo no se ha guardado.',
     document_deleted: 'El archivo se ha eliminado, así que ya no admite cambios.',
     document_version_purged: 'Esta versión se ha eliminado definitivamente.',
-    document_preview_unavailable: 'Solo se pueden previsualizar los PDF, las imágenes y los vídeos. Descarga el archivo para abrirlo.',
+    document_preview_unavailable: 'Solo se pueden previsualizar los PDF, las imágenes, los vídeos y los archivos de texto y CSV. Descarga el archivo para abrirlo.',
     document_archive_items: 'Elige entre 1 y 100 archivos o carpetas para descargarlos juntos.',
     document_archive_too_large: 'Es demasiado para descargarlo de una vez: como máximo 5.000 archivos y 10 GiB por ZIP. Descárgalo por partes.',
     document_archive_busy: 'Se están preparando varias descargas en ZIP. Inténtalo de nuevo en un momento.',

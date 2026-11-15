@@ -357,7 +357,9 @@ PDFs attached to actions.
   browser asks before closing the page while some are unfinished. An interrupted upload continues
   where it stopped when you **Retry** it within a day.
 - The **eye** of PDFs, pictures and videos opens them in a new tab (HEIC pictures only in browsers
-  that can show them). Clicking a file opens that preview, or downloads the file when it has none.
+  that can show them); the eye of text and CSV files shows them in Juntia itself, CSV files as a
+  table, in the encoding they were saved with (large files show their first MiB). Clicking a file
+  opens that preview, or downloads the file when it has none.
 
 <p align="center">
   <img src="screenshots/documents.png" alt="Documents: folders and files as cards, two of them selected for one ZIP download, and the options menu of a folder, with Delete in red" width="900"><br>
@@ -368,8 +370,8 @@ PDFs attached to actions.
 
 The **⋮** button at the top right of each card offers:
 
-- **Preview** (PDFs, pictures and videos) and **Download**; a folder downloads as a ZIP file with
-  everything inside it.
+- **Preview** (PDFs, pictures, videos, text and CSV files) and **Download**; a folder downloads as a
+  ZIP file with everything inside it.
 - **Select**, like the card's checkbox. With items selected, a bar shows how many there are and what
   they hold, and **Download ZIP** downloads them together (up to 100 items, 5000 files and 10 GiB).
 - **Rename** (files keep their extension), **Move to…** (choose the destination folder) and **Upload
@@ -399,10 +401,11 @@ The technical administrator can always change everything.
 
 ### Document history
 
-**Info** includes the history of the file or folder, newest first: who created or uploaded it,
-uploaded each new version, renamed it, moved it, deleted, restored or permanently deleted it, and
-when, with the names and folders involved. It records who did what, not what changed inside the
-files, which are never compared.
+**Info** shows the history of the file or folder as a timeline beside its details, newest first:
+who created or uploaded it, uploaded each new version, renamed it, moved it, deleted, restored or
+permanently deleted it, and when, with the names and folders involved. **Hide history** folds the
+timeline away, and Juntia remembers it for the next items until **Show history**. It records who did
+what, not what changed inside the files, which are never compared.
 
 ### Turning Documents off
 
@@ -677,28 +680,30 @@ images pasted into descriptions and comments use:
   size in MiB, which moves the slider; the (i) next to each name explains it on hover, focus or tap.
   **Save limits** applies them at once to new uploads, and the page warns when a quota is below
   what is already stored. **Change the limits**, on the Documents card, leads here.
-- **Storage by neighbor**: each resident against the personal quota, deleted accounts included.
+- **Storage by neighbor**: each resident, deleted accounts included, against the personal quota of
+  PDFs and images and against the documents quota, with the number of document versions they keep.
   The neighbors using the most space come first; each column header sorts by that column, and a
   second click reverses it;
-- **Withdrawn PDFs**: the withdrawn PDFs that still use space, the latest withdrawn first, 20 per
+- **Withdrawn PDFs**: the withdrawn PDFs that still use space, the latest withdrawn first, 5 per
   page, each with its size, uploader, withdrawal date and action. The eye opens it in a new tab and
   the arrow downloads it, also while Actions is turned off. **Delete permanently** removes a file
   for good after a confirmation that names its action and the space it frees.
 - **Images in texts**: every stored image with a thumbnail, its size, dimensions, section, uploader
-  and upload date, the newest first, 20 per page. **Delete permanently** removes it for good after
+  and upload date, the newest first, 5 per page. **Delete permanently** removes it for good after
   a confirmation; the texts and history entries that show it then say "Image not available".
-- **Documents**, **Documents by neighbor** and **Earlier versions of documents**: shared documents
-  have their own quotas. The cards show current files, earlier versions, deleted documents not yet
-  purged, the administrator's uploads and unfinished uploads; the table of neighbors sorts like the
-  one above, and the list of earlier versions, the latest uploaded first, previews PDFs, pictures
-  and videos, downloads any version and deletes a replaced version permanently.
+- **Documents** and **Earlier versions of documents**: shared documents have their own quotas. The
+  card shows current files, earlier versions, deleted documents not yet purged, the
+  administrator's uploads and unfinished uploads; the list of earlier versions, the latest uploaded
+  first and 5 per page, previews PDFs, pictures, videos, text and CSV files, downloads any version
+  and deletes a replaced version permanently.
 
-The action quotas and the reserve are server settings; the quotas, the reserve and the permanent
-deletion (purge) are explained in [storage quotas and purging](deployment.md#storage-quotas-and-purging)
+The three lists have a box that finds files by name, ignoring capitals and accents. The action
+quotas and the reserve are server settings; the quotas, the reserve and the permanent deletion
+(purge) are explained in [storage quotas and purging](deployment.md#storage-quotas-and-purging)
 and, for documents, in [shared documents](deployment.md#shared-documents).
 
 <p align="center">
-  <img src="screenshots/storage.png" alt="Storage page: the limits of shared documents, each with a slider between its minimum and maximum, a box for an exact size in MiB and an (i) explanation, above the storage of each neighbor" width="900"><br>
+  <img src="screenshots/storage.png" alt="Storage page: the limits of shared documents, each with a slider between its minimum and maximum, a box for an exact size in MiB and an (i) explanation, above a sortable table of each neighbor against the PDFs and images quota and the documents quota" width="900"><br>
   <sub><b>Storage</b> in the administration (synthetic demo data).</sub>
 </p>
 

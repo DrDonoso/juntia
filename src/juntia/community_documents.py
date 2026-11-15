@@ -896,7 +896,8 @@ async def download_version(
     return await version_response(version_id, db, request, "attachment", language)
 
 
-# PDFs, pictures and videos, in a new tab on the portal's own address; videos can be sought.
+# PDFs, pictures and videos, in a new tab on the portal's own address (videos can be sought), and
+# the text and CSV files the portal's viewer reads, also in part.
 @router.get("/versions/{version_id}/preview", response_class=FileResponse)
 async def preview_version(
     version_id: UUID, db: DB, request: Request, language: ServerLanguage,

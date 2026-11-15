@@ -113,7 +113,10 @@ beforeEach(() => {
     throw new Error(`Unexpected API request: ${method} ${url}`)
   })
 })
-afterEach(() => { cleanup(); uploads.reset(); cache.clear(); cache.setDefaultOptions(defaults); vi.restoreAllMocks() })
+afterEach(() => {
+  cleanup(); uploads.reset(); cache.clear(); cache.setDefaultOptions(defaults); vi.restoreAllMocks(); vi.unstubAllGlobals()
+  localStorage.removeItem('juntia_document_history_hidden')
+})
 
 function page(children: ReactNode = null) {
   render(<I18nRoot><QueryClientProvider client={cache}><MemoryRouter initialEntries={['/documents']}>
@@ -284,7 +287,6 @@ test('info shows who uploaded the file, its versions and the history of changes'
   expect(dialog.getByRole('link', { name: 'Download version 2' })).toHaveAttribute('href', '/api/documents/versions/v7-2/download')
   expect(dialog.queryByRole('link', { name: 'Download version 1' })).toBeNull()
   expect(dialog.getByText(/^Deleted permanently:/)).toBeVisible()
-  expect(dialog.getByText('You can rename, move, replace and delete this item.')).toBeVisible()
   expect(dialog.getByRole('button', { name: 'Upload new version' })).toBeVisible()
   const history = within(dialog.getByRole('region', { name: 'History' }))
   expect((await history.findAllByRole('listitem')).map(item => item.querySelector('p')?.textContent)).toEqual([
@@ -294,6 +296,43 @@ test('info shows who uploaded the file, its versions and the history of changes'
     'Uploaded the file (1 MiB) to Documents / Minutes.',
   ])
   expect(history.getAllByText('Bob Smith')).toHaveLength(2)
+  // Hiding the history keeps it hidden for the next item too.
+  await user.click(dialog.getByRole('button', { name: 'Hide history' }))
+  expect(dialog.queryByRole('region', { name: 'History' })).toBeNull()
+  expect(dialog.getByRole('button', { name: 'Show history' })).toHaveAttribute('aria-expanded', 'false')
+  await user.click(dialog.getByRole('button', { name: 'Close' }))
+  await choose(user, 'Acta.pdf', 'Info')
+  const again = within(screen.getByRole('dialog', { name: 'Info: Acta.pdf' }))
+  expect(again.queryByRole('region', { name: 'History' })).toBeNull()
+  await user.click(again.getByRole('button', { name: 'Show history' }))
+  expect(again.getByRole('region', { name: 'History' })).toBeVisible()
+  expect(again.getByRole('button', { name: 'Hide history' })).toHaveAttribute('aria-expanded', 'true')
+})
+
+test('text and CSV files open in the portal, CSV files as a table in their own encoding', async () => {
+  const notes: DocumentOut = { ...docx, id: 9, name: 'Notas.txt', kind: 'text', previewable: true, current: version('v9-1', 1, 26, bob, 'txt') }
+  const fees: DocumentOut = { ...docx, id: 10, name: 'Cuotas.csv', kind: 'text', previewable: true, current: version('v10-1', 1, 28, bob, 'csv') }
+  browse = { ...browse, folders: [], files: [notes, fees] }
+  // A spreadsheet's CSV in Windows-1252, with a quoted field.
+  const contents: Record<string, Uint8Array<ArrayBuffer>> = {
+    '/api/documents/versions/v9-1/preview': new TextEncoder().encode('Silencio de 22:00 a 8:00\n'),
+    '/api/documents/versions/v10-1/preview': Uint8Array.from('vivienda;cuota\n1\xba A;"45,00"\n', char => char.charCodeAt(0)),
+  }
+  const fetch = vi.fn(async (input: string) => new Response(contents[input], { status: 206 }))
+  vi.stubGlobal('fetch', fetch)
+  const user = userEvent.setup()
+  page()
+  const list = await grid()
+  await user.click(list.getByRole('link', { name: 'Preview Notas.txt' }))
+  const viewer = within(screen.getByRole('dialog', { name: 'Notas.txt' }))
+  expect(await viewer.findByText('Silencio de 22:00 a 8:00')).toBeVisible()
+  expect(fetch).toHaveBeenCalledWith('/api/documents/versions/v9-1/preview', expect.objectContaining({ headers: { Range: 'bytes=0-1048575' } }))
+  expect(viewer.getByRole('link', { name: 'Download' })).toHaveAttribute('href', '/api/documents/versions/v9-1/download')
+  await user.click(viewer.getByRole('button', { name: 'Close' }))
+  await user.click(list.getByRole('link', { name: 'Cuotas.csv' }))
+  const table = within(await screen.findByRole('table'))
+  expect(table.getAllByRole('columnheader').map(cell => cell.textContent)).toEqual(['vivienda', 'cuota'])
+  expect(table.getAllByRole('cell').map(cell => cell.textContent)).toEqual(['1º A', '45,00'])
 })
 
 test('history entries explain what happened together with a folder', () => {

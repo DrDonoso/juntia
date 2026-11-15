@@ -12,9 +12,10 @@ import type {
   StoredDocumentVersionOut,
 } from '../../api/schema.gen'
 import { DemoApiError } from '../core/errors'
+import { attachmentName } from './community-actions'
 import { findResident } from './core'
 import { compareText, type CommunityState, type DemoActionAttachment, type DemoCommunityImage } from './community-model'
-import { casefold } from './community-text'
+import { casefold, foldText } from './community-text'
 import { documentType } from './shared-document-files'
 import { findDocument, folderNames, folderPath, versionOut, type DemoDocument, type DemoDocumentVersion, type SharedDocumentsState } from './shared-documents'
 
@@ -125,10 +126,19 @@ function residentStorage(userId: number, { attachments, images }: AuthorFiles): 
   }
 }
 
-/** Withdrawn PDFs that still use storage (the candidates for a purge): the latest withdrawn first. */
-export function withdrawnAttachments(state: CommunityState): DemoActionAttachment[] {
+/** `storage_admin.PAGE_SIZE`: the administrator reviews the stored files five at a time. */
+export const STORAGE_PAGE_SIZE = 5
+
+/** `named`: whether a file name contains the search, ignoring case and accents; an empty search keeps every file. */
+export function nameMatches(name: string, q: string): boolean {
+  const needle = foldText(q.trim())
+  return !needle || foldText(name).includes(needle)
+}
+
+/** Withdrawn PDFs that still use storage (the candidates for a purge), by the name people see: the latest withdrawn first. */
+export function withdrawnAttachments(state: CommunityState, q = ''): DemoActionAttachment[] {
   return storedAttachments(state)
-    .filter(attachment => attachment.withdrawnAt !== null)
+    .filter(attachment => attachment.withdrawnAt !== null && nameMatches(attachmentName(attachment), q))
     .sort((a, b) => compareText(b.withdrawnAt ?? '', a.withdrawnAt ?? '') || compareText(b.id, a.id))
 }
 
@@ -194,14 +204,14 @@ function documentResident(documents: SharedDocumentsState, userId: number, versi
 }
 
 /**
- * Earlier versions of documents that still use storage (the candidates for a purge): the latest
- * uploaded first. Deleted documents are purged as a whole from Deleted documents instead.
+ * Earlier versions of documents that still use storage (the candidates for a purge), by document
+ * name: the latest uploaded first. Deleted documents are purged as a whole from Deleted documents instead.
  */
-export function previousDocumentVersions(documents: SharedDocumentsState): DemoDocumentVersion[] {
+export function previousDocumentVersions(documents: SharedDocumentsState, q = ''): DemoDocumentVersion[] {
   return storedDocumentVersions(documents)
     .filter(version => {
       const document = versionDocument(documents, version)
-      return document.deletedAt === null && version.number !== document.currentNumber
+      return document.deletedAt === null && version.number !== document.currentNumber && nameMatches(document.name, q)
     })
     .sort((a, b) => compareText(b.createdAt, a.createdAt) || compareText(b.id, a.id))
 }

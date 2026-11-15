@@ -11,13 +11,16 @@ import type {
   StoredImagePage,
 } from '../../api/schema.gen'
 import {
-  DemoApiError, actorOf, http, nowIso, pageParam, paginate, parseBody, pdfResponse, readJson, route, type HttpHandler, type RouteContext,
+  DemoApiError, actorOf, http, nowIso, pageParam, paginate, parseBody, pdfResponse, queryText, readJson, route, type HttpHandler,
+  type RouteContext,
 } from '../core'
 import { communityStore } from '../store/community'
-import { ACTION_PAGE_SIZE, attachmentName, attachmentOut, findAction, purgeAttachment } from '../store/community-actions'
+import { attachmentName, attachmentOut, findAction, purgeAttachment } from '../store/community-actions'
 import { findImage, purgeImage, storedImageList, storedImageOut } from '../store/community-images'
-import { DOCUMENT_PAGE_SIZE, purgeDocumentVersion, sharedDocumentsStore } from '../store/shared-documents'
-import { previousDocumentVersions, storageSummary, storedDocumentVersionOut, withdrawnAttachments } from '../store/storage'
+import { purgeDocumentVersion, sharedDocumentsStore } from '../store/shared-documents'
+import {
+  STORAGE_PAGE_SIZE, nameMatches, previousDocumentVersions, storageSummary, storedDocumentVersionOut, withdrawnAttachments,
+} from '../store/storage'
 import { uuidParam, version } from './community-contracts'
 import { imageResponse } from './community-images'
 
@@ -36,11 +39,12 @@ function storedPdf({ params }: RouteContext, disposition: 'attachment' | 'inline
 
 export const storageHandlers: HttpHandler[] = [
   http.get('/api/admin/storage', route('admin', (): StorageOut => storageSummary(communityStore(), sharedDocumentsStore()))),
-  // The latest withdrawn first.
+  // The latest withdrawn first, five per page, optionally by name.
   http.get('/api/admin/storage/withdrawn', route('admin', ({ url }): StoredAttachmentPage => {
     const page = pageParam(url)
+    const q = queryText(url, 'q', { max: 200 })
     const state = communityStore()
-    const { items, ...info } = paginate(withdrawnAttachments(state), page, ACTION_PAGE_SIZE)
+    const { items, ...info } = paginate(withdrawnAttachments(state, q), page, STORAGE_PAGE_SIZE)
     return {
       ...info,
       items: items.map(attachment => ({
@@ -70,7 +74,8 @@ export const storageHandlers: HttpHandler[] = [
   // Every stored image, the newest first: images have no withdrawal, so any can be purged.
   http.get('/api/admin/storage/images', route('admin', ({ url }): StoredImagePage => {
     const page = pageParam(url)
-    const { items, ...info } = paginate(storedImageList(communityStore()), page, ACTION_PAGE_SIZE)
+    const q = queryText(url, 'q', { max: 200 })
+    const { items, ...info } = paginate(storedImageList(communityStore(), name => nameMatches(name, q)), page, STORAGE_PAGE_SIZE)
     return { ...info, items: items.map(storedImageOut) }
   })),
   http.get('/api/admin/storage/images/:imageId/file', route('admin', ({ params }) => {
@@ -88,8 +93,9 @@ export const storageHandlers: HttpHandler[] = [
   // Earlier versions of documents that still use storage, the latest uploaded first: the candidates for a purge.
   http.get('/api/admin/storage/document-versions', route('admin', ({ url }): StoredDocumentVersionPage => {
     const page = pageParam(url)
+    const q = queryText(url, 'q', { max: 200 })
     const documents = sharedDocumentsStore()
-    const { items, ...info } = paginate(previousDocumentVersions(documents), page, DOCUMENT_PAGE_SIZE)
+    const { items, ...info } = paginate(previousDocumentVersions(documents, q), page, STORAGE_PAGE_SIZE)
     return { ...info, items: items.map(item => storedDocumentVersionOut(documents, item)) }
   })),
   // Purging again answers the purged version unchanged.

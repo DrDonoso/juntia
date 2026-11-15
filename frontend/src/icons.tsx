@@ -45,6 +45,7 @@ const paths = {
   table: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9.4h18M3 14.6h18M9 9.4V20" /></>,
   presentation: <><rect x="3" y="3.6" width="18" height="12.4" rx="1.6" /><path d="M12 16v4.4M8.4 20.4h7.2" /></>,
   info: <><circle cx="12" cy="12" r="8.6" /><path d="M12 11v5.4M12 7.8h.02" /></>,
+  history: <><path d="M3.4 12a8.6 8.6 0 1 0 2.5-6.1L3.4 8.4" /><path d="M3.4 3.6v4.8h4.8" /><path d="M12 7.6V12l3 1.8" /></>,
   'more-vertical': <><circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" /></>,
 }
 

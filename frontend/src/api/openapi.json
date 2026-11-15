@@ -10353,6 +10353,17 @@
               "title": "Page",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Q",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -10440,6 +10451,17 @@
               "minimum": 1,
               "title": "Page",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Q",
+              "type": "string"
             }
           }
         ],
@@ -10564,6 +10586,17 @@
               "minimum": 1,
               "title": "Page",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Q",
+              "type": "string"
             }
           }
         ],

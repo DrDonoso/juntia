@@ -248,16 +248,16 @@ them in its `documents` block, and their earlier versions are listed and purged 
   none.
 - The storage page lists the residents who store PDFs (largest first; deleted accounts by the
   author name of their latest PDF) and the withdrawn PDFs still stored (the latest withdrawn first,
-  20 per page), which the administrator can open (`/preview`, `/download`) also while Actions is
-  off. The scenario has three, by different authors: Daniel Mensah's quote attached by mistake
-  (CCTV), the administrator's draft quote (lift) and Grace Liu's outdated subsidy summary (solar
-  panels).
+  five per page, `q` searching their names without case or accents), which the administrator can
+  open (`/preview`, `/download`) also while Actions is off. The scenario has three, by different
+  authors: Daniel Mensah's quote attached by mistake (CCTV), the administrator's draft quote (lift)
+  and Grace Liu's outdated subsidy summary (solar panels).
 - A purge (`{version}`, administrator only) answers 409 `action_attachment_active` for active PDFs
   and 409 `action_stale` for another version, and the purged PDF unchanged when repeated. It sets
   `purged_at`, bumps the PDF's version, empties its bytes and records an `attachment_purged` entry
   by the Technical administrator (`filename`, `size` and `sha256` to null); the action's activity
   date moves, not its version. Downloads and previews then answer 410 `action_attachment_purged`.
-- The images list (the newest first, 20 per page) shows every stored image, and the
+- The images list (the newest first, five per page, `q` by name) shows every stored image, and the
   administrator's copy (`/file`) answers while Actions or Events is off. An image purge (no body)
   empties its bytes and sets `purged_at`; repeating it answers the purged image unchanged, and its
   addresses then answer 410 `image_purged`.
@@ -297,11 +297,12 @@ and 20 GiB for the community.
   quota checks (when an upload starts and when it completes) and to the storage summary's
   `quota_bytes` and `resident_quota_bytes`.
 - Downloads and previews answer single `Range` requests with 206, and earlier versions download as
-  `Name (version N).ext`. Archives are ZIPs with stored entries built in memory by `core/zip.ts`.
+  `Name (version N).ext`. Text and CSV files preview as `text/plain`, for the portal's own viewer.
+  Archives are ZIPs with stored entries built in memory by `core/zip.ts`.
 - The administrator restores deletions (at the top level when their folder is gone, numbered when
   the name is taken) or purges them, lists the earlier versions on the storage page (the latest
-  uploaded first, with `previewable`), opens and purges them, and sets the policy and the limits;
-  these routes work while Documents is off.
+  uploaded first, five per page, `q` by document name, with `previewable`), opens and purges them,
+  and sets the policy and the limits; these routes work while Documents is off.
 - Not simulated: the four concurrent archives (503 `document_archive_busy`), the disk reserve (507
   `storage_low_space`) and missing or unreadable stored files. The demo writes no ZIP64, so an
   archive over 4 GiB answers 422 `document_archive_too_large`, and office files with ZIP64, bzip2

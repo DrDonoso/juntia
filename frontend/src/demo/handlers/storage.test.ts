@@ -135,19 +135,23 @@ describe('withdrawn PDFs', () => {
     const lift = communityStore().actions.find(action => action.title.startsWith('Lift modernisation'))
     expect(draft?.action_id).toBe(lift?.id)
     expect(await withdrawn('?page=2')).toMatchObject({ items: [], page: 2, pages: 1, total: 3 })
-    for (const query of ['?page=0', '?page=1000001']) {
+    // By the name people see, ignoring case and accents.
+    expect((await withdrawn('?q=SÓLAR')).items.map(item => item.filename)).toEqual(['Solar subsidies - summary.pdf'])
+    for (const query of ['?page=0', '?page=1000001', `?q=${'x'.repeat(201)}`]) {
       expect(await get(`/api/admin/storage/withdrawn${query}`), query).toMatchObject({ status: 422, body: { code: 'invalid_request' } })
     }
   })
 
-  test('pages by 20', async () => {
+  test('pages by 5', async () => {
     await adminLogin()
     const { attachments } = communityStore()
     for (const attachment of attachments) attachment.withdrawnAt ??= NOW.toISOString()
-    const first = await withdrawn(), second = await withdrawn('?page=2')
-    expect(first).toMatchObject({ page: 1, pages: Math.ceil(attachments.length / 20), total: attachments.length })
-    expect(first.items).toHaveLength(20)
-    const ids = [...first.items, ...second.items].map(item => item.id)
+    const first = await withdrawn()
+    const pages = Math.ceil(attachments.length / 5)
+    expect(first).toMatchObject({ page: 1, pages, total: attachments.length })
+    expect(first.items).toHaveLength(5)
+    const ids: string[] = []
+    for (let page = 1; page <= pages; page++) ids.push(...(await withdrawn(`?page=${page}`)).items.map(item => item.id))
     expect(new Set(ids).size).toBe(attachments.length)
   })
 })
@@ -281,9 +285,10 @@ describe('shared documents', () => {
     const latest = await versions()
     expect(latest).toMatchObject({ total: 3, page: 1, pages: 1 })
     expect(latest.items.map(item => [item.document_name, item.number, item.location, item.previewable])).toEqual([
-      ['Survey results.csv', 1, [], false], ['Claims log.csv', 1, ['Insurance'], false], ['House rules.pdf', 1, ['Community rules'], true],
+      ['Survey results.csv', 1, [], true], ['Claims log.csv', 1, ['Insurance'], true], ['House rules.pdf', 1, ['Community rules'], true],
     ])
     expect(latest.items[2]).toMatchObject({ author: ADMIN, extension: 'pdf', media_type: 'application/pdf', purged_at: null })
+    expect((await versions('?q=CLAIMS')).items.map(item => item.document_name)).toEqual(['Claims log.csv'])
     expect(await versions('?page=2')).toMatchObject({ items: [], page: 2, pages: 1, total: 3 })
     expect(await get('/api/admin/storage/document-versions?page=0')).toMatchObject({ status: 422, body: { code: 'invalid_request' } })
   })
@@ -332,7 +337,8 @@ describe('shared documents', () => {
     const preview = await demoFetch(new Request(demoUrl(`/api/admin/documents/versions/${rules.id}/preview`)))
     expect([preview.status, preview.headers.get('Content-Type')]).toEqual([200, 'application/pdf'])
     expect(preview.headers.get('Content-Disposition')).toMatch(/^inline; filename/)
-    expect(await get(`/api/admin/documents/versions/${id}/preview`)).toMatchObject({ status: 415, body: { code: 'document_preview_unavailable' } })
+    const text = await demoFetch(new Request(demoUrl(`/api/admin/documents/versions/${id}/preview`)))
+    expect([text.status, text.headers.get('Content-Type')]).toEqual([200, 'text/plain'])
     expect(await demoRequest('POST', `/api/admin/storage/document-versions/${id}/purge`, { mutationHeader: false }))
       .toMatchObject({ status: 403, body: { code: 'invalid_origin' } })
     expect(await purgeVersion(id)).toMatchObject({ status: 200, body: { id, purged_at: NOW.toISOString(), author: { name: 'Emily Clarke' } } })

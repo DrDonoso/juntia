@@ -7,16 +7,18 @@ import type {
   StoredAttachmentPage, StoredImageOut, StoredImagePage,
 } from './api/schema.gen'
 import { byteSize } from './community-action-shared'
-import { DocumentLimitsCard, DocumentNeighborsCard, DocumentStorageCard, PreviousDocumentVersions } from './documents-admin'
+import { DocumentLimitsCard, DocumentStorageCard, PreviousDocumentVersions } from './documents-admin'
 import { compareText, dateTimeFormat, formatNumber, useI18n } from './i18n'
 import { Icon } from './icons'
 import { Modal, Notice, Pagination, SortableHeader, authorName, connectionTime, useAction, useTableSort } from './shared'
 
 type Level = 'normal' | 'warning' | 'full'
-type NeighborColumn = 'neighbor' | 'active' | 'withdrawn' | 'images' | 'quota'
-const NEIGHBOR_SIZES: Record<Exclude<NeighborColumn, 'neighbor'>, (value: ResidentStorageOut) => number> = {
-  active: value => value.active_bytes, withdrawn: value => value.withdrawn_bytes,
-  images: value => value.image_bytes, quota: value => value.stored_bytes,
+type NeighborColumn = 'neighbor' | 'active' | 'withdrawn' | 'images' | 'quota' | 'documents'
+// A neighbor's PDFs and images, plus the shared documents they uploaded, which have a quota of their own.
+type NeighborRow = ResidentStorageOut & { document_bytes: number; document_versions: number }
+const NEIGHBOR_SIZES: Record<Exclude<NeighborColumn, 'neighbor'>, (value: NeighborRow) => number> = {
+  active: value => value.active_bytes, withdrawn: value => value.withdrawn_bytes, images: value => value.image_bytes,
+  quota: value => value.stored_bytes, documents: value => value.document_bytes,
 }
 // Kept as data, not text, so the notice follows a language switch.
 type Outcome = { kind: 'purged'; filename: string; size: number } | { kind: 'stale' }
@@ -63,7 +65,6 @@ function CommunityCard({ usage }: { usage: CommunityStorageOut }) {
     <UsageMeter label={t('storage.community.meter')} used={usage.stored_bytes} limit={usage.quota_bytes} level={level} />
     <p className="muted">{t('storage.community.available', { size: byteSize(Math.max(usage.quota_bytes - usage.stored_bytes, 0)) })}</p>
     <Breakdown usage={usage} />
-    <p className="muted storage-hint">{t('storage.community.hint')}</p>
     {level === 'full' && <Notice error>{t('storage.community.full')}</Notice>}
     {level === 'warning' && <Warning>{t('storage.community.near')}</Warning>}
   </section>
@@ -75,7 +76,6 @@ function AdministratorCard({ usage }: { usage: StorageUsageOut }) {
   return <section className="card storage-card" aria-labelledby={heading}>
     <h2 id={heading}>{t('storage.administrator.title')}</h2>
     <p className="storage-figure">{t('storage.administrator.stored', { size: byteSize(usage.stored_bytes) })}</p>
-    <p className="muted">{t('storage.administrator.hint')}</p>
     <Breakdown usage={usage} />
   </section>
 }
@@ -92,7 +92,9 @@ function DiskCard({ disk }: { disk: DiskSpaceOut }) {
       <p className="storage-figure">{t('storage.disk.free', { free: byteSize(free), total: byteSize(total) })}</p>
       <UsageMeter label={t('storage.disk.meter')} used={total - free} limit={total} level={level ?? 'normal'} />
     </>}
-    <p className="muted">{t('storage.disk.reserve', { size: byteSize(reserve) })}</p>
+    <dl className="storage-breakdown">
+      <div><dt>{t('storage.disk.reserve')}</dt><dd>{byteSize(reserve)}</dd></div>
+    </dl>
     {level === 'full' && <Notice error>{t('storage.disk.below')}</Notice>}
     {level === 'warning' && <Warning>{t('storage.disk.near')}</Warning>}
   </section>
@@ -103,12 +105,28 @@ function useNeighborName() {
   return (value: ResidentStorageOut) => value.name || t('storage.neighbors.unnamed', { id: value.user_id })
 }
 
+/** Everyone who stores PDFs, images or documents, with both: residents with documents only store no PDFs. */
+function neighborRows(storage: StorageOut): NeighborRow[] {
+  const rows = new Map<number, NeighborRow>(storage.residents.map(resident => [
+    resident.user_id, { ...resident, document_bytes: 0, document_versions: 0 },
+  ]))
+  for (const resident of storage.documents.residents) {
+    const row = rows.get(resident.user_id) ?? {
+      user_id: resident.user_id, name: resident.name, account_deleted: resident.account_deleted, quota_bytes: storage.resident_quota_bytes,
+      stored_bytes: 0, active_bytes: 0, withdrawn_bytes: 0, active_files: 0, withdrawn_files: 0, image_bytes: 0, image_files: 0,
+      document_bytes: 0, document_versions: 0,
+    }
+    rows.set(resident.user_id, { ...row, document_bytes: resident.stored_bytes, document_versions: resident.versions })
+  }
+  return [...rows.values()]
+}
+
 function NeighborsCard({ storage }: { storage: StorageOut }) {
   const { t } = useI18n()
   const heading = useId(), neighborName = useNeighborName()
   const sort = useTableSort<NeighborColumn>('quota', column => column === 'neighbor' ? 'asc' : 'desc')
-  const title = t('storage.neighbors.title')
-  const rows = [...storage.residents].sort((left, right) => {
+  const title = t('storage.neighbors.title'), documentQuota = storage.documents.resident_quota_bytes
+  const rows = neighborRows(storage).sort((left, right) => {
     const names = compareText(neighborName(left), neighborName(right))
     const order = sort.key === 'neighbor' ? names : NEIGHBOR_SIZES[sort.key](left) - NEIGHBOR_SIZES[sort.key](right)
     return (sort.direction === 'asc' ? order : -order) || names || left.user_id - right.user_id
@@ -122,7 +140,9 @@ function NeighborsCard({ storage }: { storage: StorageOut }) {
     <h2 id={heading}>{title}</h2>
     {rows.length === 0 ? <p className="empty">{t('storage.neighbors.empty')}</p>
       : <div className="table-scroll"><table className="storage-table" aria-label={title}>
-        <thead><tr>{header('neighbor')}{header('active', true)}{header('withdrawn', true)}{header('images', true)}{header('quota')}</tr></thead>
+        <thead><tr>
+          {header('neighbor')}{header('active', true)}{header('withdrawn', true)}{header('images', true)}{header('quota')}{header('documents')}
+        </tr></thead>
         <tbody>{rows.map(resident => {
           const name = neighborName(resident)
           return <tr key={resident.user_id}>
@@ -134,6 +154,10 @@ function NeighborsCard({ storage }: { storage: StorageOut }) {
             <td className="storage-quota">{t('storage.usage', { used: byteSize(resident.stored_bytes), limit: byteSize(resident.quota_bytes) })}
               <UsageMeter label={t('storage.neighbors.meter', { name })} used={resident.stored_bytes} limit={resident.quota_bytes}
                 level={quotaLevel(resident.stored_bytes, resident.quota_bytes)} /></td>
+            <td className="storage-quota">{t('storage.usage', { used: byteSize(resident.document_bytes), limit: byteSize(documentQuota) })}
+              <UsageMeter label={t('storage.neighbors.documentsMeter', { name })} used={resident.document_bytes} limit={documentQuota}
+                level={quotaLevel(resident.document_bytes, documentQuota)} />
+              <small>{t('storage.documents.versions', { count: resident.document_versions })}</small></td>
           </tr>
         })}</tbody>
       </table></div>}
@@ -182,16 +206,19 @@ function storedPdfUrl(item: StoredAttachmentOut, action: 'preview' | 'download')
   return `/api/admin/storage/attachments/${item.id}/${action}`
 }
 
-// The latest withdrawn first, 20 per page.
+// The latest withdrawn first, 5 per page.
 function WithdrawnPDFs() {
   const { t, rich } = useI18n()
-  const [page, setPage] = useState(1)
+  const [page, setPage] = useState(1), [search, setSearch] = useState('')
   const [purging, setPurging] = useState<StoredAttachmentOut | null>(null)
   const [outcome, setOutcome] = useState<Outcome | null>(null)
   const heading = useRef<HTMLHeadingElement>(null), headingId = useId()
+  const q = search.trim()
+  const params = new URLSearchParams({ page: String(page) })
+  if (q) params.set('q', q)
   const query = useQuery({
-    queryKey: ['admin', 'storage', 'withdrawn', page],
-    queryFn: () => api<StoredAttachmentPage>(`/admin/storage/withdrawn?page=${page}`),
+    queryKey: ['admin', 'storage', 'withdrawn', page, q],
+    queryFn: () => api<StoredAttachmentPage>(`/admin/storage/withdrawn?${params}`),
     placeholderData: keepPreviousData, staleTime: 0,
   })
   // The deleted row took the focus with it: continue from the list, where the outcome is announced.
@@ -205,15 +232,19 @@ function WithdrawnPDFs() {
   const title = t('storage.withdrawnPDFs.title')
   return <section className="card" aria-labelledby={headingId}>
     <h2 id={headingId} ref={heading} tabIndex={-1}>{title}</h2>
+    <label className="storage-search">{t('storage.withdrawnPDFs.search')}<input type="search" maxLength={200} value={search}
+      onChange={event => { setSearch(event.target.value); setPage(1) }} /></label>
     {outcome?.kind === 'purged' && <Notice>{t('storage.withdrawnPDFs.purged', { filename: outcome.filename, size: byteSize(outcome.size) })}</Notice>}
     {outcome?.kind === 'stale' && <Notice error>{t('storage.withdrawnPDFs.stale')}</Notice>}
     {query.isPending && <Notice>{t('storage.withdrawnPDFs.loading')}</Notice>}
     {query.error && <><Notice error>{errorMessage(query.error)}</Notice>
       <button type="button" className="secondary" disabled={query.isFetching} onClick={() => void query.refetch()}>{t('common.retryLoading')}</button></>}
     {query.data && <>
-      {query.data.total > 0 && <p className="muted">{t('storage.withdrawnPDFs.total', { count: query.data.total })}</p>}
+      {query.data.total > 0 && <p className="muted">{q ? t('storage.search.results', { count: query.data.total })
+        : t('storage.withdrawnPDFs.total', { count: query.data.total })}</p>}
       {query.data.items.length === 0
-        ? <p className="empty">{page > 1 ? t('storage.withdrawnPDFs.empty.page') : t('storage.withdrawnPDFs.empty.all')}</p>
+        ? <p className="empty">{page > 1 ? t('storage.withdrawnPDFs.empty.page')
+          : q ? t('storage.search.empty', { query: q }) : t('storage.withdrawnPDFs.empty.all')}</p>
         : <ul className="action-attachment-list storage-withdrawn-list" aria-label={title} aria-busy={query.isFetching}>
           {query.data.items.map(item => {
             const withdrawnAt = item.withdrawn_at
@@ -271,16 +302,19 @@ function ImagePurgeDialog({ item, close, done }: { item: StoredImageOut; close: 
   </Modal>
 }
 
-// The newest first, 20 per page.
+// The newest first, 5 per page.
 function StoredImages() {
   const { t, rich } = useI18n()
-  const [page, setPage] = useState(1)
+  const [page, setPage] = useState(1), [search, setSearch] = useState('')
   const [purging, setPurging] = useState<StoredImageOut | null>(null)
   const [outcome, setOutcome] = useState<Outcome | null>(null)
   const heading = useRef<HTMLHeadingElement>(null), headingId = useId()
+  const q = search.trim()
+  const params = new URLSearchParams({ page: String(page) })
+  if (q) params.set('q', q)
   const query = useQuery({
-    queryKey: ['admin', 'storage', 'images', page],
-    queryFn: () => api<StoredImagePage>(`/admin/storage/images?page=${page}`),
+    queryKey: ['admin', 'storage', 'images', page, q],
+    queryFn: () => api<StoredImagePage>(`/admin/storage/images?${params}`),
     placeholderData: keepPreviousData, staleTime: 0,
   })
   // The deleted row took the focus with it: continue from the list, where the outcome is announced.
@@ -292,14 +326,18 @@ function StoredImages() {
   const title = t('storage.storedImages.title')
   return <section className="card" aria-labelledby={headingId}>
     <h2 id={headingId} ref={heading} tabIndex={-1}>{title}</h2>
+    <label className="storage-search">{t('storage.storedImages.search')}<input type="search" maxLength={200} value={search}
+      onChange={event => { setSearch(event.target.value); setPage(1) }} /></label>
     {outcome?.kind === 'purged' && <Notice>{t('storage.storedImages.purged', { filename: outcome.filename, size: byteSize(outcome.size) })}</Notice>}
     {query.isPending && <Notice>{t('storage.storedImages.loading')}</Notice>}
     {query.error && <><Notice error>{errorMessage(query.error)}</Notice>
       <button type="button" className="secondary" disabled={query.isFetching} onClick={() => void query.refetch()}>{t('common.retryLoading')}</button></>}
     {query.data && <>
-      {query.data.total > 0 && <p className="muted">{t('storage.storedImages.total', { count: query.data.total })}</p>}
+      {query.data.total > 0 && <p className="muted">{q ? t('storage.search.results', { count: query.data.total })
+        : t('storage.storedImages.total', { count: query.data.total })}</p>}
       {query.data.items.length === 0
-        ? <p className="empty">{page > 1 ? t('storage.storedImages.empty.page') : t('storage.storedImages.empty.all')}</p>
+        ? <p className="empty">{page > 1 ? t('storage.storedImages.empty.page')
+          : q ? t('storage.search.empty', { query: q }) : t('storage.storedImages.empty.all')}</p>
         : <ul className="action-attachment-list storage-image-list" aria-label={title} aria-busy={query.isFetching}>
           {query.data.items.map(item => <li key={item.id}>
             <a className="storage-image-thumb" href={imageFileUrl(item)} target="_blank" rel="noopener noreferrer"
@@ -352,7 +390,6 @@ export function StoragePage() {
     </>}
     <WithdrawnPDFs />
     <StoredImages />
-    {summary.data && <DocumentNeighborsCard storage={summary.data.documents} />}
     <PreviousDocumentVersions />
   </>
 }

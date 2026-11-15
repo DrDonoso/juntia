@@ -176,7 +176,7 @@ export const errors = {
     document_folder_deleted: 'The destination folder was deleted during the upload. The file has not been saved.',
     document_deleted: 'The file has been deleted, so it no longer accepts changes.',
     document_version_purged: 'This version has been deleted permanently.',
-    document_preview_unavailable: 'Only PDFs, pictures and videos can be previewed. Download the file to open it.',
+    document_preview_unavailable: 'Only PDFs, pictures, videos and text and CSV files can be previewed. Download the file to open it.',
     document_archive_items: 'Choose between 1 and 100 files or folders to download together.',
     document_archive_too_large: 'Too much to download at once: at most 5,000 files and 10 GiB per ZIP. Download smaller parts.',
     document_archive_busy: 'Several ZIP downloads are being prepared. Try again in a moment.',

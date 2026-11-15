@@ -595,13 +595,17 @@ def test_withdrawn_pdfs_are_listed_for_purging_latest_withdrawn_first(actors, ad
     garden = create_item(a, title="Garden lights")
     for index in range(MAX_ACTIVE_PDFS):
         retired = created(upload(admin, shared, sized_pdf(10_000 + index * 1_000)))
+        if index == 0:
+            retired = admin.patch(item_path(shared) + f"/attachments/{retired['id']}", json={
+                "version": retired["version"], "filename": "Factura antigua.pdf",
+            }).json()
         withdraw(admin, shared, retired)
         execute(
             config, "UPDATE action_attachments SET withdrawn_at = :at WHERE id = :id",
             at=datetime(2026, 10, 2, index, tzinfo=timezone.utc), id=retired["id"],
         )
     # The largest, withdrawn before all the others, comes last.
-    largest = created(upload(a, garden, sized_pdf(50_000)))
+    largest = created(upload(a, garden, sized_pdf(50_000), "Presupuesto jardín.pdf"))
     withdraw(a, garden, largest)
     execute(
         config, "UPDATE action_attachments SET withdrawn_at = :at WHERE id = :id",
@@ -611,13 +615,17 @@ def test_withdrawn_pdfs_are_listed_for_purging_latest_withdrawn_first(actors, ad
     purged = created(upload(b, garden, sized_pdf(70_000)))
     withdraw(b, garden, purged)
     assert purge(admin, purged["id"], 2).status_code == 200
-    first_page = admin.get("/api/admin/storage/withdrawn").json()
-    second_page = admin.get("/api/admin/storage/withdrawn?page=2").json()
-    assert (first_page["total"], first_page["page"], first_page["pages"]) == (21, 1, 2)
-    assert len(first_page["items"]) == 20
-    rows = first_page["items"] + second_page["items"]
+    # Five per page.
+    pages = [
+        admin.get("/api/admin/storage/withdrawn", params={"page": number}).json()
+        for number in range(1, 6)
+    ]
+    assert [(page["total"], page["page"], page["pages"], len(page["items"])) for page in pages] == [
+        (21, 1, 5, 5), (21, 2, 5, 5), (21, 3, 5, 5), (21, 4, 5, 5), (21, 5, 5, 1),
+    ]
+    rows = [row for page in pages for row in page["items"]]
     assert [row["size"] for row in rows] == [*range(29_000, 9_000, -1_000), 50_000]
-    assert all(row["action_title"] == "Roof repair" for row in first_page["items"])
+    assert all(row["action_title"] == "Roof repair" for row in pages[0]["items"])
     last = rows[-1]
     assert (last["id"], last["action_id"], last["action_title"]) == (
         largest["id"], garden["id"], "Garden lights",
@@ -625,7 +633,18 @@ def test_withdrawn_pdfs_are_listed_for_purging_latest_withdrawn_first(actors, ad
     assert last["author"] == largest["author"]
     assert (last["version"], last["purged_at"]) == (2, None)
     assert last["withdrawn_at"].startswith("2026-10-01T00:00:00")
-    assert admin.get("/api/admin/storage/withdrawn?page=0").status_code == 422
+
+    # The search looks at the name people see, ignoring case and accents.
+    def found(query):
+        return admin.get("/api/admin/storage/withdrawn", params={"q": query}).json()
+
+    for query in ("JARDIN", " jardín "):
+        assert [row["id"] for row in found(query)["items"]] == [largest["id"]]
+    assert [row["filename"] for row in found("factura")["items"]] == ["Factura antigua.pdf"]
+    assert (found("quote")["total"], found("quote")["pages"]) == (19, 4)
+    assert found("")["total"] == 21
+    for query in ({"page": "0"}, {"q": "x" * 201}):
+        assert admin.get("/api/admin/storage/withdrawn", params=query).status_code == 422
 
 
 def test_purge_migration_round_trip_and_guarded_downgrade(admin, config):

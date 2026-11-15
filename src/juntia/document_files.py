@@ -57,8 +57,9 @@ OOXML_MAIN = {
 class FileType:
     kind: DocumentKind
     media_type: str
-    # Opened in a new tab by the eye icon, with this type: phones record QuickTime videos that
-    # browsers only play when told they are MP4, the format they derive from.
+    # Shown by the eye icon with this type: PDFs, pictures and videos in a new tab, where phones'
+    # QuickTime videos only play when browsers are told they are MP4, the format they derive from;
+    # text and CSV files in the portal's viewer, which reads their encoding itself.
     preview_type: str | None = None
 
 
@@ -77,8 +78,8 @@ TYPES: dict[str, FileType] = {
     "odt": FileType("document", ODF + "text"),
     "ods": FileType("spreadsheet", ODF + "spreadsheet"),
     "odp": FileType("presentation", ODF + "presentation"),
-    "txt": FileType("text", "text/plain"),
-    "csv": FileType("text", "text/csv"),
+    "txt": FileType("text", "text/plain", "text/plain"),
+    "csv": FileType("text", "text/csv", "text/plain"),
     "mp4": FileType("video", "video/mp4", "video/mp4"),
     "m4v": FileType("video", "video/x-m4v", "video/mp4"),
     "mov": FileType("video", "video/quicktime", "video/mp4"),

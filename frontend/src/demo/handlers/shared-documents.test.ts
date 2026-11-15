@@ -574,14 +574,18 @@ describe('versions', () => {
     expect(await start('Budget.pdf', 10, { document_id: budget.id })).toMatchObject({ status: 422, body: { code: 'document_version_extension' } })
     const newer = encoder.encode('item,amount\nlift,145\ncleaning,84\n')
     const updated = await uploaded('other name.CSV', newer, { document_id: budget.id })
-    expect(updated).toMatchObject({ name: 'Budget.csv', version: 2, version_count: 2, current: { number: 2, size: newer.length }, previewable: false })
+    expect(updated).toMatchObject({ name: 'Budget.csv', version: 2, version_count: 2, current: { number: 2, size: newer.length }, previewable: true })
     const info = (await get<DocumentInfoOut>(`/api/documents/files/${budget.id}`)).body
     expect(info.versions.map(item => [item.number, item.author.name])).toEqual([[2, 'Olivia Bennett'], [1, 'Olivia Bennett']])
     const earlier = await download(`/api/documents/versions/${budget.current.id}/download`)
     expect(earlier.headers.get('Content-Disposition')).toBe("attachment; filename*=utf-8''Budget%20%28version%201%29.csv")
     expect(earlier.headers.get('Content-Type')).toBe('text/csv')
+    // The portal shows text and CSV files itself, served as plain text.
     const preview = await download(`/api/documents/versions/${budget.current.id}/preview`)
-    expect([preview.status, errorCode(preview.bytes)]).toEqual([415, 'document_preview_unavailable'])
+    expect([preview.status, preview.headers.get('Content-Type')]).toEqual([200, 'text/plain'])
+    const letter = await uploaded('Letter.docx', docx())
+    const unavailable = await download(`/api/documents/versions/${letter.current.id}/preview`)
+    expect([unavailable.status, errorCode(unavailable.bytes)]).toEqual([415, 'document_preview_unavailable'])
     expect((await history('files', budget.id)).map(entry => [entry.kind, entry.number, entry.size])).toEqual([
       ['version_added', 2, newer.length], ['created', 1, budget.current.size],
     ])

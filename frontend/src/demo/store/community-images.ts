@@ -170,9 +170,9 @@ export function purgeImage(image: DemoCommunityImage, at: string): void {
   image.bytes = new Uint8Array(0)
 }
 
-/** Stored images (not purged): the newest first. */
-export function storedImageList(state: CommunityState): DemoCommunityImage[] {
+/** Stored images (not purged) whose name contains the search: the newest first. */
+export function storedImageList(state: CommunityState, matches: (name: string) => boolean = () => true): DemoCommunityImage[] {
   return state.images
-    .filter(image => image.purgedAt === null)
+    .filter(image => image.purgedAt === null && matches(image.filename))
     .sort((a, b) => compareText(b.createdAt, a.createdAt) || compareText(b.id, a.id))
 }

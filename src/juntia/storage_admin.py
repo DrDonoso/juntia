@@ -1,27 +1,27 @@
 """Administrator view of stored uploads (action PDFs, pasted images and shared documents), and
 purging them."""
 
+import math
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
-from sqlalchemy import case, func, select
+from fastapi import APIRouter, Depends, Query, Request
+from sqlalchemy import SQLColumnExpression, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse
 
 from .auth import DB, administrator, mutation_session, settings
 from .community_action_files import delete_pdf, pdf_path
 from .community_actions import (
-    PAGE_SIZE,
     PageNumber,
     add_event,
     attachment_filename,
     attachment_out,
     check_version,
     lock_action,
-    page_info,
     pdf_response,
     session_actor,
 )
@@ -66,16 +66,30 @@ from .db import (
 )
 from .document_files import TYPES, remove_file, stored_path
 from .errors import AppError
+from .query_sql import contains_text, fold_sql, fold_text
 from .storage import MIB, disk_space, lock_attachment_storage
 from .texts import ServerLanguage
 
 router = APIRouter(
     prefix="/api/admin/storage", tags=["Storage"], dependencies=[Depends(administrator)],
 )
+# The administrator reviews the stored files a few at a time.
+PAGE_SIZE = 5
+SearchText = Annotated[str, Query(max_length=200)]
 # Stored PDF bytes, active PDF bytes, stored PDFs, active PDFs, image bytes and images of one
 # author.
 Totals = tuple[int, int, int, int, int, int]
 NO_FILES: Totals = (0, 0, 0, 0, 0, 0)
+
+
+def page_info(total: int, page: int) -> dict[str, int]:
+    return {"total": total, "page": page, "pages": max(1, math.ceil(total / PAGE_SIZE))}
+
+
+def named(db: AsyncSession, name: SQLColumnExpression[str], q: str) -> list[ColumnElement[bool]]:
+    """Files whose name contains the search, ignoring case and accents."""
+    needle = fold_text(q.strip())
+    return [contains_text(db, fold_sql(db, name), needle)] if needle else []
 
 
 def usage(groups: list[Totals]) -> dict[str, int]:
@@ -251,9 +265,12 @@ async def document_storage(db: AsyncSession) -> DocumentStorageOut:
 # Withdrawn PDFs that still use storage, the latest withdrawn first: the candidates for a purge.
 @router.get("/withdrawn", response_model=StoredAttachmentPage)
 async def withdrawn_attachments(
-    db: DB, language: ServerLanguage, page: PageNumber = 1,
+    db: DB, language: ServerLanguage, page: PageNumber = 1, q: SearchText = "",
 ) -> StoredAttachmentPage:
-    where = (ActionAttachment.withdrawn_at.is_not(None), ActionAttachment.purged_at.is_(None))
+    where = [
+        ActionAttachment.withdrawn_at.is_not(None), ActionAttachment.purged_at.is_(None),
+        *named(db, func.coalesce(ActionAttachment.display_filename, ActionAttachment.filename), q),
+    ]
     total = await db.scalar(select(func.count()).select_from(ActionAttachment).where(*where))
     rows = (await db.execute(
         select(ActionAttachment, CommunityAction.title)
@@ -331,12 +348,12 @@ async def purge_attachment(
 # Every stored image, the newest first: images have no withdrawal, so any can be purged.
 @router.get("/images", response_model=StoredImagePage)
 async def stored_images(
-    db: DB, language: ServerLanguage, page: PageNumber = 1,
+    db: DB, language: ServerLanguage, page: PageNumber = 1, q: SearchText = "",
 ) -> StoredImagePage:
-    where = CommunityImage.purged_at.is_(None)
-    total = await db.scalar(select(func.count()).select_from(CommunityImage).where(where))
+    where = [CommunityImage.purged_at.is_(None), *named(db, CommunityImage.filename, q)]
+    total = await db.scalar(select(func.count()).select_from(CommunityImage).where(*where))
     rows = (await db.scalars(
-        select(CommunityImage).where(where)
+        select(CommunityImage).where(*where)
         .order_by(CommunityImage.created_at.desc(), CommunityImage.id.desc())
         .offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE)
     )).all()
@@ -397,12 +414,12 @@ async def stored_version_out(
 # candidates for a purge. Deleted documents are purged as a whole from Deleted documents instead.
 @router.get("/document-versions", response_model=StoredDocumentVersionPage)
 async def previous_document_versions(
-    db: DB, language: ServerLanguage, page: PageNumber = 1,
+    db: DB, language: ServerLanguage, page: PageNumber = 1, q: SearchText = "",
 ) -> StoredDocumentVersionPage:
-    where = (
+    where = [
         DocumentVersion.purged_at.is_(None), Document.deleted_at.is_(None),
-        DocumentVersion.number != Document.current_number,
-    )
+        DocumentVersion.number != Document.current_number, *named(db, Document.name, q),
+    ]
     total = await db.scalar(
         select(func.count()).select_from(DocumentVersion)
         .join(Document, Document.id == DocumentVersion.document_id).where(*where)
