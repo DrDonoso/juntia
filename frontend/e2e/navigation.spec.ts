@@ -36,7 +36,7 @@ async function mockSession(page: Page, { administrator = false, actions = true, 
     if (path === '/api/settings/general') return json({
       community_name: 'Residential community of Park Avenue and Market Square',
     })
-    if (path === '/api/features') return json({ actions, coefficient: true, events: false, google_login: false })
+    if (path === '/api/features') return json({ actions, coefficient: true, events: false, documents: false, google_login: false })
     if (path === '/api/catalog/categories' || path === '/api/catalog/tags') return json([])
     if (path === '/api/admin/action-labels' || path === '/api/admin/contact-tags') return json({ items: [], total: 0, page: 1, pages: 1 })
     if (path === '/api/summary') return json(summary)
@@ -234,10 +234,11 @@ for (const actions of [true, false]) {
     await expect(page.getByRole('heading', { name: 'General', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Navigation menu', exact: true }).click()
     const navigation = page.getByRole('navigation', { name: 'Administration navigation', exact: true })
-    await expect(navigation.getByRole('link')).toHaveCount(12)
+    await expect(navigation.getByRole('link')).toHaveCount(13)
     await expect(navigation.getByRole('link', { name: 'Features', exact: true })).toHaveAttribute('href', '/admin/features')
     await expect(navigation.getByRole('link', { name: 'Community labels', exact: true })).toHaveAttribute('href', '/admin/labels')
     await expect(navigation.getByRole('link', { name: 'Deleted contacts', exact: true })).toHaveAttribute('href', '/admin/deleted-contacts')
+    await expect(navigation.getByRole('link', { name: 'Deleted documents', exact: true })).toHaveAttribute('href', '/admin/deleted-documents')
     await expect(navigation.getByRole('group', { name: 'Settings', exact: true }).getByRole('link', { name: 'Storage', exact: true })).toHaveAttribute('href', '/admin/storage')
     for (const name of ['Actions', 'Neighbors', 'Contacts']) await expect(navigation.getByRole('link', { name, exact: true })).toHaveCount(0)
     await expect(navigation.getByRole('group', { name: 'Management', exact: true })).toHaveCount(0)

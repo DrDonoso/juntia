@@ -25,3 +25,4 @@ export {
   Body, DemoValidationError, MAX_ID, characterCount, displayName, hasControlCharacters, normalizePhone, parseBody,
   type InvalidFields, type ParseOptions,
 } from './validation'
+export { crc32, readZip, readZipMember, zipArchive, type ZipEntry, type ZipRecord, type ZipTime } from './zip'

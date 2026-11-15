@@ -1,11 +1,15 @@
 /**
  * Storage administration routes of the demo API (src/juntia/storage_admin.py): the storage the
- * action PDFs and the pasted images use, per resident and for the community, with the synthetic
- * upload volume; the withdrawn PDFs and the images that still use it; and their purge, which
- * deletes the file but keeps its record (and a PDF's history). Administrator only; they keep
- * working while the Actions and Events features are off.
+ * action PDFs, the pasted images and the shared documents use, per resident and for the community,
+ * with the synthetic upload volume; the withdrawn PDFs, the images and the earlier document
+ * versions that still use it; and their purge, which deletes the file but keeps its record (and
+ * the history of a PDF or a document). Administrator only; they keep working while the Actions,
+ * Events and Documents features are off.
  */
-import type { ActionAttachmentOut, ActorOut, StorageOut, StoredAttachmentPage, StoredImageOut, StoredImagePage } from '../../api/schema.gen'
+import type {
+  ActionAttachmentOut, ActorOut, StorageOut, StoredAttachmentPage, StoredDocumentVersionOut, StoredDocumentVersionPage, StoredImageOut,
+  StoredImagePage,
+} from '../../api/schema.gen'
 import {
   DemoApiError, actorOf, http, nowIso, pageParam, paginate, parseBody, queryChoice, queryInt, readJson, route, type HttpHandler,
   type RouteContext,
@@ -13,7 +17,8 @@ import {
 import { communityStore } from '../store/community'
 import { ACTION_PAGE_SIZE, attachmentOut, findAction, purgeAttachment } from '../store/community-actions'
 import { findImage, purgeImage, storedImageList, storedImageOut } from '../store/community-images'
-import { storageSummary, withdrawnAttachments } from '../store/storage'
+import { DOCUMENT_PAGE_SIZE, purgeDocumentVersion, sharedDocumentsStore } from '../store/shared-documents'
+import { previousDocumentVersions, storageSummary, storedDocumentVersionOut, withdrawnAttachments } from '../store/storage'
 import { uuidParam, version } from './community-contracts'
 import { imageResponse } from './community-images'
 
@@ -23,7 +28,7 @@ function administrator({ identity }: RouteContext): ActorOut {
 }
 
 export const storageHandlers: HttpHandler[] = [
-  http.get('/api/admin/storage', route('admin', (): StorageOut => storageSummary(communityStore()))),
+  http.get('/api/admin/storage', route('admin', (): StorageOut => storageSummary(communityStore(), sharedDocumentsStore()))),
   http.get('/api/admin/storage/withdrawn', route('admin', ({ url }): StoredAttachmentPage => {
     const page = pageParam(url)
     const sort = queryChoice(url, 'sort', ['largest', 'oldest'], 'largest')
@@ -72,5 +77,20 @@ export const storageHandlers: HttpHandler[] = [
     if (!image) throw new DemoApiError('image_not_found', 404)
     purgeImage(image, nowIso())
     return storedImageOut(image)
+  })),
+  // Earlier versions of documents that still use storage: the candidates for a purge.
+  http.get('/api/admin/storage/document-versions', route('admin', ({ url }): StoredDocumentVersionPage => {
+    const page = pageParam(url)
+    const sort = queryChoice(url, 'sort', ['largest', 'oldest'], 'largest')
+    const userId = queryInt(url, 'user_id')
+    const documents = sharedDocumentsStore()
+    const { items, ...info } = paginate(previousDocumentVersions(documents, sort, userId), page, DOCUMENT_PAGE_SIZE)
+    return { ...info, items: items.map(item => storedDocumentVersionOut(documents, item)) }
+  })),
+  // Purging again answers the purged version unchanged.
+  http.post('/api/admin/storage/document-versions/:versionId/purge', route('admin', (context): StoredDocumentVersionOut => {
+    const versionId = uuidParam(context.params, 'versionId')
+    const documents = sharedDocumentsStore()
+    return storedDocumentVersionOut(documents, purgeDocumentVersion(documents, administrator(context), versionId, nowIso()))
   })),
 ]

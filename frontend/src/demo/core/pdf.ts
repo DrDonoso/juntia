@@ -39,9 +39,12 @@ export function demoPdf(title: string, lines: readonly string[] = []): Uint8Arra
   return encoder.encode(body)
 }
 
-/** The backend's (Starlette's) Content-Disposition: quoted ASCII names, RFC 5987 otherwise. */
+/**
+ * The backend's (Starlette's) Content-Disposition: quoted ASCII names, RFC 5987 otherwise, encoded
+ * like Python's `quote` (which also escapes `!'()*`, so `Report (2).pdf` is `Report%20%282%29.pdf`).
+ */
 export function fileDisposition(kind: 'attachment' | 'inline', filename: string): string {
-  const encoded = encodeURIComponent(filename)
+  const encoded = encodeURIComponent(filename).replace(/[!'()*]/g, character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)
   return encoded === filename ? `${kind}; filename="${filename}"` : `${kind}; filename*=utf-8''${encoded}`
 }
 

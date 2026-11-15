@@ -41,6 +41,7 @@ def test_disabling_actions_blocks_every_api_but_retains_data_and_sessions(actors
     with visitor(config) as operator, visitor(config) as resident:
         assert resident.get("/api/features").json() == {
             "coefficient": True, "google_login": False, "actions": False, "events": False,
+            "documents": False,
         }
         assert resident.get(path).status_code == 401
         operator.cookies.update(admin.cookies)

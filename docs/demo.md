@@ -25,9 +25,9 @@ stored, and reloading the page starts the demo again.
   - administration (`/admin`): `demo` / `demo`;
   - residents (`/login`): the email of any active neighbor, such as `olivia.bennett@example.com`,
     with the password `demo`.
-- Everything can be changed: actions, comments and PDFs, events, contacts, profiles, users,
-  dwellings and their layout, rules, categories, imports and settings. Changes last until the page is
-  reloaded.
+- Everything can be changed: actions, comments and PDFs, events, contacts, shared documents and
+  their folders, profiles, users, dwellings and their layout, rules, categories, imports and settings.
+  Changes last until the page is reloaded.
 - The language selector switches between English and Spanish, like in a real installation.
 
 ## The data
@@ -46,6 +46,9 @@ recent:
 - **Actions** in every status, with labels, comments, generated PDF documents and their history;
   **events** in the past, ongoing and upcoming, several linked to actions; **contacts** with tags,
   edits and a few deleted ones.
+- **Documents**: shared folders and files (house rules with a revised version, meeting minutes by
+  year, insurance papers, a Word letter and the sample neighbor's garden folder) with their history,
+  and two deletions that the administrator can restore or purge.
 
 ## What needs a real server
 
@@ -58,8 +61,10 @@ Features that depend on real infrastructure are simulated or explain that they n
   invited neighbors stay pending; password recovery answers as usual without sending anything.
 - **Google sign-in** and linking answer "This feature needs a real server, so it is not available in
   the demo."
-- **Storage administration** shows invented disk figures; the PDF quotas and permanent deletion
-  behave as on a real server.
+- **Storage administration** shows invented disk figures; the quotas of PDFs and documents and
+  permanent deletion behave as on a real server.
+- **Shared documents** stay in the browser's memory: uploads (resumable, in chunks), previews and
+  ZIP downloads work as on a real server, but archives are limited to 4 GiB.
 
 ## Running it locally
 

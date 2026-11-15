@@ -35,6 +35,17 @@ const paths = {
   sort: <path d="M8 19.6V4.4m-4 4 4-4 4 4M16 4.4v15.2m-4-4 4 4 4-4" />,
   grip: <path d="M9 5h.02M15 5h.02M9 12h.02M15 12h.02M9 19h.02M15 19h.02" />,
   globe: <><circle cx="12" cy="12" r="8.6" /><path d="M3.4 12h17.2" /><path d="M12 3.4c2.3 2.3 3.5 5.3 3.5 8.6s-1.2 6.3-3.5 8.6c-2.3-2.3-3.5-5.3-3.5-8.6S9.7 5.7 12 3.4Z" /></>,
+  // Shared documents: folders, file kinds and their menu.
+  folder: <path d="M3.4 6.4a1.6 1.6 0 0 1 1.6-1.6h4.1l2.1 2.4h7.8a1.6 1.6 0 0 1 1.6 1.6v9.4a1.6 1.6 0 0 1-1.6 1.6H5a1.6 1.6 0 0 1-1.6-1.6Z" />,
+  'folder-plus': <><path d="M3.4 6.4a1.6 1.6 0 0 1 1.6-1.6h4.1l2.1 2.4h7.8a1.6 1.6 0 0 1 1.6 1.6v9.4a1.6 1.6 0 0 1-1.6 1.6H5a1.6 1.6 0 0 1-1.6-1.6Z" /><path d="M12 10.6v6M9 13.6h6" /></>,
+  move: <><path d="M3.4 6.4a1.6 1.6 0 0 1 1.6-1.6h4.1l2.1 2.4h7.8a1.6 1.6 0 0 1 1.6 1.6v9.4a1.6 1.6 0 0 1-1.6 1.6H5a1.6 1.6 0 0 1-1.6-1.6Z" /><path d="M8.6 13.6h6.4M12.6 11.2l2.4 2.4-2.4 2.4" /></>,
+  file: <><path d="M13.4 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.6Z" /><path d="M13.4 3v5.6H19" /></>,
+  image: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.6" cy="9.6" r="1.8" /><path d="m21 15.6-4.6-4.6L6 20" /></>,
+  video: <><rect x="2.6" y="5.6" width="13.4" height="12.8" rx="2" /><path d="m16 10.2 5.4-3v9.6l-5.4-3Z" /></>,
+  table: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9.4h18M3 14.6h18M9 9.4V20" /></>,
+  presentation: <><rect x="3" y="3.6" width="18" height="12.4" rx="1.6" /><path d="M12 16v4.4M8.4 20.4h7.2" /></>,
+  info: <><circle cx="12" cy="12" r="8.6" /><path d="M12 11v5.4M12 7.8h.02" /></>,
+  'more-vertical': <><circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" /></>,
 }
 
 export type IconName = keyof typeof paths

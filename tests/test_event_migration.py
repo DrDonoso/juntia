@@ -17,6 +17,7 @@ def test_event_migration_preserves_state_and_starts_disabled(admin, config):
     migrate(config, "upgrade", "head")
     assert admin.get("/api/features").json() == {
         "coefficient": True, "actions": False, "events": False, "google_login": False,
+        "documents": False,
     }
 
     async def state(db):

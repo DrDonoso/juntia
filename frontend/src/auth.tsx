@@ -68,8 +68,8 @@ export function useSessionLifecycle(reader: UserAuthOut | undefined, administrat
 export function safeReturnPath(value: string | null): string {
   if (!value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\') || hasControlCharacters(value)) return '/'
   const parsed = new URL(value, window.location.origin)
-  const readerRoute = ['/', '/transactions', '/profile', '/neighbors', '/actions', '/contacts', '/events'].includes(parsed.pathname)
-    || /^\/(?:actions|events)\/[1-9][0-9]{0,9}$/.test(parsed.pathname)
+  const readerRoute = ['/', '/transactions', '/profile', '/neighbors', '/actions', '/contacts', '/events', '/documents'].includes(parsed.pathname)
+    || /^\/(?:actions|events|documents\/folders)\/[1-9][0-9]{0,9}$/.test(parsed.pathname)
   if (parsed.origin !== window.location.origin || !readerRoute) return '/'
   return parsed.pathname + parsed.search
 }

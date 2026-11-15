@@ -33,6 +33,7 @@ describe('demo PDFs', () => {
   test('are served with the backend Content-Disposition forms', async () => {
     expect(fileDisposition('attachment', 'statement-2026-09.pdf')).toBe('attachment; filename="statement-2026-09.pdf"')
     expect(fileDisposition('inline', 'roof quote.pdf')).toBe("inline; filename*=utf-8''roof%20quote.pdf")
+    expect(fileDisposition('attachment', 'Budget (version 1).xlsx')).toBe("attachment; filename*=utf-8''Budget%20%28version%201%29.xlsx")
     const response = pdfResponse(demoPdf('Roof quote'), 'roof quote.pdf', 'inline')
     expect(response.headers.get('Content-Type')).toBe('application/pdf')
     expect(response.headers.get('Content-Disposition')).toBe("inline; filename*=utf-8''roof%20quote.pdf")

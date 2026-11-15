@@ -431,6 +431,85 @@ library escapes line breaks, semicolons and commas, so event text cannot inject
 calendar fields. The interface checks an `event=` address parameter as a
 positive integer before requesting anything.
 
+## Shared documents
+
+`/api/documents` requires an active resident or technical administrator session
+and the Documents switch (off by default) for every read, upload, preview and
+download; chunk uploads are authorized before their body is received. Every
+document is **public to all members**: anything uploaded can be listed, previewed
+and downloaded by every resident, and the interface says so above the files. It
+is meant for documents of common interest, not for private ones.
+
+Every member can create folders and upload files. Renaming, moving, uploading a
+new version and deleting follow the administrator's policy (`/admin/features`):
+only whoever created the item (the default), only the technical administrator,
+or every member; the technical administrator always can. Under the default
+policy a member can delete a folder only when they created everything inside
+it. The server enforces the policy on every change; the interface only hides
+what it would refuse. Changes to the tree are serialized by one lock (an
+advisory lock on PostgreSQL), and item versions reject stale renames, moves and
+deletions.
+
+The history of each file and folder records who created it, uploaded each
+version, renamed, moved, deleted, restored or purged it, and when, with names
+and locations as they were; it never records or compares contents. Like the
+other histories it is append-only through the application, keeps actor names
+after accounts change or are deleted, and is not a tamper-proof audit log.
+
+**Types.** Only the extensions listed in the
+[deployment guide](deployment.md#shared-documents) are accepted, and the content
+must match the extension once the upload is complete: PDF header and end of
+file; image signatures (HEIC/HEIF by their brand); the box structure of
+MP4/M4V/MOV videos; the declared main part of Word, Excel and PowerPoint files;
+the `mimetype` entry of OpenDocument files; and no NUL bytes in text and CSV
+(unless UTF-16). Office files with macros (`vbaProject`, macro-enabled types),
+ActiveX controls or embedded objects, and OpenDocument files with `Basic` or
+`Scripts` folders, are refused, as are ZIP containers with more than 10,000
+entries or ZIP64 records. These checks are not antivirus scanning or complete
+validation: a document can still contain links, external references or fields
+that ask to update, misleading text, or content that exploits flaws in the
+programs that open it. Treat member files as untrusted, open Office files in
+protected view and keep office software and browsers up to date.
+
+**Preview.** The eye icon opens PDFs, pictures and videos **inline, on the
+application's own origin**, in a new tab, with the recognized type (MOV and M4V
+videos as `video/mp4`, which browsers can play), `nosniff`, `no-store` and the
+application's Content Security Policy, like
+[action PDFs](#community-actions-and-retained-pdfs), with the same residual
+risks: convincing fake documents shown under the community's address, and
+flaws in the browser's PDF or media engines. Browsers that cannot display HEIC
+download it instead. Other types are only sent as attachments. SVG, HTML and
+other active formats are never accepted, so no upload can run script in the
+application's origin.
+
+**Downloads.** File names in `Content-Disposition` and in ZIP files come from
+the validated names (at most 200 characters, without `/ \ : * ? " < > |` or
+control characters, not names reserved by Windows, unique per folder regardless
+of case), and ZIP paths are built from the folder tree, so an archive cannot
+contain absolute paths or `..`. ZIP files are streamed without compression, up
+to 100 selected items, 5000 files and 10 GiB, with at most 4 being built at the
+same time.
+
+**Storage and retention.** Files are stored under server-generated names in
+`UPLOAD_DIR/documents`, never client paths. Uploads arrive in chunks of at most
+4 MiB into a partial file owned by the uploader; an upload ID cannot be reused
+by another person, and chunks must continue exactly where the stored data ends.
+A file whose type does not match is discarded; after an ambiguous commit the
+completed file is moved back to the upload so that a retry can finish it.
+Unfinished uploads expire a day after their last chunk, each person keeps at
+most 4, and the startup removes expired uploads and orphaned partial files.
+Every stored version, current, earlier or deleted, counts against the
+uploader's documents quota and the community's (see the
+[deployment guide](deployment.md#shared-documents)); quotas are checked under
+the lock when an upload starts and when it completes, and every chunk respects
+the free-disk reserve. Deleting hides an item and everything inside it from
+members but keeps its files and history; only the technical administrator can
+see deleted documents, restore them or purge them. Purging deletes the files
+of every version inside the database transaction, keeps names and history, and
+cannot be undone except from a backup; earlier versions of a file can also be
+purged one by one from the **Storage** page. Migration `0022` refuses to
+downgrade while any document data exists.
+
 ## Deployment controls
 
 The **Actions** switch defaults to on. When it is off, both navigations hide
@@ -441,8 +520,11 @@ still require authentication. This retains all action data, audit history and
 files for later re-enablement; it is not an erasure or backup policy. Financial
 permissions and user/session management are unchanged. The **Events** switch
 defaults to off and works the same way for `/api/events` (`events_disabled`),
-images of event descriptions included. The administrator's storage page keeps
-showing and purging images while either switch is off.
+images of event descriptions included. The **Documents** switch also defaults to
+off and works the same way for `/api/documents` (`documents_disabled`), uploads,
+previews and ZIP downloads included; the technical administrator keeps managing
+deleted documents and their storage while it is off. The administrator's storage
+page keeps showing and purging images while either switch is off.
 
 **Ownership coefficients** is an administrator-controlled setting, not a
 user preference or an authorization role. With it disabled, coefficient values
@@ -453,8 +535,8 @@ re-enablement. All existing authentication and administrator checks still apply.
 The switches are persisted in the database and managed at `/admin/features`, not
 through `.env`. Each switch's PATCH endpoint requires an administrator session,
 an authorized Origin and the anti-CSRF header. Only the known switches
-(`coefficient`, `actions`, `events`) and strict boolean values are accepted. The
-server reads the current database values
+(`coefficient`, `actions`, `events`, `documents`) and strict boolean values are
+accepted. The server reads the current database values
 for each relevant request, including rechecking after staging an action upload;
 there is no per-process flag cache. Updates do not revoke sessions or alter
 financial revisions. The browser refreshes flags every five seconds while

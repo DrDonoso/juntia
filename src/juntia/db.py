@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     CheckConstraint,
     Date,
     DateTime,
@@ -57,6 +58,12 @@ class State(Base):
     feature_coefficient: Mapped[bool] = mapped_column(default=True, server_default=true())
     feature_actions: Mapped[bool] = mapped_column(default=True, server_default=true())
     feature_events: Mapped[bool] = mapped_column(default=False, server_default=false())
+    feature_documents: Mapped[bool] = mapped_column(default=False, server_default=false())
+    # Who may rename, move, replace and delete shared documents: "creator", "administrator" or
+    # "everyone". The technical administrator always may.
+    documents_manage_policy: Mapped[str] = mapped_column(
+        String(20), default="creator", server_default="creator"
+    )
 
 
 class Account(Base):
@@ -490,6 +497,169 @@ class ContactEvent(Authorship, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     before: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     after: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
+
+def one_target(name: str) -> CheckConstraint:
+    return CheckConstraint(
+        "(folder_id IS NOT NULL AND document_id IS NULL) OR "
+        "(folder_id IS NULL AND document_id IS NOT NULL)", name=name,
+    )
+
+
+class DocumentFolder(Authorship, Base):
+    """A folder of the shared documents; the author is who created it."""
+
+    __tablename__ = "document_folders"
+    __table_args__ = (
+        author_constraint("document_folder_author"),
+        CheckConstraint("version >= 1", name="document_folder_version"),
+        CheckConstraint(
+            "purged_at IS NULL OR deleted_at IS NOT NULL", name="document_folder_purge",
+        ),
+        Index("ix_document_folders_parent", "parent_id", "deleted_at"),
+        Index("ix_document_folders_deletion", "deletion_id"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # NULL: at the top level of Documents.
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("document_folders.id"))
+    name: Mapped[str] = mapped_column(String(200))
+    # Names are unique among the active items of a folder, ignoring case and Unicode forms.
+    name_key: Mapped[str] = mapped_column(String(600))
+    version: Mapped[int] = mapped_column(default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Deleted items are hidden from residents; the administrator can restore or purge them.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The DocumentDeletion that removed it, together with everything deleted at the same time.
+    deletion_id: Mapped[str | None] = mapped_column(String(36))
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Document(Authorship, Base):
+    """A shared file; the author uploaded its first version."""
+
+    __tablename__ = "documents"
+    __table_args__ = (
+        author_constraint("document_author"),
+        CheckConstraint("version >= 1", name="document_version"),
+        CheckConstraint("current_number >= 1", name="document_current_number"),
+        CheckConstraint(
+            "kind IN ('pdf', 'image', 'video', 'document', 'spreadsheet', 'presentation', "
+            "'text')",
+            name="document_kind",
+        ),
+        CheckConstraint("purged_at IS NULL OR deleted_at IS NOT NULL", name="document_purge"),
+        Index("ix_documents_folder", "folder_id", "deleted_at"),
+        Index("ix_documents_deletion", "deletion_id"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    folder_id: Mapped[int | None] = mapped_column(ForeignKey("document_folders.id"))
+    name: Mapped[str] = mapped_column(String(200))
+    name_key: Mapped[str] = mapped_column(String(600))
+    kind: Mapped[str] = mapped_column(String(20))
+    # The number of the DocumentVersion shown, downloaded and archived.
+    current_number: Mapped[int] = mapped_column(default=1)
+    version: Mapped[int] = mapped_column(default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deletion_id: Mapped[str | None] = mapped_column(String(36))
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DocumentVersion(Authorship, Base):
+    """One uploaded file of a document; earlier versions stay until the administrator purges."""
+
+    __tablename__ = "document_versions"
+    __table_args__ = (
+        author_constraint("document_version_author"),
+        UniqueConstraint("document_id", "number", name="document_version_number"),
+        CheckConstraint("number >= 1", name="document_version_number_positive"),
+        CheckConstraint("size > 0", name="document_version_size"),
+        Index("ix_document_versions_author", "author_kind", "author_user_id"),
+    )
+    # The upload ID chosen by the browser, so a retried completion is answered from this row.
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"))
+    number: Mapped[int] = mapped_column()
+    storage_key: Mapped[str] = mapped_column(String(36), unique=True)
+    extension: Mapped[str] = mapped_column(String(10))
+    media_type: Mapped[str] = mapped_column(String(100))
+    size: Mapped[int] = mapped_column(BigInteger)
+    sha256: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DocumentDeletion(Authorship, Base):
+    """One deletion: a file, or a folder with everything it held. The author deleted it."""
+
+    __tablename__ = "document_deletions"
+    __table_args__ = (
+        author_constraint("document_deletion_author"),
+        one_target("document_deletion_target"),
+        CheckConstraint(
+            "restored_at IS NULL OR purged_at IS NULL", name="document_deletion_outcome",
+        ),
+        Index("ix_document_deletions_open", "restored_at", "purged_at", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    folder_id: Mapped[int | None] = mapped_column(ForeignKey("document_folders.id"))
+    document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id"))
+    # Snapshots taken when it was deleted: its name and the names of the folders above it.
+    name: Mapped[str] = mapped_column(String(200))
+    location: Mapped[list[str]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    restored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DocumentEvent(Authorship, Base):
+    __tablename__ = "document_events"
+    __table_args__ = (
+        author_constraint("document_event_author"),
+        one_target("document_event_target"),
+        CheckConstraint(
+            "kind IN ('created', 'version_added', 'renamed', 'moved', 'deleted', 'restored', "
+            "'purged', 'version_purged')",
+            name="document_event_kind",
+        ),
+        Index("ix_document_events_folder", "folder_id", "id"),
+        Index("ix_document_events_document", "document_id", "id"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    folder_id: Mapped[int | None] = mapped_column(ForeignKey("document_folders.id"))
+    document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id"))
+    kind: Mapped[str] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    details: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
+class DocumentUpload(Authorship, Base):
+    """A file being received in chunks; it becomes a DocumentVersion when completed."""
+
+    __tablename__ = "document_uploads"
+    __table_args__ = (
+        author_constraint("document_upload_author"),
+        CheckConstraint(
+            "size > 0 AND received >= 0 AND received <= size", name="document_upload_progress",
+        ),
+        Index("ix_document_uploads_expiry", "expires_at"),
+        Index("ix_document_uploads_author", "author_kind", "author_user_id", "updated_at"),
+    )
+    # The upload ID chosen by the browser.
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    # A new document in this folder (NULL: the top level), or a new version of document_id.
+    folder_id: Mapped[int | None] = mapped_column(ForeignKey("document_folders.id"))
+    document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id"))
+    name: Mapped[str] = mapped_column(String(200))
+    extension: Mapped[str] = mapped_column(String(10))
+    size: Mapped[int] = mapped_column(BigInteger)
+    received: Mapped[int] = mapped_column(BigInteger, default=0)
+    storage_key: Mapped[str] = mapped_column(String(36), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 async def lock_state(db: AsyncSession) -> State:

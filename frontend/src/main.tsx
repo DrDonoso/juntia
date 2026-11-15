@@ -30,6 +30,8 @@ const ActionsPage = lazy(() => import('./community-actions').then(m => ({ defaul
 const ActionDetailPage = lazy(() => import('./community-actions').then(m => ({ default: m.ActionDetailPage })))
 const EventsPage = lazy(() => import('./community-events').then(m => ({ default: m.EventsPage })))
 const EventDetailPage = lazy(() => import('./community-events').then(m => ({ default: m.EventDetailPage })))
+const DocumentsPage = lazy(() => import('./documents').then(m => ({ default: m.DocumentsPage })))
+const DeletedDocumentsPage = lazy(() => import('./documents-admin').then(m => ({ default: m.DeletedDocumentsPage })))
 // The public demo's banner, welcome dialog and sign-in help (src/demo). The literal
 // `import.meta.env.VITE_DEMO` check lets the bundler drop the demo from normal builds.
 const DemoChrome = import.meta.env.VITE_DEMO === '1' ? lazy(() => import('./demo/DemoChrome')) : null
@@ -65,12 +67,14 @@ export function Shell() {
   useFeatureLifecycle(features.data)
   const actionsEnabled = features.data?.actions === true && !features.error
   const eventsEnabled = features.data?.events === true && !features.error
+  const documentsEnabled = features.data?.documents === true && !features.error
   const location = useLocation()
   const isAdmin = location.pathname === '/admin' || location.pathname.startsWith('/admin/')
   const isFinanceView = location.pathname === '/' || location.pathname === '/transactions'
   const isContactsView = location.pathname === '/contacts'
   const isActionView = /^\/actions(?:\/[1-9][0-9]*)?$/.test(location.pathname)
   const isEventView = /^\/events(?:\/[1-9][0-9]*)?$/.test(location.pathname)
+  const isDocumentView = /^\/documents(?:\/folders\/[1-9][0-9]*)?$/.test(location.pathname)
   const communityName = general.data?.community_name || t('shell.defaultCommunityName')
   const [theme, setTheme] = useState(document.documentElement.dataset.theme || 'light')
   const [hideValues, setHideValues] = useState(storedPrivacy)
@@ -200,6 +204,7 @@ export function Shell() {
             <NavLink to="/admin/users"><Icon name="user" />{t('shell.links.users')}</NavLink>
             <NavLink to="/admin/labels"><Icon name="tag" />{t('shell.links.communityLabels')}</NavLink>
             <NavLink to="/admin/deleted-contacts"><Icon name="file-text" />{t('shell.links.deletedContacts')}</NavLink>
+            <NavLink to="/admin/deleted-documents"><Icon name="folder" />{t('shell.links.deletedDocuments')}</NavLink>
             <NavLink to="/admin/storage"><Icon name="dashboard" />{t('shell.links.storage')}</NavLink>
           </NavigationGroup>
         </nav>}
@@ -208,9 +213,10 @@ export function Shell() {
           <NavLink to="/" end><Icon name="dashboard" />{t('shell.links.overview')}</NavLink>
           <NavLink to="/transactions"><Icon name="receipt" />{t('shell.links.transactions')}</NavLink>
         </NavigationGroup>
-        {(actionsEnabled || eventsEnabled) && <NavigationGroup title={t('shell.groups.management')}>
+        {(actionsEnabled || eventsEnabled || documentsEnabled) && <NavigationGroup title={t('shell.groups.management')}>
           {actionsEnabled && <NavLink to="/actions"><Icon name="check" />{t('shell.links.actions')}</NavLink>}
           {eventsEnabled && <NavLink to="/events"><Icon name="calendar" />{t('shell.links.events')}</NavLink>}
+          {documentsEnabled && <NavLink to="/documents"><Icon name="folder" />{t('shell.links.documents')}</NavLink>}
         </NavigationGroup>}
         <NavigationGroup title={t('shell.groups.community')}>
           <NavLink to="/neighbors"><Icon name="user" />{t('shell.links.neighbors')}</NavLink>
@@ -223,7 +229,7 @@ export function Shell() {
     </aside>
     <div className={`workspace${desktopCollapsed ? ' desktop-collapsed' : ''}`} data-private-values={privateValues || undefined}>
       <main id="content" tabIndex={-1}>{action.notice}{general.error && <Notice error>{errorMessage(general.error)}</Notice>}{features.error && <Notice error>{errorMessage(features.error)}</Notice>}<Boundary><Suspense fallback={<Notice>{t('shell.loadingPage')}</Notice>}><Outlet /></Suspense></Boundary></main>
-      <footer className="app-footer">{isAdmin ? t('shell.footer.admin') : isEventView ? t('shell.footer.events') : isContactsView ? t('shell.footer.contacts') : isActionView ? t('shell.footer.actions') : t('shell.footer.finances')}</footer>
+      <footer className="app-footer">{isAdmin ? t('shell.footer.admin') : isEventView ? t('shell.footer.events') : isDocumentView ? t('shell.footer.documents') : isContactsView ? t('shell.footer.contacts') : isActionView ? t('shell.footer.actions') : t('shell.footer.finances')}</footer>
     </div>
   </PrivacyContext>
 }
@@ -265,12 +271,14 @@ function App() {
     <Route element={<ReaderGate />}><Route path="actions" element={<ActionsPage />} /><Route path="actions/:itemId" element={<ActionDetailPage />} /></Route>
     <Route element={<ReaderGate />}><Route path="contacts" element={<ContactsPage />} /></Route>
     <Route element={<ReaderGate />}><Route path="events" element={<EventsPage />} /><Route path="events/:eventId" element={<EventDetailPage />} /></Route>
+    <Route element={<ReaderGate />}><Route path="documents" element={<DocumentsPage />} /><Route path="documents/folders/:folderId" element={<DocumentsPage />} /></Route>
     <Route path="admin" element={<AdminGate />}><Route index element={<ImportPage />} />
       <Route path="general" element={<GeneralPage />} />
       <Route path="features" element={<FeaturesPage />} />
       <Route path="users" element={<UsersPage />} /><Route path="dwellings" element={<DwellingsPage />} />
       <Route path="labels" element={<CommunityLabelsPage />} />
       <Route path="deleted-contacts" element={<ContactsPage deleted />} />
+      <Route path="deleted-documents" element={<DeletedDocumentsPage />} />
       <Route path="storage" element={<StoragePage />} />
       <Route path="neighbors" element={<LegacyCommunityRedirect />} />
       <Route path="contacts" element={<LegacyCommunityRedirect />} />

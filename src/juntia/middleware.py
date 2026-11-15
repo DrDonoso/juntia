@@ -15,6 +15,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from . import queries
 from .auth import administrator, reader_session
+from .community_documents import CHUNK_BYTES
 from .community_images import MAX_IMAGE_BYTES
 from .config import Settings, normalize_origin
 from .errors import AppError
@@ -32,6 +33,8 @@ MAX_ACTIVE_LARGE_BODIES = 4
 MAX_ACTIVE_CLIENT_MUTATIONS = 4
 UPLOAD_PATH = re.compile(r"/api/(?:admin/imports/preview|actions/items/[^/]+/attachments)")
 IMAGE_UPLOAD_PATH = re.compile(r"/api/(?:actions|events)/images")
+# Shared documents arrive in raw chunks, whatever the size of the whole file.
+DOCUMENT_CHUNK_PATH = re.compile(r"/api/documents/uploads/[^/]+/content")
 
 
 def body_limit(path: str, method: str) -> int:
@@ -42,6 +45,8 @@ def body_limit(path: str, method: str) -> int:
         or re.fullmatch(r"/api/admin/imports/[^/]+/confirm", path)
     ):
         return MAX_BODY_BYTES
+    if method == "PUT" and DOCUMENT_CHUNK_PATH.fullmatch(path):
+        return CHUNK_BYTES
     if method == "PUT" and path == "/api/admin/dwellings/layout":
         return LAYOUT_BODY_BYTES
     if path == "/api/auth/google/start":
@@ -56,7 +61,8 @@ async def authorize_body(scope: Scope) -> None:
     admin = path.startswith("/api/admin/") and not path.startswith("/api/admin/auth/")
     actions = path == "/api/actions" or path.startswith("/api/actions/")
     events = path == "/api/events" or path.startswith("/api/events/")
-    if not admin and not actions and not events:
+    documents = path == "/api/documents" or path.startswith("/api/documents/")
+    if not admin and not actions and not events and not documents:
         return
     request = Request(scope)
     async with request.app.state.sessions() as db:
@@ -69,6 +75,8 @@ async def authorize_body(scope: Scope) -> None:
                 raise AppError("actions_disabled", 404)
             if events and not flags.events:
                 raise AppError("events_disabled", 404)
+            if documents and not flags.documents:
+                raise AppError("documents_disabled", 404)
 
 
 class SecurityMiddleware:

@@ -540,6 +540,12 @@ def test_storage_summary_reports_usage_quotas_and_free_space(
         ],
         "resident_quota_bytes": resident_quota,
         "disk": {"total_bytes": 41 * GIB, "free_bytes": 40 * GIB, "reserve_bytes": 1024 * MIB},
+        "documents": {
+            "quota_bytes": 20480 * MIB, "resident_quota_bytes": 2048 * MIB, "stored_bytes": 0,
+            "current_bytes": 0, "previous_bytes": 0, "deleted_bytes": 0, "files": 0,
+            "previous_versions": 0, "deleted_files": 0, "administrator_bytes": 0,
+            "upload_bytes": 0, "uploads": 0, "residents": [],
+        },
     }
     assert purge(admin, retired["id"], 2).status_code == 200
     current = current_user(admin, second["id"])

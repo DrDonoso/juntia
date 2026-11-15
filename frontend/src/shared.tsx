@@ -188,6 +188,10 @@ export function useFeatureLifecycle(features: FeatureFlagsOut | undefined) {
     if (before.events !== features.events || before.actions !== features.actions) {
       void refreshEventData(features.events)
     }
+    if (before.documents !== features.documents) {
+      if (!features.documents) cache.removeQueries({ queryKey: ['documents'] })
+      else void cache.invalidateQueries({ queryKey: ['documents'] })
+    }
   }, [features])
 }
 export function useCatalog(kind: 'categories' | 'tags') {

@@ -56,6 +56,7 @@ export interface DemoFeatures {
   coefficient: boolean
   actions: boolean
   events: boolean
+  documents: boolean
 }
 
 export interface CoreState {

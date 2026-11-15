@@ -73,16 +73,18 @@ async function request(path: string, method: string, body?: unknown, signal?: Ab
       && path !== '/settings/general' && path !== '/version' && path !== '/features'
   const identityBound = privateRequest || path.endsWith('/auth/session')
   const multipart = body instanceof FormData
+  // Raw bytes, such as the chunks of a document upload.
+  const binary = body instanceof Blob || body instanceof ArrayBuffer || ArrayBuffer.isView(body)
   const options: RequestInit = {
     method, credentials: 'same-origin', ...(signal ? { signal } : {}),
     headers: method === 'GET' ? {} : {
       'X-Juntia-Request': '1',
-      ...(multipart ? {} : { 'Content-Type': 'application/json' }),
+      ...(multipart ? {} : { 'Content-Type': binary ? 'application/octet-stream' : 'application/json' }),
     },
   }
   if (body !== undefined) {
     if (method === 'GET') throw new Error('A GET request cannot send a body.')
-    options.body = multipart ? body : JSON.stringify(body)
+    options.body = multipart || binary ? body as BodyInit : JSON.stringify(body)
   }
   const response = await fetch(`/api${path}`, options)
   checkIdentity(generation, identityBound)
@@ -112,6 +114,11 @@ async function request(path: string, method: string, body?: unknown, signal?: Ab
     if (code === 'events_disabled') {
       cache.setQueryData<FeatureFlagsOut>(['features'], previous => previous ? { ...previous, events: false } : previous)
       await refreshEventData(false)
+    }
+    if (code === 'documents_disabled') {
+      cache.setQueryData<FeatureFlagsOut>(['features'], previous => previous ? { ...previous, documents: false } : previous)
+      await cache.cancelQueries({ queryKey: ['documents'] })
+      cache.removeQueries({ queryKey: ['documents'] })
     }
     const fields = payload && typeof payload === 'object' && 'fields' in payload
       && payload.fields !== null && typeof payload.fields === 'object' && !Array.isArray(payload.fields)

@@ -8,6 +8,7 @@ import type {
 import { Modal, Notice, day, money, useAction, useCatalog, useFeatures, useGeneralSettings } from './shared'
 import { MetadataFields, TransactionTags, metadataDraft, prepareMetadata, type MetadataDraft } from './transaction-metadata'
 import { AuthCardHeader, useLoginNotice } from './auth'
+import { DocumentPolicyCard } from './documents-admin'
 import { Icon } from './icons'
 import { formatNumber, useI18n } from './i18n'
 
@@ -37,7 +38,7 @@ export function GeneralPage() {
     </section></>
 }
 
-const featureKeys = ['coefficient', 'actions', 'events'] as const
+const featureKeys = ['coefficient', 'actions', 'events', 'documents'] as const
 
 export function FeaturesPage() {
   const { t } = useI18n()
@@ -65,6 +66,7 @@ export function FeaturesPage() {
         </button>
       </section>
     })}
+    {query.data?.documents && !query.error && <DocumentPolicyCard />}
     <p className="muted">{t('admin.features.footer')}</p>
   </div>
 }

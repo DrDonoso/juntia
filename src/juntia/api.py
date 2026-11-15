@@ -62,13 +62,13 @@ async def feature_flags(request: Request, db: DB) -> FeatureFlagsOut:
     flags = await queries.feature_flags(db)
     return FeatureFlagsOut(
         coefficient=flags.coefficient, actions=flags.actions, events=flags.events,
-        google_login=settings(request).google_enabled,
+        documents=flags.documents, google_login=settings(request).google_enabled,
     )
 
 
 @admin_router.patch("/settings/features/{feature}", response_model=FeatureFlagsOut, tags=["Features"])
 async def update_feature_flag(
-    feature: Literal["coefficient", "actions", "events"],
+    feature: Literal["coefficient", "actions", "events", "documents"],
     body: FeatureFlagIn,
     request: Request,
     db: DB,
@@ -78,6 +78,7 @@ async def update_feature_flag(
         "coefficient": State.feature_coefficient,
         "actions": State.feature_actions,
         "events": State.feature_events,
+        "documents": State.feature_documents,
     }[feature]
     changed = await db.scalar(
         update(State).where(State.id == 1).values({column: body.enabled}).returning(State.id)

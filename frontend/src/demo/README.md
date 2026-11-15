@@ -59,11 +59,12 @@ src/demo/
     validation.ts      Body / parseBody(): pydantic-like body contracts
     pagination.ts      paginate(): {items, page, pages, total}
     pdf.ts             demoPdf(), pdfResponse(), looksLikePdf(): synthetic PDFs and file answers
+    zip.ts             zipArchive(), readZip(), readZipMember(): stored ZIP archives, read back
     session.ts         sessions, guards (requireResident/requireAdmin/requireAnySession), actorOf()
   scenario/<domain>.ts initial data, deterministic and relative to today
   store/<domain>.ts    the data of this page load: <domain>Store() and reset<Domain>Store()
   store/core.ts        shared state: session, features, general settings, account, dwellings, neighbors
-  store/storage.ts     storage of the action PDFs, computed from the community store (no state of its own)
+  store/storage.ts     storage of PDFs, images and documents, from their stores (no state of its own)
   store/index.ts       resetDemo(): every store back to its scenario
   handlers/<domain>.ts the MSW handlers of each domain (an exported array)
   handlers/index.ts    all handlers, UNAVAILABLE_IN_DEMO and the /api catch-all (501, console error)
@@ -71,9 +72,10 @@ src/demo/
   testing.ts           Vitest helpers: demoRequest(), stubFetchWithDemo()
 ```
 
-Domains are `core` (this foundation), `finance`, `community`, `people` and `storage`. Each domain
-owns exactly its `scenario/`, `store/` and `handlers/` module plus its own test files;
-`handlers/index.ts` and `store/index.ts` import them.
+Domains are `core` (this foundation), `finance`, `community`, `people`, `storage` and `documents`
+(shared documents, whose modules are named `shared-documents*.ts`: `scenario/community-documents.ts`
+is the catalogue of the actions' PDFs). Each domain owns exactly its `scenario/`, `store/` and
+`handlers/` module plus its own test files; `handlers/index.ts` and `store/index.ts` import them.
 
 ## The cast (`cast.ts`)
 
@@ -105,12 +107,14 @@ Never change an id or a name: the domains build on them. Add people at the end i
    (never from `msw` directly: the MSW version stays a core detail), `../cast`, `../store/core` and
    the generated types of `../../api/schema.gen`. Wrap every resolver in
    `route(access, resolver, options)`:
-   - `access`: `'public'`, `'session'` (any reader: finance, neighbors, contacts, actions, events),
-     `'resident'` (own profile: 403 `resident_profile_required` for the administrator) or `'admin'`
-     (`/api/admin/*`). `route` also refuses writes without `X-Juntia-Request` (403
-     `invalid_origin`) and turns thrown `DemoApiError`s into the backend's error JSON.
-   - `options.feature: 'actions' | 'events'` answers 404 `actions_disabled` / `events_disabled`
-     while the feature is off; `options.status: 201 | 204` for creations and deletions.
+   - `access`: `'public'`, `'session'` (any reader: finance, neighbors, contacts, actions, events,
+     documents), `'resident'` (own profile: 403 `resident_profile_required` for the
+     administrator) or `'admin'` (`/api/admin/*`). `route` also refuses writes without
+     `X-Juntia-Request` (403 `invalid_origin`) and turns thrown `DemoApiError`s into the backend's
+     error JSON.
+   - `options.feature: 'actions' | 'events' | 'documents'` answers 404 `actions_disabled` /
+     `events_disabled` / `documents_disabled` while the feature is off; `options.status: 201 | 204`
+     for creations and deletions.
    - Validate bodies with `parseBody(await readJson(request), body => …)` (unknown fields refused,
      422 `invalid_request`; map `DemoValidationError.invalid` to field codes with
      `parseBody(…, { fields })` where the backend reports fields: events, contacts, tags) and
@@ -118,7 +122,8 @@ Never change an id or a name: the domains build on them. Add people at the end i
      `queryDay`.
    - Return the API types (`TransactionPage`, `ActionOut`…); paginate with
      `paginate(items, pageParam(url), size)` using the backend's page sizes (transactions and
-     contacts 50; actions, labels, comments, attachments and events 20).
+     contacts 50; actions, labels, comments, attachments, events and documents' histories and
+     deletions 20).
    - Mirror the backend's rules and error codes (read `src/juntia/*.py`): optimistic `version`
      checks (409 `*_stale`), ownership (403 `action_owner_required`), not-found codes, history
      entries. Every error code the UI can get must exist in `errors.codes` (it does for the
@@ -189,7 +194,16 @@ Every operation of `src/api/openapi.json` belongs to exactly one module (`{x}` i
 - **storage** (`handlers/storage.ts`, SEC-03): `GET /api/admin/storage`,
   `GET /api/admin/storage/withdrawn`, `POST /api/admin/storage/attachments/{attachment_id}/purge`,
   `GET /api/admin/storage/images`, `GET /api/admin/storage/images/{image_id}/file`,
-  `POST /api/admin/storage/images/{image_id}/purge`.
+  `POST /api/admin/storage/images/{image_id}/purge`, `GET /api/admin/storage/document-versions`,
+  `POST /api/admin/storage/document-versions/{version_id}/purge`.
+- **documents** (`handlers/shared-documents.ts`): everything under `/api/documents/` (browse, the
+  folder tree, folders and files with their history, uploads with their chunks and completion,
+  downloads, previews and archives), `GET /api/admin/documents/deleted`,
+  `POST /api/admin/documents/deletions/{deletion_id}/restore|purge`,
+  `GET /api/admin/documents/files/{document_id}` and its `/history`,
+  `GET /api/admin/documents/folders/{folder_id}/history`,
+  `GET /api/admin/documents/versions/{version_id}/download`,
+  `GET|PATCH /api/admin/settings/documents`.
 
 Any other `/api` request reaches the catch-all: a 501 `not_implemented` and a console error
 starting with `[demo] Unhandled API request:`. Two guards keep it that way:
@@ -219,7 +233,9 @@ and withdrawn PDFs and every image use storage until the administrator purges th
 default settings apply: 250 MiB per resident (`ACTION_STORAGE_USER_QUOTA_MB`), 2048 MiB for the
 community (`ACTION_STORAGE_COMMUNITY_QUOTA_MB`; the administrator has no quota of their own) and a
 1024 MiB disk reserve (`MIN_FREE_DISK_MB`). The upload volume is synthetic: 64 GiB, about 41.3 GiB
-free, minus the PDFs and images stored now, so uploads and purges move it.
+free, minus the PDFs, images and shared documents stored now, so uploads and purges move it. Shared
+documents have budgets of their own (see [Shared documents](#shared-documents)); the summary reports
+them in its `documents` block, and their earlier versions are listed and purged on the same page.
 
 - Uploads of PDFs and images check the uploader's quota, then the community's (409
   `action_storage_user_quota` / `action_storage_community_quota`), after the other checks and never
@@ -243,3 +259,39 @@ free, minus the PDFs and images stored now, so uploads and purges move it.
   administrator's copy (`/file`) answers while Actions or Events is off. An image purge (no body)
   empties its bytes and sets `purged_at`; repeating it answers the purged image unchanged, and its
   addresses then answer 410 `image_purged`.
+
+## Shared documents
+
+`store/shared-documents.ts` keeps the folders, files, versions (with their bytes), deletions,
+history and uploads in progress, and mirrors `community_documents.py`;
+`store/shared-document-files.ts` mirrors `document_files.py` (accepted types, name rules, content
+checks). The scenario (`scenario/shared-documents.ts`) is a list of dated steps replayed through the
+same operations as the API, so the history matches the data: the house rules and their revised
+version, meeting minutes in year folders (one moved there), an insurance folder renamed by the
+administrator with a claims log in two versions, a renamed scan, a Word letter, the sample
+neighbor's garden folder and rota, and two deletions waiting for the administrator (Daniel Mensah's
+draft and Chloe Dubois's photos folder). Documents is on in the demo and the policy is `creator`,
+like a new installation's default.
+
+- Rules as on the server: names unique per folder ignoring case and Unicode forms (409
+  `document_name_taken`), `document_name_invalid`, ten levels of folders, a thousand items per
+  folder, `document_move_into_itself`, `document_stale`, the management policy
+  (`document_permission_required`, `document_folder_not_owned`), and the history entries with their
+  details. Administrators appear as **Technical administrator**.
+- Uploads arrive in chunks of at most 4 MiB (`PUT …/content?offset=` with raw bytes; 413
+  `request_too_large` above), resume from `received`, expire a day after their last chunk, and each
+  person keeps four open. Completing checks the bytes like the backend (PDF, pictures, ISO-BMFF
+  videos, OOXML and OpenDocument with their macro checks, text) and numbers names already taken.
+  Quotas: 50 MiB per file and 1 GiB per video, 2 GiB per resident and 20 GiB for the community
+  (every stored version counts until purged). Files stay in the page's memory, and uploads and
+  stored versions take their bytes from the synthetic volume's free space.
+- Downloads and previews answer single `Range` requests with 206, and earlier versions download as
+  `Name (version N).ext`. Archives are ZIPs with stored entries built in memory by `core/zip.ts`.
+- The administrator restores deletions (at the top level when their folder is gone, numbered when
+  the name is taken) or purges them, purges earlier versions from the storage page, and sets the
+  policy; these routes work while Documents is off.
+- Not simulated: the four concurrent archives (503 `document_archive_busy`), the disk reserve (507
+  `storage_low_space`) and missing or unreadable stored files. The demo writes no ZIP64, so an
+  archive over 4 GiB answers 422 `document_archive_too_large`, and office files with ZIP64, bzip2
+  or LZMA entries are refused as `document_type_mismatch`. A chunk over 4 MiB is refused after the
+  session and feature checks, not before them like the server's body limit.

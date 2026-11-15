@@ -19,7 +19,7 @@ test('disabled actions hide navigation and block direct pages and APIs for both 
   await toggle.click()
   await expect(toggle).toHaveAttribute('aria-checked', 'false')
   expect(await (await page.request.get('/api/features')).json()).toEqual({
-    actions: false, coefficient: true, google_login: false, events: false,
+    actions: false, coefficient: true, google_login: false, events: false, documents: false,
   })
   await page.goto('/admin/actions')
   await expect(page.getByRole('heading', { name: 'Actions turned off' })).toBeVisible()

@@ -14,7 +14,7 @@ import { useFeatureLifecycle, useFeatures } from './shared'
 
 const defaults = cache.getDefaultOptions()
 type Fetcher = (url: string, options: RequestInit) => Promise<Response>
-const flags: FeatureFlagsOut = { coefficient: true, actions: true, events: true, google_login: false }
+const flags: FeatureFlagsOut = { coefficient: true, actions: true, events: true, documents: false, google_login: false }
 const item: EventOut = {
   id: 1, title: 'Lift inspection', description: 'Technical visit', location: 'Entrance hall',
   all_day: false, starts_at: '2030-05-10T16:00:00Z', ends_at: '2030-05-10T18:00:00Z',

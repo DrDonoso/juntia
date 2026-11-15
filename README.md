@@ -5,7 +5,7 @@
 <h1 align="center">Juntia</h1>
 
 <p align="center">
-  <b>The self-hosted portal for a residents' community: transparent shared finances, repairs and improvements, events, neighbors and contacts in one place.</b>
+  <b>The self-hosted portal for a residents' community: transparent shared finances, repairs and improvements, events, shared documents, neighbors and contacts in one place.</b>
 </p>
 
 <p align="center">
@@ -68,12 +68,15 @@ describes every part in detail.
 - An overview with the observed balance, income, expenses, monthly trend, expenses by category and
   top merchants, and a searchable ledger. Residents read; only the administrator writes.
 
-**Management: Actions and Events**
+**Management: Actions, Events and Documents**
 
 - **Actions** follow repairs and improvements from *Detected* to *Done* in a list or a Kanban board,
   with labels, comments, PDF attachments and a full history with diffs.
 - **Events** form a shared agenda, with multi-day and all-day events, links to actions and export to
   Google Calendar or any `.ics` calendar.
+- **Documents** is a shared drive for every neighbor: folders, PDFs, pictures, Office files and
+  phone videos, with previews, versions, a history of who changed what, and ZIP downloads of
+  folders or selections.
 - Descriptions and comments are written in **Markdown**, and images can be pasted, dropped or added
   into them like on GitHub: the browser reduces them and removes their metadata before uploading.
 
@@ -87,7 +90,8 @@ describes every part in detail.
 - A separate technical portal at `/admin` for imports, rules, users, dwellings, labels and storage.
 - Invitation-only resident accounts with a password or optional Google sign-in, and email
   invitations and password recovery.
-- Runtime switches for ownership coefficients, Actions and Events; storage quotas for action PDFs.
+- Runtime switches for ownership coefficients, Actions, Events and Documents; storage quotas for
+  action PDFs and for shared documents.
 
 **Languages**
 
@@ -138,7 +142,7 @@ describes every part in detail.
 flowchart LR
   browser["Browser<br/>residents and administrator"] -- "port 7778" --> app["Juntia container<br/>FastAPI API + React app"]
   app --> db[("PostgreSQL 18")]
-  app --> uploads[("Uploads volume<br/>statement and action PDFs")]
+  app --> uploads[("Uploads volume<br/>statement and action PDFs, documents")]
   app -. optional .-> smtp["SMTP server"]
   app -. optional .-> google["Google sign-in<br/>(OpenID Connect)"]
   app -. optional .-> ai["OpenAI-compatible API"]
@@ -214,7 +218,7 @@ open Juntia from other devices or from the Internet, follow the
    and an address residents can open (see the [deployment guide](docs/deployment.md)); each link is
    valid for 72 hours.
 3. In **Finances > Import**, upload a statement PDF, confirm the IBAN on the first import, review and
-   save. Optionally, turn on **Events** in **Settings > Features**.
+   save. Optionally, turn on **Events** and **Documents** in **Settings > Features**.
 
 ### Updating and backups
 
@@ -223,8 +227,9 @@ such as `20261029`), back up, then run `docker compose pull && docker compose up
 automatically and an older image cannot undo them, so keep the backup until the new version works
 ([updating and rolling back](docs/deployment.md#updating)).
 
-Back up the database and the uploads volume (statement originals and action PDFs) together, keep the
-copies encrypted and never commit them ([restore](docs/deployment.md#backup-and-restore)):
+Back up the database and the uploads volume (statement originals, action PDFs, pasted images and
+shared documents) together, keep the copies encrypted and never commit them
+([restore](docs/deployment.md#backup-and-restore)):
 
 ```sh
 umask 077 && mkdir -p backup
@@ -255,6 +260,8 @@ the old values).
 | `IMAGE_TAG` | `latest` | Image tag to run; pin a CalVer release. |
 | `TZ` | `Europe/Madrid` | Community time zone for events. |
 | `ACTION_STORAGE_USER_QUOTA_MB`, `ACTION_STORAGE_COMMUNITY_QUOTA_MB`, `MIN_FREE_DISK_MB` | `250`, `2048`, `1024` | Storage of action PDFs and pasted images per resident and for the community, and free space to keep on the uploads volume, in MiB. |
+| `DOCUMENT_MAX_FILE_MB`, `DOCUMENT_MAX_VIDEO_MB` | `50`, `1024` | Largest shared document and video, in MiB. |
+| `DOCUMENT_STORAGE_USER_QUOTA_MB`, `DOCUMENT_STORAGE_COMMUNITY_QUOTA_MB` | `2048`, `20480` | Storage of shared documents, with every version, per resident and for the community, in MiB. |
 | `SMTP_HOST`, `SMTP_FROM`, … | empty | Email for invitations and password recovery. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | empty | Optional Google sign-in. |
 | `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL` | empty | Optional AI classification. |

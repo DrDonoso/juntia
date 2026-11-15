@@ -7,6 +7,7 @@ import { resetCommunityStore } from './community'
 import { resetCoreStore } from './core'
 import { resetFinanceStore } from './finance'
 import { resetPeopleStore } from './people'
+import { resetSharedDocumentsStore } from './shared-documents'
 
 export interface ResetOptions {
   /** Clock of the demo (default: the real time). */
@@ -20,4 +21,5 @@ export function resetDemo({ now }: ResetOptions = {}): void {
   resetPeopleStore()
   resetFinanceStore()
   resetCommunityStore()
+  resetSharedDocumentsStore()
 }

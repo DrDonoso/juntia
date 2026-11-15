@@ -66,6 +66,7 @@ async def feature_flags(db: AsyncSession) -> FeatureFlags:
         State.feature_coefficient.label("coefficient"),
         State.feature_actions.label("actions"),
         State.feature_events.label("events"),
+        State.feature_documents.label("documents"),
     ).where(State.id == 1))).one_or_none()
     if row is None:
         raise RuntimeError("Missing application state")

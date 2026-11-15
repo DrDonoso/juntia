@@ -8,6 +8,7 @@ import { coreHandlers } from './core'
 import { financeHandlers } from './finance'
 import { UNHANDLED_PREFIX, UNHANDLED_STATUS, domainHandlers, handlers, unhandledHandler } from './index'
 import { peopleHandlers } from './people'
+import { sharedDocumentHandlers } from './shared-documents'
 import { storageHandlers } from './storage'
 
 // Thursday 29 October 2026, midday (local time).
@@ -22,10 +23,11 @@ const adminLogin = (password = 'demo') => demoRequest('POST', '/api/admin/auth/l
 
 describe('the demo API modules', () => {
   test('every module exports an array of handlers, gathered before the catch-all', () => {
-    const modules = [coreHandlers, financeHandlers, communityHandlers, peopleHandlers, storageHandlers]
+    const modules = [coreHandlers, financeHandlers, communityHandlers, peopleHandlers, storageHandlers, sharedDocumentHandlers]
     for (const module of modules) expect(Array.isArray(module)).toBe(true)
     expect(domainHandlers).toEqual({
       core: coreHandlers, finance: financeHandlers, community: communityHandlers, people: peopleHandlers, storage: storageHandlers,
+      documents: sharedDocumentHandlers,
     })
     expect(handlers).toEqual([...modules.flat(), unhandledHandler])
     expect(unhandledHandler.info).toMatchObject({ path: '/api/*' })
@@ -127,7 +129,9 @@ describe('sessions and sign-in', () => {
 
 describe('branding, features, version, account and health', () => {
   test('public settings and feature flags follow the core store', async () => {
-    expect((await demoRequest('GET', '/api/features')).body).toEqual({ coefficient: true, actions: true, events: true, google_login: false })
+    expect((await demoRequest('GET', '/api/features')).body).toEqual({
+      coefficient: true, actions: true, events: true, documents: true, google_login: false,
+    })
     coreStore().features.actions = false
     expect((await demoRequest('GET', '/api/features')).body).toMatchObject({ actions: false })
     expect((await demoRequest('GET', '/api/settings/general')).body).toEqual({ community_name: 'Maple Court' })

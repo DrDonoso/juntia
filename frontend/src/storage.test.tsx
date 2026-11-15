@@ -3,7 +3,10 @@ import { MemoryRouter } from 'react-router'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest'
 import { cache } from './api/client'
-import type { ResidentStorageOut, StorageOut, StoredAttachmentOut, StoredAttachmentPage, StoredImageOut, StoredImagePage } from './api/schema.gen'
+import type {
+  ResidentStorageOut, StorageOut, StoredAttachmentOut, StoredAttachmentPage, StoredDocumentVersionOut, StoredDocumentVersionPage,
+  StoredImageOut, StoredImagePage,
+} from './api/schema.gen'
 import { setLanguage } from './i18n'
 import { StoragePage } from './storage'
 
@@ -35,8 +38,18 @@ const usage: StorageOut = {
   residents: [alice, ben, carol],
   resident_quota_bytes: 250 * MiB,
   disk: { total_bytes: 200 * GiB, free_bytes: 50 * GiB, reserve_bytes: GiB },
+  documents: {
+    quota_bytes: 20 * GiB, resident_quota_bytes: 2 * GiB, stored_bytes: 300 * MiB, current_bytes: 200 * MiB,
+    previous_bytes: 60 * MiB, deleted_bytes: 40 * MiB, files: 12, previous_versions: 2, deleted_files: 1,
+    administrator_bytes: 20 * MiB, upload_bytes: 5 * MiB, uploads: 1, residents: [],
+  },
 }
 const stamp = '2026-10-10T10:00:00Z'
+const budget: StoredDocumentVersionOut = {
+  id: 'version-1', number: 1, extension: 'xlsx', media_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  size: 60 * MiB, sha256: 'c'.repeat(64), author: { kind: 'resident', user_id: 7, name: 'Alice' }, created_at: stamp,
+  purged_at: null, document_id: 4, document_name: 'Budget.xlsx', location: ['Accounts'],
+}
 const quote: StoredAttachmentOut = {
   id: 'pdf-1', filename: 'old-quote.pdf', size: 40 * MiB, sha256: 'a'.repeat(64),
   author: { kind: 'resident', user_id: 7, name: 'Alice' }, version: 2, created_at: '2026-09-01T08:00:00Z',
@@ -51,6 +64,7 @@ const defaults = cache.getDefaultOptions()
 const originalShow = HTMLDialogElement.prototype.showModal
 const originalClose = HTMLDialogElement.prototype.close
 let summary: StorageOut, withdrawn: StoredAttachmentOut[], total: number | null, images: StoredImageOut[]
+let versions: StoredDocumentVersionOut[]
 let purge: (body: unknown) => Response, purgeImage: () => Response
 const requests: string[] = []
 
@@ -67,6 +81,7 @@ beforeEach(() => {
   summary = structuredClone(usage)
   withdrawn = [quote]
   images = [photo]
+  versions = []
   total = null
   requests.length = 0
   purge = () => {
@@ -108,6 +123,15 @@ async function respond(input: string, options: RequestInit = {}) {
   if (input === '/api/admin/storage/images/img-1/purge' && options.method === 'POST') {
     expect(options.body).toBeUndefined()
     return purgeImage()
+  }
+  if (input.startsWith('/api/admin/storage/document-versions?')) {
+    const page = Number(new URL(input, 'http://localhost').searchParams.get('page'))
+    const body: StoredDocumentVersionPage = { items: page === 1 ? versions : [], total: versions.length, page, pages: 1 }
+    return reply(body)
+  }
+  if (input === '/api/admin/storage/document-versions/version-1/purge' && options.method === 'POST') {
+    versions = []
+    return reply({ ...budget, purged_at: '2026-10-12T09:30:00Z' })
   }
   throw new Error(`Unexpected request: ${input}`)
 }
@@ -231,6 +255,31 @@ test('without stored PDFs the page says so', async () => {
   expect(screen.queryByRole('table')).toBeNull()
   expect(screen.queryByRole('list', { name: 'Withdrawn PDFs' })).toBeNull()
   expect(screen.queryByRole('list', { name: 'Images in texts' })).toBeNull()
+})
+
+test('shared documents have their own quotas, neighbors and earlier versions to purge', async () => {
+  summary.documents.residents = [{ user_id: 7, name: 'Alice', account_deleted: false, stored_bytes: 1946 * MiB, versions: 14 }]
+  versions = [budget]
+  renderPage()
+  const documents = await findRegion('Documents')
+  expect(documents.getByText('300 MiB of 20 GiB used')).toBeVisible()
+  expect(documents.getByRole('meter', { name: 'Documents quota used' })).toHaveAttribute('data-level', 'normal')
+  expect(documents.getByText('Earlier versions').nextElementSibling).toHaveTextContent('60 MiB · 2 versions')
+  expect(documents.getByText('Deleted, not purged').nextElementSibling).toHaveTextContent('40 MiB · 1 file')
+  expect(documents.getByText('Uploads in progress').nextElementSibling).toHaveTextContent('5 MiB · 1 upload')
+  const neighbors = within(screen.getByRole('table', { name: 'Documents by neighbor' }))
+  expect(neighbors.getByRole('meter', { name: 'Quota used by Alice' })).toHaveAttribute('data-level', 'warning')
+  const help = region('How storage limits work')
+  expect(help.getByText('Documents quota per neighbor').nextElementSibling).toHaveTextContent('2 GiBDOCUMENT_STORAGE_USER_QUOTA_MB')
+  expect(help.getByText('Community documents quota').nextElementSibling).toHaveTextContent('20 GiBDOCUMENT_STORAGE_COMMUNITY_QUOTA_MB')
+  const earlier = await findRegion('Earlier versions of documents')
+  fireEvent.click(await earlier.findByRole('button', { name: 'Delete permanently: version 1 of Budget.xlsx' }))
+  const dialog = within(screen.getByRole('dialog', { name: 'Delete version permanently' }))
+  expect(dialog.getByText('It frees 60 MiB of the documents quotas of the community and of Alice.')).toBeVisible()
+  fireEvent.click(dialog.getByRole('button', { name: 'Delete permanently' }))
+  expect(await earlier.findByText('Version 1 of Budget.xlsx has been deleted permanently. 60 MiB freed.')).toBeVisible()
+  expect(requests).toContain('POST /api/admin/storage/document-versions/version-1/purge undefined')
+  expect(await earlier.findByText('There are no earlier versions using space.')).toBeVisible()
 })
 
 test('stored images show a thumbnail, their details and author, and can be sorted and filtered', async () => {

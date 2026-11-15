@@ -389,6 +389,219 @@ export interface DiskSpaceOut {
   total_bytes: number | null
 }
 
+export interface DocumentBrowseOut {
+  files: DocumentOut[]
+  folder: DocumentFolderOut | null
+  folders: DocumentFolderOut[]
+  limits: DocumentLimitsOut
+  path: DocumentFolderRef[]
+  policy: 'creator' | 'administrator' | 'everyone'
+}
+
+export interface DocumentDeletionOut {
+  author: ActorOut
+  created_at: string
+  document_id: number | null
+  file_count: number
+  file_kind: 'pdf' | 'image' | 'video' | 'document' | 'spreadsheet' | 'presentation' | 'text' | null
+  folder_count: number
+  folder_id: number | null
+  id: string
+  location: string[]
+  name: string
+  stored_bytes: number
+}
+
+export interface DocumentDeletionPage {
+  items: DocumentDeletionOut[]
+  page: number
+  pages: number
+  total: number
+}
+
+export interface DocumentEventOut {
+  author: ActorOut
+  created_at: string
+  folder: string | null
+  id: number
+  kind: 'created' | 'version_added' | 'renamed' | 'moved' | 'deleted' | 'restored' | 'purged' | 'version_purged'
+  location: string[] | null
+  name: string | null
+  number: number | null
+  previous_location: string[] | null
+  previous_name: string | null
+  size: number | null
+}
+
+export interface DocumentFolderIn {
+  name: string
+  parent_id?: number | null
+}
+
+export interface DocumentFolderInfoOut {
+  author: ActorOut
+  can_delete: boolean
+  can_manage: boolean
+  created_at: string
+  deleted_at: string | null
+  deleted_by: ActorOut | null
+  file_count: number
+  folder_count: number
+  id: number
+  location: DocumentFolderRef[]
+  name: string
+  parent_id: number | null
+  purged_at: string | null
+  size: number
+  updated_at: string
+  version: number
+}
+
+export interface DocumentFolderOut {
+  author: ActorOut
+  can_delete: boolean
+  can_manage: boolean
+  created_at: string
+  file_count: number
+  folder_count: number
+  id: number
+  name: string
+  parent_id: number | null
+  size: number
+  updated_at: string
+  version: number
+}
+
+export interface DocumentFolderRef {
+  id: number
+  name: string
+}
+
+export interface DocumentHistoryPage {
+  items: DocumentEventOut[]
+  page: number
+  pages: number
+  total: number
+}
+
+export interface DocumentInfoOut {
+  author: ActorOut
+  can_manage: boolean
+  created_at: string
+  current: DocumentVersionOut
+  deleted_at: string | null
+  deleted_by: ActorOut | null
+  folder_id: number | null
+  id: number
+  kind: 'pdf' | 'image' | 'video' | 'document' | 'spreadsheet' | 'presentation' | 'text'
+  location: DocumentFolderRef[]
+  name: string
+  previewable: boolean
+  purged_at: string | null
+  updated_at: string
+  version: number
+  version_count: number
+  versions: DocumentVersionOut[]
+}
+
+export interface DocumentItemEdit {
+  folder_id?: number | null
+  name?: string | null
+  version: number
+}
+
+export interface DocumentLimitsOut {
+  archive_max_bytes: number
+  archive_max_files: number
+  archive_max_items: number
+  chunk_bytes: number
+  extensions: string[]
+  max_depth: number
+  max_file_bytes: number
+  max_folder_items: number
+  max_video_bytes: number
+  video_extensions: string[]
+}
+
+export interface DocumentOut {
+  author: ActorOut
+  can_manage: boolean
+  created_at: string
+  current: DocumentVersionOut
+  folder_id: number | null
+  id: number
+  kind: 'pdf' | 'image' | 'video' | 'document' | 'spreadsheet' | 'presentation' | 'text'
+  name: string
+  previewable: boolean
+  updated_at: string
+  version: number
+  version_count: number
+}
+
+export interface DocumentResidentStorageOut {
+  account_deleted: boolean
+  name: string
+  stored_bytes: number
+  user_id: number
+  versions: number
+}
+
+export interface DocumentSettings {
+  manage_policy: 'creator' | 'administrator' | 'everyone'
+}
+
+export interface DocumentStorageOut {
+  administrator_bytes: number
+  current_bytes: number
+  deleted_bytes: number
+  deleted_files: number
+  files: number
+  previous_bytes: number
+  previous_versions: number
+  quota_bytes: number
+  resident_quota_bytes: number
+  residents: DocumentResidentStorageOut[]
+  stored_bytes: number
+  upload_bytes: number
+  uploads: number
+}
+
+export interface DocumentTreeFolderOut {
+  id: number
+  name: string
+  parent_id: number | null
+}
+
+export interface DocumentUploadIn {
+  document_id?: number | null
+  folder_id?: number | null
+  name: string
+  size: number
+  upload_id: string
+}
+
+export interface DocumentUploadOut {
+  document_id: number | null
+  expires_at: string
+  folder_id: number | null
+  id: string
+  name: string
+  received: number
+  size: number
+}
+
+export interface DocumentVersionOut {
+  author: ActorOut
+  created_at: string
+  extension: string
+  id: string
+  media_type: string
+  number: number
+  purged_at: string | null
+  sha256: string
+  size: number
+}
+
 export interface DwellingEdit {
   coefficient?: number | string | null
   label: string
@@ -586,6 +799,7 @@ export interface FeatureFlagIn {
 export interface FeatureFlagsOut {
   actions: boolean
   coefficient: boolean
+  documents: boolean
   events: boolean
   google_login: boolean
 }
@@ -804,6 +1018,7 @@ export interface StorageOut {
   administrator: StorageUsageOut
   community: CommunityStorageOut
   disk: DiskSpaceOut
+  documents: DocumentStorageOut
   resident_quota_bytes: number
   residents: ResidentStorageOut[]
 }
@@ -834,6 +1049,28 @@ export interface StoredAttachmentOut {
 
 export interface StoredAttachmentPage {
   items: StoredAttachmentOut[]
+  page: number
+  pages: number
+  total: number
+}
+
+export interface StoredDocumentVersionOut {
+  author: ActorOut
+  created_at: string
+  document_id: number
+  document_name: string
+  extension: string
+  id: string
+  location: string[]
+  media_type: string
+  number: number
+  purged_at: string | null
+  sha256: string
+  size: number
+}
+
+export interface StoredDocumentVersionPage {
+  items: StoredDocumentVersionOut[]
   page: number
   pages: number
   total: number

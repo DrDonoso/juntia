@@ -34,6 +34,10 @@ export const admin: Messages<typeof source> = {
       label: 'Eventos',
       description: 'Habilita la agenda compartida, el histórico y la exportación al calendario personal. Al desactivar, se oculta la sección y se bloquea su API sin borrar eventos ni vínculos.',
     },
+    documents: {
+      label: 'Documentos',
+      description: 'Habilita los documentos compartidos: carpetas, archivos, vídeos, versiones, historial y descargas en ZIP. Al desactivar, se oculta la sección y se bloquea su API sin borrar archivos ni carpetas.',
+    },
   },
   account: {
     title: 'Cuenta vinculada',

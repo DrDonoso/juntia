@@ -15,6 +15,7 @@ All screenshots show synthetic data from the [demo](https://demo.juntia.drdonoso
 - [Finances](#finances)
 - [Actions](#actions)
 - [Events](#events)
+- [Documents](#documents)
 - [Neighbors](#neighbors)
 - [Contacts](#contacts)
 - [Accounts and sign-in](#accounts-and-sign-in)
@@ -24,27 +25,27 @@ All screenshots show synthetic data from the [demo](https://demo.juntia.drdonoso
 ## Roles
 
 - **Residents** (neighbors) have invited accounts, each linked to one dwelling. They all read the
-  same community finances (not a ledger filtered by dwelling), take part in Actions, Events and
-  Contacts, see the Neighbors directory and edit their own profile. They cannot change finances,
-  see statements or original bank PDFs, or manage accounts.
+  same community finances (not a ledger filtered by dwelling), take part in Actions, Events,
+  Documents and Contacts, see the Neighbors directory and edit their own profile. They cannot change
+  finances, see statements or original bank PDFs, or manage accounts.
 - The **technical administrator** is a single account defined in the server configuration
   (`ADMIN_USERNAME`, `ADMIN_PASSWORD`) that signs in at `/admin`. It imports and classifies the
   finances and manages settings, dwellings, users, labels and storage. It can also open the
-  residents' pages and take part in actions, events and contacts without a resident account;
-  everything it writes is shown as "Technical administrator", never with its username. It cannot
-  be edited or deleted from the application, and Google sign-in never grants it.
+  residents' pages and take part in actions, events, documents and contacts without a resident
+  account; everything it writes is shown as "Technical administrator", never with its username. It
+  cannot be edited or deleted from the application, and Google sign-in never grants it.
 - The **community president** is a designation for one active resident, shown with a medal. It
   grants no extra permission.
 - Anonymous visitors only see the sign-in pages.
 
 ## Navigation
 
-- The residents' sidebar groups **Finances** (Overview, Transactions), **Management** (Actions and
-  Events, when they are on) and **Community** (Neighbors, Contacts).
+- The residents' sidebar groups **Finances** (Overview, Transactions), **Management** (Actions,
+  Events and Documents, when they are on) and **Community** (Neighbors, Contacts).
 - The administration sidebar groups **Finances** (Import, Classify transactions, Rules, Categories
   and tags, Manage statements) and **Settings** (General, Features, Dwellings, Users, Community
-  labels, Deleted contacts, Storage). **Community portal** opens the residents' pages with the same
-  session.
+  labels, Deleted contacts, Deleted documents, Storage). **Community portal** opens the residents'
+  pages with the same session.
 - The administration is not linked from the residents' navigation, on any screen size: open `/admin`
   directly. Its sign-in and server-side authorization are independent of that.
 - Old bookmarks such as `/admin/actions`, `/admin/actions/<id>`, `/admin/neighbors` and
@@ -329,6 +330,85 @@ Turning **Events** off hides the section, clears its data from open browsers and
 (`404 events_disabled`), images of event descriptions included. Events, their images, links and
 history are kept for when it is turned on again.
 
+## Documents
+
+**Documents** (`/documents`) is the community's shared drive, for documents of common interest such
+as minutes, rules, plans, quotes or videos of the building. It is **off by default**: turn it on in
+[Features](#features-switches). Everything in it is **public to every neighbor**, as the page
+reminds above the files: do not upload documents with private information. It does not include the
+PDFs attached to actions.
+
+### Folders and files
+
+- Folders and files appear as cards, folders first, sorted by name, last change or size. A folder
+  shows how many files it holds and their size; a file shows its size, its date and, when it has
+  several, its version. The path under the title leads back to the folders above.
+- **New folder** creates a folder inside the current one (up to 10 levels and 1000 items per
+  folder). Names have up to 200 characters, without `/ \ : * ? " < > |`, and are unique in each
+  folder regardless of case.
+- **Upload files** sends one or several files to the current folder. An upload whose name is
+  already in use gets a number, such as "Minutes (2).pdf". Accepted files are PDFs; JPG, PNG, GIF,
+  WebP and HEIC pictures; Word, Excel and PowerPoint files and their OpenDocument equivalents,
+  without macros; plain text and CSV; and phone videos (MP4, M4V, MOV). Each file may take 50 MiB
+  and each video 1 GiB by default. Files of other types, empty or too large are explained in the
+  upload list without sending them.
+- **Uploads** shows the progress of each file. Uploads go on while you move around Juntia, and the
+  browser asks before closing the page while some are unfinished. An interrupted upload continues
+  where it stopped when you **Retry** it within a day.
+- The **eye** of PDFs, pictures and videos opens them in a new tab (HEIC pictures only in browsers
+  that can show them). Clicking a file opens that preview, or downloads the file when it has none.
+
+<p align="center">
+  <img src="screenshots/documents.png" alt="Documents: folders and files as cards, two of them selected for one ZIP download, and the options menu of a folder, with Delete in red" width="900"><br>
+  <sub><b>Documents</b>, with a selection and the options of a folder (synthetic demo data).</sub>
+</p>
+
+### Options menu
+
+The **⋮** button at the top right of each card offers:
+
+- **Preview** (PDFs, pictures and videos) and **Download**; a folder downloads as a ZIP file with
+  everything inside it.
+- **Select**, like the card's checkbox. With items selected, a bar shows how many there are and what
+  they hold, and **Download ZIP** downloads them together (up to 100 items, 5000 files and 10 GiB).
+- **Rename** (files keep their extension), **Move to…** (choose the destination folder) and **Upload
+  new version** (a file of the same type, which becomes the current one; earlier versions stay
+  downloadable from **Info**), for those allowed to change the item.
+- **Info**: type, size, location, who uploaded or created it and when, its versions and its
+  [history](#document-history).
+- **Delete**, in red, for those allowed to delete the item. After a confirmation it disappears for
+  everyone, with everything inside it; only the administrator can restore it or delete it
+  permanently, in [Deleted documents](#deleted-documents).
+
+The menu works with the keyboard (arrows, Home, End and Escape) and only lists what you may do.
+
+### Permissions
+
+Every neighbor and the administrator can create folders and upload files. Who can rename, move,
+upload new versions and delete is chosen in [Features](#features-switches), below the Documents
+switch:
+
+- **Whoever created them** (default): each neighbor changes the files and folders they created. A
+  folder can only be deleted by whoever created everything inside it.
+- **Only the technical administrator**: neighbors add files and folders, and only the administrator
+  changes or deletes them.
+- **Every neighbor**: anyone changes or deletes any file or folder.
+
+The technical administrator can always change everything.
+
+### Document history
+
+**Info** includes the history of the file or folder, newest first: who created or uploaded it,
+uploaded each new version, renamed it, moved it, deleted, restored or permanently deleted it, and
+when, with the names and folders involved. It records who did what, not what changed inside the
+files, which are never compared.
+
+### Turning Documents off
+
+Turning **Documents** off hides the section, clears its data from open browsers and blocks its API
+(`404 documents_disabled`). Folders, files, their versions and history are kept for when it is
+turned on again, and **Deleted documents** and **Storage** keep working in the administration.
+
 ## Neighbors
 
 **Neighbors** (`/neighbors`) is the private directory of the community, for residents and the
@@ -530,6 +610,8 @@ rebuilding anything:
 - **Ownership coefficients** (on by default): see [dwellings](#dwellings-and-ownership-coefficients).
 - **Actions** (on by default): see [turning Actions off](#turning-actions-off).
 - **Events** (off by default): see [turning Events off](#turning-events-off).
+- **Documents** (off by default): see [turning Documents off](#turning-documents-off). Once it is on,
+  **Who can change shared documents** appears below it: see [permissions](#permissions).
 
 Each switch saves immediately and only the administrator can change it. The values live in the
 database, so they survive restarts and backups, and the server applies them on the next request. Open
@@ -570,6 +652,16 @@ not affect the percentages in the finances.
 **Deleted contacts** (`/admin/deleted-contacts`) is a read-only archive of the contacts removed from
 the address book, with their details and history.
 
+### Deleted documents
+
+**Deleted documents** (`/admin/deleted-documents`) lists what was deleted from
+[Documents](#documents), newest first: each file or folder with its size, where it was, who deleted
+it and when. **Info** shows its details, versions and history. **Restore** puts it back, with
+everything deleted together with it, where it was (or at the top level if that folder no longer
+exists; a number is added to its name if it is in use there). **Delete permanently** removes its
+files, every version included, for good after a confirmation that shows the space it frees; its
+name and history stay. The page keeps working while Documents is off.
+
 ### Storage
 
 **Storage** (`/admin/storage`) shows how much space the PDFs attached to community actions and the
@@ -587,9 +679,14 @@ images pasted into descriptions and comments use:
   uploader, newest or largest first, optionally for one uploader. **Delete permanently** removes it
   for good after a confirmation; the texts and history entries that show it then say "Image not
   available".
+- **Documents**, **Documents by neighbor** and **Earlier versions of documents**: shared documents
+  have their own quotas. The cards show current files, earlier versions, deleted documents not yet
+  purged, the administrator's uploads and unfinished uploads; the list of earlier versions,
+  largest or oldest first and optionally for one uploader, deletes a replaced version permanently.
 
 The quotas, the reserve and the permanent deletion (purge) are explained in
-[storage quotas and purging](deployment.md#storage-quotas-and-purging).
+[storage quotas and purging](deployment.md#storage-quotas-and-purging) and, for documents, in
+[shared documents](deployment.md#shared-documents).
 
 <p align="center">
   <img src="screenshots/storage.png" alt="Storage page: the withdrawn PDFs that can be deleted permanently, and how the storage limits work" width="900"><br>

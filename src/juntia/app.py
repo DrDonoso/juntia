@@ -17,6 +17,7 @@ from . import (
     api,
     auth,
     community_actions,
+    community_documents,
     community_events,
     community_images,
     contacts,
@@ -69,6 +70,7 @@ def create_app(config: Settings | None = None) -> FastAPI:
                     raise RuntimeError("Run migrations and seed before starting the application")
                 await clean_expired(db, current.upload_dir)
                 await auth.clean_user_access(db)
+                await community_documents.clean_uploads(db, current.upload_dir)
             yield
         finally:
             await application.state.google_provider.close()
@@ -134,6 +136,9 @@ def create_app(config: Settings | None = None) -> FastAPI:
     application.include_router(storage_admin.router)
     application.include_router(community_images.events_router)
     application.include_router(community_events.router)
+    application.include_router(community_documents.router)
+    application.include_router(community_documents.admin_router)
+    application.include_router(community_documents.settings_router)
     application.include_router(contacts.router)
     application.include_router(api.public_router)
     application.include_router(api.reader)
