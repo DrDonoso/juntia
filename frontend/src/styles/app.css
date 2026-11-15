@@ -643,12 +643,6 @@ dialog.action-history-dialog { width: min(900px, calc(100vw - 30px)); }
 .storage-image-preview { display: block; max-width: 100%; max-height: 240px; margin-bottom: var(--space-3); border: 1px solid var(--border); border-radius: 8px; }
 .storage-filename, .storage-purge-facts { overflow-wrap: anywhere; }
 .storage-purge-facts { display: grid; gap: var(--space-2); margin: var(--space-4) 0; padding-left: 20px; }
-.storage-limits { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: var(--space-3); margin: var(--space-4) 0; }
-.storage-limits > div { min-width: 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
-.storage-limits dd { display: grid; gap: var(--space-1); margin: var(--space-1) 0 0; text-align: left; }
-.storage-limits dd > strong { font-size: var(--text-lg); font-weight: 550; }
-.storage-limits code { font-family: var(--font-num); font-size: var(--text-xs); color: var(--text-muted); overflow-wrap: anywhere; }
-.storage-help-list { display: grid; gap: var(--space-2); margin: 0; padding-left: 20px; font-size: var(--text-sm); }
 @media (max-width: 720px) {
   .storage-figure { font-size: 19px; }
   .storage-withdrawn-list > li > button, .storage-image-list > li > button { width: 100%; min-height: 44px; }

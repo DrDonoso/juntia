@@ -12,13 +12,6 @@ import { compareText, dateTimeFormat, formatNumber, useI18n } from './i18n'
 import { Icon } from './icons'
 import { Modal, Notice, Pagination, authorName, connectionTime, useAction } from './shared'
 
-// The server environment variables behind each limit, in whole MiB.
-const SETTINGS = {
-  neighbor: 'ACTION_STORAGE_USER_QUOTA_MB',
-  community: 'ACTION_STORAGE_COMMUNITY_QUOTA_MB',
-  reserve: 'MIN_FREE_DISK_MB',
-} as const
-
 type Level = 'normal' | 'warning' | 'full'
 type Sort = 'largest' | 'oldest'
 type ImageSort = 'newest' | 'largest'
@@ -360,30 +353,6 @@ function StoredImages({ residents }: { residents: ResidentStorageOut[] }) {
   </section>
 }
 
-function LimitsHelp({ storage }: { storage: StorageOut }) {
-  const { t } = useI18n()
-  const heading = useId()
-  const limits = [
-    { label: 'storage.help.neighborQuota', bytes: storage.resident_quota_bytes, setting: SETTINGS.neighbor },
-    { label: 'storage.help.communityQuota', bytes: storage.community.quota_bytes, setting: SETTINGS.community },
-    { label: 'storage.help.reserve', bytes: storage.disk.reserve_bytes, setting: SETTINGS.reserve },
-  ] as const
-  return <section className="card storage-help" aria-labelledby={heading}>
-    <h2 id={heading}>{t('storage.help.title')}</h2>
-    <dl className="storage-limits">{limits.map(limit => <div key={limit.setting}>
-      <dt>{t(limit.label)}</dt><dd><strong>{byteSize(limit.bytes)}</strong><code>{limit.setting}</code></dd>
-    </div>)}</dl>
-    <ul className="storage-help-list">
-      <li>{t('storage.help.counting')}</li>
-      <li>{t('storage.help.withdrawn')}</li>
-      <li>{t('storage.help.documents')}</li>
-      <li>{t('storage.help.reserveRule')}</li>
-      <li>{t('storage.help.change')}</li>
-      <li>{t('storage.help.permanent')}</li>
-    </ul>
-  </section>
-}
-
 export function StoragePage() {
   const { t } = useI18n()
   const summary = useQuery({
@@ -413,6 +382,5 @@ export function StoragePage() {
     <StoredImages residents={summary.data?.residents ?? []} />
     {summary.data && <DocumentNeighborsCard storage={summary.data.documents} />}
     <PreviousDocumentVersions storage={summary.data?.documents} />
-    {summary.data && <LimitsHelp storage={summary.data} />}
   </>
 }

@@ -157,16 +157,4 @@ export const storage = {
       purged: 'Version {number} of {name} has been deleted permanently. {size} freed.',
     },
   },
-  help: {
-    title: 'How storage limits work',
-    neighborQuota: 'Quota per neighbor',
-    communityQuota: 'Community quota',
-    reserve: 'Free disk reserve',
-    counting: 'Every PDF and image counts towards the quota of the neighbor who uploaded it and towards the community quota. Those uploaded by the technical administrator count only towards the community quota.',
-    documents: 'Shared documents count separately, towards the documents quotas, with every version and every deleted document until you delete them permanently. Their limits are set in Shared documents limits, at the top of this page, and apply at once.',
-    withdrawn: 'Withdrawn PDFs, and images removed from their text, keep counting towards both quotas until you delete them permanently on this page.',
-    reserveRule: 'Uploads of PDFs, images and documents and statement imports are refused when they would leave less free disk space than the reserve.',
-    change: 'To change one of the limits above, set the server environment variable shown next to it, in whole MiB, and recreate the Juntia container (docker compose up -d): a plain restart keeps the previous values.',
-    permanent: 'Deleting a PDF or an image permanently cannot be undone.',
-  },
 } as const

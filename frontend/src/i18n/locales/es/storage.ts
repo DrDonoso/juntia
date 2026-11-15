@@ -157,16 +157,4 @@ export const storage: Messages<typeof source> = {
       purged: 'La versión {number} de {name} se ha eliminado definitivamente. Se han liberado {size}.',
     },
   },
-  help: {
-    title: 'Cómo funcionan los límites de almacenamiento',
-    neighborQuota: 'Cuota por vecino',
-    communityQuota: 'Cuota de la comunidad',
-    reserve: 'Reserva de disco libre',
-    counting: 'Cada PDF e imagen cuenta en la cuota del vecino que lo subió y en la cuota de la comunidad. Los que sube el administrador técnico solo cuentan en la cuota de la comunidad.',
-    documents: 'Los documentos compartidos cuentan aparte, en las cuotas de documentos, con todas sus versiones y los documentos eliminados hasta que los eliminas definitivamente. Sus límites se ajustan en Límites de los documentos compartidos, al principio de esta página, y se aplican al momento.',
-    withdrawn: 'Los PDFs retirados, y las imágenes quitadas de su texto, siguen contando en ambas cuotas hasta que los eliminas definitivamente en esta página.',
-    reserveRule: 'Las subidas de PDFs, imágenes y documentos y las importaciones de extractos se rechazan si dejarían menos espacio libre en disco que la reserva.',
-    change: 'Para cambiar uno de los límites de arriba, define en el servidor la variable de entorno que aparece junto a él, en MiB enteros, y vuelve a crear el contenedor de Juntia (docker compose up -d): un reinicio simple conserva los valores anteriores.',
-    permanent: 'Eliminar un PDF o una imagen definitivamente no se puede deshacer.',
-  },
 }

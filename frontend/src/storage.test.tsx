@@ -178,19 +178,6 @@ test('the summary shows the community, administrator and disk usage with accessi
   expect(disk.getByRole('meter', { name: 'Server disk space used' })).toHaveAttribute('aria-valuetext', '150 GiB of 200 GiB used (75%)')
   expect(disk.getByText('1 GiB are kept free as a reserve. Below it, uploads of PDFs, images and documents and statement imports are refused.')).toBeVisible()
   expect(screen.queryByRole('alert')).toBeNull()
-  const help = region('How storage limits work')
-  for (const [label, size, setting] of [
-    ['Quota per neighbor', '250 MiB', 'ACTION_STORAGE_USER_QUOTA_MB'],
-    ['Community quota', '2 GiB', 'ACTION_STORAGE_COMMUNITY_QUOTA_MB'],
-    ['Free disk reserve', '1 GiB', 'MIN_FREE_DISK_MB'],
-  ]) {
-    const value = help.getByText(label).nextElementSibling
-    expect(value).toHaveTextContent(`${size}${setting}`)
-    expect(value?.querySelector('code')).toHaveTextContent(setting)
-  }
-  expect(help.getByText('Withdrawn PDFs, and images removed from their text, keep counting towards both quotas until you delete them permanently on this page.')).toBeVisible()
-  expect(help.getByText('To change one of the limits above, set the server environment variable shown next to it, in whole MiB, and recreate the Juntia container (docker compose up -d): a plain restart keeps the previous values.')).toBeVisible()
-  expect(help.getByText('Deleting a PDF or an image permanently cannot be undone.')).toBeVisible()
 })
 
 test.each([
@@ -275,10 +262,6 @@ test('shared documents have their own quotas, neighbors and earlier versions to 
   expect(documents.getByText('Uploads in progress').nextElementSibling).toHaveTextContent('5 MiB · 1 upload')
   const neighbors = within(screen.getByRole('table', { name: 'Documents by neighbor' }))
   expect(neighbors.getByRole('meter', { name: 'Quota used by Alice' })).toHaveAttribute('data-level', 'warning')
-  // Their limits are no longer server variables: they are edited above.
-  const help = region('How storage limits work')
-  expect(help.queryByText(/DOCUMENT_/)).toBeNull()
-  expect(help.getByText(/^Shared documents count separately/)).toHaveTextContent('Their limits are set in Shared documents limits, at the top of this page, and apply at once.')
   expect(documents.getByRole('link', { name: 'Change the limits' })).toHaveAttribute('href', '#document-limits')
   expect(screen.getByRole('region', { name: 'Shared documents limits' })).toHaveAttribute('id', 'document-limits')
   const earlier = await findRegion('Earlier versions of documents')
@@ -529,7 +512,6 @@ test('the page renders in Spanish and follows a language switch', async () => {
   expect(dialog.getByText('El archivo se eliminará del servidor para siempre. No se puede deshacer.')).toBeVisible()
   fireEvent.click(dialog.getByRole('button', { name: 'Eliminar definitivamente' }))
   expect(await section.findByText('old-quote.pdf se ha eliminado definitivamente. Se han liberado 40 MiB.')).toBeVisible()
-  expect(region('Cómo funcionan los límites de almacenamiento').getByText('Cuota por vecino')).toBeVisible()
 
   act(() => setLanguage('en'))
   expect(screen.getByRole('heading', { name: 'Storage', level: 1 })).toBeVisible()
