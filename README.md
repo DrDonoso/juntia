@@ -91,7 +91,8 @@ describes every part in detail.
 - Invitation-only resident accounts with a password or optional Google sign-in, and email
   invitations and password recovery.
 - Runtime switches for ownership coefficients, Actions, Events and Documents; storage quotas for
-  action PDFs and for shared documents.
+  action PDFs, and limits and quotas for shared documents that the administrator adjusts with
+  sliders in **Settings > Storage**.
 
 **Languages**
 
@@ -244,7 +245,8 @@ docker compose start api
 The most important settings, with the values `.env.example` sets;
 [docs/configuration.md](docs/configuration.md) documents all of them, with their validation rules.
 After changing `.env`, run `docker compose up -d` to recreate the container (a plain restart keeps
-the old values).
+the old values). Feature switches, the community name and the limits of shared documents are not
+environment variables: they are changed in the administration.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -260,8 +262,6 @@ the old values).
 | `IMAGE_TAG` | `latest` | Image tag to run; pin a CalVer release. |
 | `TZ` | `Europe/Madrid` | Community time zone for events. |
 | `ACTION_STORAGE_USER_QUOTA_MB`, `ACTION_STORAGE_COMMUNITY_QUOTA_MB`, `MIN_FREE_DISK_MB` | `250`, `2048`, `1024` | Storage of action PDFs and pasted images per resident and for the community, and free space to keep on the uploads volume, in MiB. |
-| `DOCUMENT_MAX_FILE_MB`, `DOCUMENT_MAX_VIDEO_MB` | `50`, `1024` | Largest shared document and video, in MiB. |
-| `DOCUMENT_STORAGE_USER_QUOTA_MB`, `DOCUMENT_STORAGE_COMMUNITY_QUOTA_MB` | `2048`, `20480` | Storage of shared documents, with every version, per resident and for the community, in MiB. |
 | `SMTP_HOST`, `SMTP_FROM`, … | empty | Email for invitations and password recovery. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | empty | Optional Google sign-in. |
 | `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL` | empty | Optional AI classification. |

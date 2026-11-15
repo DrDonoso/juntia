@@ -2,8 +2,9 @@
  * Shared documents routes of the demo API (src/juntia/community_documents.py): folders and files
  * with their details, edits, deletions and history, chunked uploads, downloads, previews and ZIP
  * archives for every member while Documents is on (404 `documents_disabled` otherwise); and the
- * administrator's deleted documents (restore and purge), copies of any stored version and the
- * management policy, which keep working while the feature is off.
+ * administrator's deleted documents (restore and purge), copies of any stored version, and the
+ * settings (management policy, largest file and video, quotas), which keep working while the
+ * feature is off.
  */
 import type { ActorOut, DocumentDeletionPage, DocumentSettings } from '../../api/schema.gen'
 import {
@@ -12,7 +13,7 @@ import {
 } from '../core'
 import { canonicalUuid } from '../store/community-text'
 import {
-  CHUNK_BYTES, DOCUMENT_PAGE_SIZE, DOCUMENT_POLICIES, activeDocument, activeFolder, browse, cancelUpload, completeUpload, createFolder,
+  CHUNK_BYTES, DOCUMENT_PAGE_SIZE, DOCUMENT_POLICIES, DOCUMENT_QUOTA_LIMIT_MB, DOCUMENT_SIZE_LIMIT_MB, activeDocument, activeFolder, browse, cancelUpload, completeUpload, createFolder,
   deleteDocument, deleteFolder, deletionOut, documentArchive, documentInfo, documentOut, editDocument, editFolder, findDocument,
   findFolder, folderInfo, folderOut, folderTree, historyPage, openDeletions, ownUpload, purgeDeletion, receiveChunk, restoreDeletion,
   sharedDocumentsStore, startUpload, uploadOut, versionFile, type DemoDocument, type DemoDocumentFolder, type ItemEdit,
@@ -52,6 +53,25 @@ function uploadInput(body: Body): UploadInput {
   }
   if (valid(body, UPLOAD_FIELDS) && input.folderId !== null && input.documentId !== null) body.fail(MODEL, 'value_error')
   return input
+}
+
+type DocumentLimit = 'max_file_mb' | 'max_video_mb' | 'user_quota_mb' | 'community_quota_mb'
+
+/** Whole MiB, strict integers: 10 GiB at most for a file or a video, 10 TiB for a quota. */
+const LIMIT_RANGES: Readonly<Record<DocumentLimit, { min: number; max: number }>> = {
+  max_file_mb: { min: 1, max: DOCUMENT_SIZE_LIMIT_MB }, max_video_mb: { min: 1, max: DOCUMENT_SIZE_LIMIT_MB },
+  user_quota_mb: { min: 1, max: DOCUMENT_QUOTA_LIMIT_MB }, community_quota_mb: { min: 1, max: DOCUMENT_QUOTA_LIMIT_MB },
+}
+
+/** `DocumentSettingsEdit`: the settings to change, at least one; null is not a value of any of them. */
+function settingsEdit(body: Body): Partial<DocumentSettings> {
+  const edit: Partial<DocumentSettings> = {}
+  if (body.present.has('manage_policy')) edit.manage_policy = body.literal('manage_policy', DOCUMENT_POLICIES)
+  for (const [key, range] of Object.entries(LIMIT_RANGES) as [DocumentLimit, { min: number; max: number }][]) {
+    if (body.present.has(key)) edit[key] = body.int(key, range)
+  }
+  if (body.present.size === 0) body.fail(MODEL, 'value_error')
+  return edit
 }
 
 /** Repeated integer query parameter whose range the route checks itself (`list[int]`). */
@@ -216,12 +236,13 @@ const administrationHandlers: HttpHandler[] = [
   http.post('/api/admin/documents/deletions/:deletionId/purge', route('admin', context => {
     purgeDeletion(sharedDocumentsStore(), author(context), uuidParam(context.params, 'deletionId'), nowIso())
   }, { status: 204 })),
-  http.get('/api/admin/settings/documents', route('admin', (): DocumentSettings => ({ manage_policy: sharedDocumentsStore().policy }))),
+  http.get('/api/admin/settings/documents', route('admin', (): DocumentSettings => ({ ...sharedDocumentsStore().settings }))),
+  // Changes only the settings sent; the limits apply at once to browsing, new uploads and both quota checks.
   http.patch('/api/admin/settings/documents', route('admin', async ({ request }): Promise<DocumentSettings> => {
-    const policy = parseBody(await readJson(request), body => body.literal('manage_policy', DOCUMENT_POLICIES))
-    const documents = sharedDocumentsStore()
-    documents.policy = policy
-    return { manage_policy: documents.policy }
+    const edit = parseBody(await readJson(request), settingsEdit)
+    const { settings } = sharedDocumentsStore()
+    Object.assign(settings, edit)
+    return { ...settings }
   })),
 ]
 

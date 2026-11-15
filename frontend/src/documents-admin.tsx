@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { Link, useLocation } from 'react-router'
 import { api, cache, errorMessage } from './api/client'
 import type {
   DocumentDeletionOut, DocumentDeletionPage, DocumentInfoOut, DocumentSettings, DocumentStorageOut,
@@ -10,18 +11,35 @@ import { DocumentHistory, FileDetails, VersionList, kindIcon, locationText } fro
 import { compareText, formatNumber, useI18n, type Translate } from './i18n'
 import { Icon } from './icons'
 import { Modal, Notice, Pagination, authorName, useAction } from './shared'
+import { SizeField, parseSize } from './size-field'
 
+const MIB = 1024 * 1024
 const POLICIES: readonly DocumentSettings['manage_policy'][] = ['creator', 'administrator', 'everyone']
+const SETTINGS_KEY = ['admin', 'documents', 'settings'] as const
+type LimitKey = 'max_file_mb' | 'max_video_mb' | 'user_quota_mb' | 'community_quota_mb'
+// What the server accepts (DocumentSettingsEdit), in whole MiB: a file or a video up to the 10 GiB of
+// a ZIP download, quotas up to 10 TiB.
+export const DOCUMENT_LIMITS: readonly { key: LimitKey; min: number; max: number }[] = [
+  { key: 'max_file_mb', min: 1, max: 10 * 1024 },
+  { key: 'max_video_mb', min: 1, max: 10 * 1024 },
+  { key: 'user_quota_mb', min: 1, max: 10 * 1024 * 1024 },
+  { key: 'community_quota_mb', min: 1, max: 10 * 1024 * 1024 },
+]
+
+function useDocumentSettings() {
+  return useQuery({ queryKey: SETTINGS_KEY, queryFn: () => api<DocumentSettings>('/admin/settings/documents') })
+}
 
 export function DocumentPolicyCard() {
-  const { t } = useI18n()
-  const query = useQuery({
-    queryKey: ['admin', 'documents', 'settings'], queryFn: () => api<DocumentSettings>('/admin/settings/documents'),
-  })
+  const { t, rich } = useI18n()
+  const query = useDocumentSettings()
   const action = useAction(false), heading = useId()
   return <section className="card document-policy" aria-labelledby={heading}>
     <h2 id={heading}>{t('documents.admin.policy.title')}</h2>
     <p className="muted">{t('documents.admin.policy.description')}</p>
+    <p className="muted">{rich('documents.admin.policy.limits', {
+      link: chunks => <Link to="/admin/storage#document-limits">{chunks}</Link>,
+    })}</p>
     {query.isPending && <Notice>{t('documents.admin.policy.loading')}</Notice>}
     {query.error && <Notice error>{errorMessage(query.error)}</Notice>}
     {query.data && <fieldset disabled={action.busy}>
@@ -30,7 +48,7 @@ export function DocumentPolicyCard() {
         <input type="radio" name="document-policy" value={policy} checked={query.data.manage_policy === policy}
           onChange={() => void action.run(async () => {
             const saved = await api<DocumentSettings>('/admin/settings/documents', 'PATCH', { manage_policy: policy })
-            cache.setQueryData(['admin', 'documents', 'settings'], saved)
+            cache.setQueryData(SETTINGS_KEY, saved)
             void cache.invalidateQueries({ queryKey: ['documents'] })
           }, t('documents.admin.policy.saved', { policy: t(`documents.admin.policy.options.${policy}.label`) }))} />
         <span><strong>{t(`documents.admin.policy.options.${policy}.label`)}</strong>
@@ -38,6 +56,67 @@ export function DocumentPolicyCard() {
       </label>)}
     </fieldset>}
     {action.notice}
+  </section>
+}
+
+/**
+ * The limits of shared documents, on the Storage page: each with a slider and a box for an exact
+ * size, saved together. `storage` warns about quotas below what is already stored.
+ */
+export function DocumentLimitsCard({ storage }: { storage?: DocumentStorageOut }) {
+  const { t } = useI18n()
+  const query = useDocumentSettings()
+  const [draft, setDraft] = useState<Partial<Record<LimitKey, string>>>({})
+  const action = useAction(false), heading = useId()
+  const section = useRef<HTMLElement>(null)
+  const { hash } = useLocation()
+  const saved = query.data
+  const ready = Boolean(saved && storage)
+  // Links from Features land here once the page above has its final height.
+  useEffect(() => { if (ready && hash === '#document-limits') section.current?.scrollIntoView() }, [ready, hash])
+  const text = (key: LimitKey) => draft[key] ?? (saved ? String(saved[key]) : '')
+  const values = DOCUMENT_LIMITS.map(limit => ({ ...limit, value: parseSize(text(limit.key), limit.min, limit.max) }))
+  const changes = Object.fromEntries(values.flatMap(limit =>
+    saved && limit.value !== null && limit.value !== saved[limit.key] ? [[limit.key, limit.value]] : []))
+  const invalid = values.some(limit => limit.value === null)
+  const edited = saved !== undefined && DOCUMENT_LIMITS.some(limit => text(limit.key) !== String(saved[limit.key]))
+  function warning(key: LimitKey, value: number | null): string | undefined {
+    if (!storage || value === null) return undefined
+    if (key === 'community_quota_mb' && storage.stored_bytes > value * MIB) {
+      return t('documents.admin.limits.belowCommunity', { size: byteSize(storage.stored_bytes) })
+    }
+    const over = key === 'user_quota_mb' ? storage.residents.filter(row => row.stored_bytes > value * MIB).length : 0
+    return over ? t('documents.admin.limits.belowNeighbors', { count: over }) : undefined
+  }
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    if (invalid || !Object.keys(changes).length) return
+    void action.run(async () => {
+      cache.setQueryData(SETTINGS_KEY, await api<DocumentSettings>('/admin/settings/documents', 'PATCH', changes))
+      setDraft({})
+      void cache.invalidateQueries({ queryKey: ['admin', 'storage'] })
+      void cache.invalidateQueries({ queryKey: ['documents'] })
+    }, t('documents.admin.limits.saved'))
+  }
+  return <section ref={section} id="document-limits" className="card document-limits" aria-labelledby={heading}>
+    <h2 id={heading}>{t('documents.admin.limits.title')}</h2>
+    <p className="muted">{t('documents.admin.limits.description')}</p>
+    {query.isPending && <Notice>{t('documents.admin.limits.loading')}</Notice>}
+    {query.error && <Notice error>{errorMessage(query.error)}</Notice>}
+    {saved && <form onSubmit={submit} noValidate>
+      <div className="document-limits-grid">{values.map(limit => <SizeField key={limit.key}
+        label={t(`documents.admin.limits.fields.${limit.key}.label`)} help={t(`documents.admin.limits.fields.${limit.key}.help`)}
+        min={limit.min} max={limit.max} value={text(limit.key)} fallback={saved[limit.key]} disabled={action.busy}
+        warning={warning(limit.key, limit.value)}
+        change={value => { action.reset(); setDraft(previous => ({ ...previous, [limit.key]: value })) }} />)}</div>
+      {action.notice}
+      <div className="inline">
+        <button disabled={action.busy || invalid || !Object.keys(changes).length}>
+          {action.busy ? t('common.saving') : t('documents.admin.limits.save')}</button>
+        <button type="button" className="secondary" disabled={action.busy || !edited}
+          onClick={() => { setDraft({}); action.reset() }}>{t('documents.admin.limits.discard')}</button>
+      </div>
+    </form>}
   </section>
 }
 
@@ -191,6 +270,7 @@ export function DocumentStorageCard({ storage }: { storage: DocumentStorageOut }
       <div><dt>{t('storage.documents.uploads')}</dt><dd>{byteSize(storage.upload_bytes)} · {t('storage.documents.uploadCount', { count: storage.uploads })}</dd></div>
     </dl>
     <p className="muted storage-hint">{t('storage.documents.hint')}</p>
+    <p className="storage-hint"><a href="#document-limits">{t('storage.documents.change')}</a></p>
     {state === 'full' && <Notice error>{t('storage.documents.full')}</Notice>}
     {state === 'warning' && <p className="notice warning" role="status">{t('storage.documents.near')}</p>}
   </section>

@@ -144,9 +144,13 @@ test('an older feature read cannot overwrite a successful switch update', async 
 
 test('with Documents on, the administrator chooses who can change shared documents', async () => {
   cache.setQueryData(['features'], { ...enabled, documents: true })
+  let settings = { manage_policy: 'creator', max_file_mb: 50, max_video_mb: 1024, user_quota_mb: 2048, community_quota_mb: 20480 }
   const fetcher = vi.fn(async (input: string, options: RequestInit = {}) => {
-    if (input === '/api/admin/settings/documents' && options.method === 'PATCH') return reply(JSON.parse(String(options.body)))
-    if (input === '/api/admin/settings/documents') return reply({ manage_policy: 'creator' })
+    if (input === '/api/admin/settings/documents' && options.method === 'PATCH') {
+      settings = { ...settings, ...JSON.parse(String(options.body)) }
+      return reply(settings)
+    }
+    if (input === '/api/admin/settings/documents') return reply(settings)
     throw new Error(`Unexpected request: ${input}`)
   })
   vi.stubGlobal('fetch', fetcher)
@@ -154,6 +158,8 @@ test('with Documents on, the administrator chooses who can change shared documen
   expect(screen.getByRole('switch', { name: 'Documents' })).toHaveAttribute('aria-checked', 'true')
   const group = await screen.findByRole('group', { name: 'Who can change documents' })
   expect(within(group).getByRole('radio', { name: /^Whoever created them/ })).toBeChecked()
+  // File sizes and quotas live in Storage.
+  expect(screen.getByRole('link', { name: 'Storage' })).toHaveAttribute('href', '/admin/storage#document-limits')
   fireEvent.click(within(group).getByRole('radio', { name: /^Every neighbor/ }))
   expect(await screen.findByText('Documents can now be changed by: Every neighbor.')).toBeVisible()
   expect(within(group).getByRole('radio', { name: /^Every neighbor/ })).toBeChecked()

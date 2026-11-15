@@ -68,8 +68,13 @@ export function PhoneLink({ phone, name }: { phone: string; name: string }) {
   return phone ? <a className="phone-link" href={`tel:${phone}`} aria-label={t('common.phone.call', { name, phone })}>{phone}</a>
     : <span className="muted">{t('common.phone.missing')}</span>
 }
-export function PresidentBadge({ name }: { name: string }) {
-  const { t } = useI18n()
+/**
+ * An icon button that explains itself in a tooltip: on hover, on keyboard focus and, because touch
+ * screens cannot hover, on tap.
+ */
+function TooltipButton({ label, tooltip, className, tooltipClassName, children }: {
+  label: string; tooltip: ReactNode; className: string; tooltipClassName: string; children: ReactNode
+}) {
   const [open, setOpen] = useState(false)
   const trigger = useRef<HTMLButtonElement>(null)
   const opening = useRef(0)
@@ -78,7 +83,7 @@ export function PresidentBadge({ name }: { name: string }) {
   function changeOpen(next: boolean) {
     cancelAnimationFrame(opening.current)
     if (next) setContainer(trigger.current?.closest('dialog, main') ?? null)
-    // Focusing an off-screen medal scrolls it into view, and React Aria closes open tooltips on the
+    // Focusing an off-screen button scrolls it into view, and React Aria closes open tooltips on the
     // scroll event that the next frame dispatches before its animation frame callbacks: open after it.
     if (next && document.activeElement === trigger.current) {
       opening.current = requestAnimationFrame(() => { if (document.activeElement === trigger.current) setOpen(true) })
@@ -87,13 +92,26 @@ export function PresidentBadge({ name }: { name: string }) {
     setOpen(next)
   }
   return <TooltipTrigger isOpen={open} onOpenChange={changeOpen} delay={0} closeDelay={150} shouldCloseOnPress={false}>
-    <Button ref={trigger} className="president-badge" aria-label={t('common.president.label', { name })}
+    <Button ref={trigger} className={className} aria-label={label}
       onHoverStart={() => changeOpen(true)}
       onPress={event => changeOpen(event.pointerType === 'touch' ? !open : true)}>
-      <Icon name="medal" size={20} />
+      {children}
     </Button>
-    <Tooltip className="president-tooltip" placement="top" offset={8} UNSTABLE_portalContainer={container ?? undefined}>{t('common.president.title')}</Tooltip>
+    <Tooltip className={tooltipClassName} placement="top" offset={8} UNSTABLE_portalContainer={container ?? undefined}>{tooltip}</Tooltip>
   </TooltipTrigger>
+}
+export function PresidentBadge({ name }: { name: string }) {
+  const { t } = useI18n()
+  return <TooltipButton className="president-badge" tooltipClassName="president-tooltip"
+    label={t('common.president.label', { name })} tooltip={t('common.president.title')}>
+    <Icon name="medal" size={20} />
+  </TooltipButton>
+}
+/** An (i) button that explains what something is, such as a setting, in a tooltip. */
+export function InfoTip({ label, children }: { label: string; children: ReactNode }) {
+  return <TooltipButton className="info-tip" tooltipClassName="info-tooltip" label={label} tooltip={children}>
+    <Icon name="info" size={16} />
+  </TooltipButton>
 }
 export function EmailContact({ email, name }: { email: string; name: string }) {
   const { t } = useI18n()

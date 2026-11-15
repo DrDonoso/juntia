@@ -33,7 +33,7 @@ from starlette.types import Receive, Scope, Send
 
 from . import queries
 from .auth import DB, administrator, mutation_session, reader_session, settings
-from .config import Language, Settings
+from .config import Language
 from .contracts import (
     ActorOut,
     DocumentBrowseOut,
@@ -52,6 +52,7 @@ from .contracts import (
     DocumentOut,
     DocumentPolicy,
     DocumentSettings,
+    DocumentSettingsEdit,
     DocumentTreeFolderOut,
     DocumentUploadIn,
     DocumentUploadOut,
@@ -183,6 +184,26 @@ async def lock_documents(db: AsyncSession) -> None:
 async def manage_policy(db: AsyncSession) -> DocumentPolicy:
     value = await db.scalar(select(State.documents_manage_policy).where(State.id == 1))
     return next((policy for policy in POLICIES if policy == value), "creator")
+
+
+# The column of the state row behind each document setting.
+SETTING_COLUMNS = {
+    "manage_policy": State.documents_manage_policy,
+    "max_file_mb": State.documents_max_file_mb,
+    "max_video_mb": State.documents_max_video_mb,
+    "user_quota_mb": State.documents_user_quota_mb,
+    "community_quota_mb": State.documents_community_quota_mb,
+}
+
+
+async def document_settings(db: AsyncSession) -> DocumentSettings:
+    """The policy and limits that the administrator chose."""
+    row = (await db.execute(select(*SETTING_COLUMNS.values()).where(State.id == 1))).one()
+    values = dict(zip(SETTING_COLUMNS, row, strict=True))
+    values["manage_policy"] = next(
+        (policy for policy in POLICIES if policy == values["manage_policy"]), "creator",
+    )
+    return DocumentSettings(**values)
 
 
 def may_manage(value: Authorship, actor: ActorOut, policy: DocumentPolicy) -> bool:
@@ -338,11 +359,11 @@ def names(folders: list[DocumentFolder]) -> list[str]:
     return [value.name for value in folders]
 
 
-def limits(config: Settings) -> DocumentLimitsOut:
+def limits(stored: DocumentSettings) -> DocumentLimitsOut:
     return DocumentLimitsOut(
         extensions=sorted(TYPES), video_extensions=list(VIDEO_EXTENSIONS),
-        max_file_bytes=config.document_max_file_mb * MIB,
-        max_video_bytes=config.document_max_video_mb * MIB, chunk_bytes=CHUNK_BYTES,
+        max_file_bytes=stored.max_file_mb * MIB,
+        max_video_bytes=stored.max_video_mb * MIB, chunk_bytes=CHUNK_BYTES,
         max_folder_items=MAX_FOLDER_ITEMS, max_depth=MAX_DEPTH,
         archive_max_items=ARCHIVE_MAX_ITEMS, archive_max_files=ARCHIVE_MAX_FILES,
         archive_max_bytes=ARCHIVE_MAX_BYTES,
@@ -567,24 +588,27 @@ async def stored_document_bytes(db: AsyncSession, user_id: int | None = None) ->
     ) or 0)
 
 
-async def check_quota(db: AsyncSession, config: Settings, actor: ActorOut, size: int) -> None:
+async def check_quota(
+    db: AsyncSession, stored: DocumentSettings, actor: ActorOut, size: int,
+) -> None:
     """Both byte budgets of the documents; callers hold lock_documents()."""
     if actor.kind == "resident" and actor.user_id is not None:
         used = await stored_document_bytes(db, actor.user_id)
-        if used + size > config.document_storage_user_quota_mb * MIB:
+        if used + size > stored.user_quota_mb * MIB:
             raise AppError("document_storage_user_quota", 409)
-    if await stored_document_bytes(db) + size > config.document_storage_community_quota_mb * MIB:
+    if await stored_document_bytes(db) + size > stored.community_quota_mb * MIB:
         log.warning("A document upload was refused by the community storage quota")
         raise AppError("document_storage_community_quota", 409)
 
 
 @router.get("/browse", response_model=DocumentBrowseOut)
 async def browse(
-    request: Request, db: DB, language: ServerLanguage, identity: Reader,
+    db: DB, language: ServerLanguage, identity: Reader,
     folder: Annotated[int | None, Query(ge=1, le=2147483647)] = None,
 ) -> DocumentBrowseOut:
     actor = actor_of(identity, language)
-    policy = await manage_policy(db)
+    stored = await document_settings(db)
+    policy = stored.manage_policy
     tree = await load_tree(db)
     if folder is not None and folder not in tree.folders:
         raise AppError("document_folder_not_found", 404)
@@ -603,7 +627,7 @@ async def browse(
             for child in tree.children.get(folder, [])
         ],
         files=[document_out(value, current, actor, policy, language) for value, current in rows],
-        policy=policy, limits=limits(settings(request)),
+        policy=policy, limits=limits(stored),
     )
 
 
@@ -1091,9 +1115,8 @@ async def create_upload(
     file_type = TYPES[extension]
     if body.size == 0:
         raise AppError("document_file_empty", 422)
-    limit = (
-        config.document_max_video_mb if file_type.kind == "video" else config.document_max_file_mb
-    )
+    stored = await document_settings(db)
+    limit = stored.max_video_mb if file_type.kind == "video" else stored.max_file_mb
     if body.size > limit * MIB:
         raise AppError("document_too_large", 413)
     upload_id = str(body.upload_id)
@@ -1118,7 +1141,7 @@ async def create_upload(
         if body.folder_id is not None:
             await active_folder(db, body.folder_id)
         await require_room(db, body.folder_id)
-    await check_quota(db, config, actor, body.size)
+    await check_quota(db, stored, actor, body.size)
     await run_in_threadpool(
         ensure_free_space, config.upload_dir, body.size, config.min_free_disk_mb,
     )
@@ -1297,7 +1320,9 @@ async def complete_upload(
         if upload is None or not owns(upload, actor) or upload.storage_key != storage_key:
             await db.rollback()
             return await completed(db, key, actor, language)
-        policy = await manage_policy(db)
+        # The administrator may have changed the policy or the quotas since the upload began.
+        stored = await document_settings(db)
+        policy = stored.manage_policy
         now = utcnow()
         file_type = TYPES[extension]
         if upload.document_id is not None:
@@ -1308,7 +1333,7 @@ async def complete_upload(
             if not may_manage(document, actor, policy):
                 await discard_upload(db, config.upload_dir, upload)
                 raise AppError("document_permission_required", 403)
-            await check_quota(db, config, actor, size)
+            await check_quota(db, stored, actor, size)
             number = document.current_number + 1
             document.current_number = number
             document.version += 1
@@ -1324,7 +1349,7 @@ async def complete_upload(
                     await discard_upload(db, config.upload_dir, upload)
                     raise AppError("document_folder_deleted", 409)
             await require_room(db, upload.folder_id)
-            await check_quota(db, config, actor, size)
+            await check_quota(db, stored, actor, size)
             name = await free_name(db, upload.folder_id, upload.name, extension)
             number = 1
             document = Document(
@@ -1360,19 +1385,20 @@ async def complete_upload(
 
 @settings_router.get("", response_model=DocumentSettings)
 async def read_document_settings(db: DB) -> DocumentSettings:
-    return DocumentSettings(manage_policy=await manage_policy(db))
+    return await document_settings(db)
 
 
 @settings_router.patch("", response_model=DocumentSettings)
 async def update_document_settings(
-    body: DocumentSettings, request: Request, db: DB,
+    body: DocumentSettingsEdit, request: Request, db: DB,
 ) -> DocumentSettings:
+    """Change only the settings sent; the limits apply to the next uploads and checks."""
     await mutation_session(request, db)
-    await db.execute(
-        update(State).where(State.id == 1).values(documents_manage_policy=body.manage_policy)
-    )
+    await db.execute(update(State).where(State.id == 1).values({
+        SETTING_COLUMNS[field]: getattr(body, field) for field in body.model_fields_set
+    }))
     await db.commit()
-    return DocumentSettings(manage_policy=await manage_policy(db))
+    return await document_settings(db)
 
 
 async def deletion_items(

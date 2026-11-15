@@ -502,7 +502,11 @@ Every stored version, current, earlier or deleted, counts against the
 uploader's documents quota and the community's (see the
 [deployment guide](deployment.md#shared-documents)); quotas are checked under
 the lock when an upload starts and when it completes, and every chunk respects
-the free-disk reserve. Deleting hides an item and everything inside it from
+the free-disk reserve. The sizes and quotas are database settings that only
+the technical administrator changes (`/api/admin/settings/documents`, with
+the usual Origin and anti-CSRF checks); the server accepts whole MiB within
+fixed bounds (files and videos up to 10 GiB, quotas up to 10 TiB) and applies
+them to the next uploads and checks. Deleting hides an item and everything inside it from
 members but keeps its files and history; only the technical administrator can
 see deleted documents, restore them or purge them. Purging deletes the files
 of every version inside the database transaction, keeps names and history, and

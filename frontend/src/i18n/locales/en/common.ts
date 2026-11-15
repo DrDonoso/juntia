@@ -51,6 +51,13 @@ export const common = {
     label: '{name}: Community president',
     title: 'Community president',
   },
+  // Label of the (i) buttons that explain a setting in a tooltip.
+  moreInfo: 'More about {name}',
+  // Sizes in whole MiB with a slider and a box (size-field.tsx).
+  sizeField: {
+    hint: 'In whole MiB, from {min} to {max}.',
+    invalid: 'Enter a whole number of MiB from {min} to {max}.',
+  },
   // The Markdown editor of descriptions and comments (markdown-field.tsx) and its rendering (markdown.tsx).
   markdown: {
     write: 'Write',

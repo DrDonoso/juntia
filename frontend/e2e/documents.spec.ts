@@ -47,7 +47,9 @@ async function choose(page: Page, name: string, option: string) {
 test.afterEach(async ({ page }) => {
   if (process.env.E2E_BASE_URL || page.url() === 'about:blank') return
   const headers = { Origin: new URL(page.url()).origin, 'X-Juntia-Request': '1' }
-  expect((await page.request.patch('/api/admin/settings/documents', { headers, data: { manage_policy: 'creator' } })).status()).toBe(200)
+  expect((await page.request.patch('/api/admin/settings/documents', { headers, data: {
+    manage_policy: 'creator', max_file_mb: 50, max_video_mb: 1024, user_quota_mb: 2048, community_quota_mb: 20480,
+  } })).status()).toBe(200)
   expect((await page.request.patch('/api/admin/settings/features/documents', { headers, data: { enabled: false } })).status()).toBe(200)
   expect((await page.request.post('/api/admin/test-reset-login-attempts', { headers })).status()).toBe(204)
 })
@@ -189,6 +191,26 @@ test('neighbors share folders and files, preview PDFs, follow their history and 
     await purge.getByRole('button', { name: 'Delete permanently' }).click()
     await expect(admin.getByText(/^“General meeting\.pdf” has been deleted permanently\./)).toBeVisible()
     expect((await ana.request.get(previewPath ?? '')).status()).toBe(404)
+
+    // The administrator lowers the largest file in Storage, where each limit has a slider, a box and
+    // an explanation; neighbors' larger files are then refused before they are sent.
+    await admin.goto('/admin/storage')
+    const limits = admin.getByRole('region', { name: 'Shared documents limits' })
+    await limits.getByRole('button', { name: 'More about Largest file' }).hover()
+    await expect(admin.getByRole('tooltip')).toContainText('The largest file a neighbor can upload to Documents')
+    const largest = limits.getByRole('textbox', { name: 'Largest file' })
+    await expect(largest).toHaveValue('50')
+    await largest.fill('1')
+    await expect(limits.getByRole('slider', { name: 'Largest file' })).toHaveAttribute('aria-valuetext', '1 MiB')
+    await limits.getByRole('button', { name: 'Save limits' }).click()
+    await expect(limits.getByText('The limits of shared documents have been saved.')).toBeVisible()
+    expect((await new AxeBuilder({ page: admin }).analyze()).violations).toEqual([])
+    expect((await (await admin.request.get('/api/admin/settings/documents')).json()).max_file_mb).toBe(1)
+    await ana.reload()
+    await ana.getByLabel('Files to upload').setInputFiles({
+      name: 'Large plan.pdf', mimeType: 'application/pdf', buffer: Buffer.concat([pdf('Large plan'), Buffer.alloc(2 * 1024 * 1024)]),
+    })
+    await expect(ana.getByRole('region', { name: 'Uploads' }).getByText('The file is larger than 1 MiB, the limit for this type of file.')).toBeVisible()
 
     // Turning the feature off closes the section on open pages without deleting anything.
     await admin.goto('/admin/features')

@@ -51,6 +51,11 @@ export const common: Messages<typeof source> = {
     label: '{name}: Presidente/a de la comunidad',
     title: 'Presidente/a de la comunidad',
   },
+  moreInfo: 'Más información: {name}',
+  sizeField: {
+    hint: 'En MiB enteros, de {min} a {max}.',
+    invalid: 'Escribe un número entero de MiB, de {min} a {max}.',
+  },
   markdown: {
     write: 'Escribir',
     preview: 'Vista previa',

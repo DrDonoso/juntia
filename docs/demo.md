@@ -61,8 +61,10 @@ Features that depend on real infrastructure are simulated or explain that they n
   invited neighbors stay pending; password recovery answers as usual without sending anything.
 - **Google sign-in** and linking answer "This feature needs a real server, so it is not available in
   the demo."
-- **Storage administration** shows invented disk figures; the quotas of PDFs and documents and
-  permanent deletion behave as on a real server.
+- **Storage administration** shows invented disk figures; the PDF quotas and permanent deletion
+  behave as on a real server, and so do the limits of shared documents (the largest file and video,
+  and the quotas of each resident and of the community), which the administrator adjusts in
+  **Settings > Storage**.
 - **Shared documents** stay in the browser's memory: uploads (resumable, in chunks), previews and
   ZIP downloads work as on a real server, but archives are limited to 4 GiB.
 

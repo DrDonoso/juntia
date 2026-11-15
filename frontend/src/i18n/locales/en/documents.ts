@@ -177,6 +177,7 @@ export const documents = {
     policy: {
       title: 'Who can change shared documents',
       description: 'Every neighbor can upload files and create folders. Choose who can rename, move, replace (upload a new version) and delete them. The technical administrator always can, and the history records who did each change.',
+      limits: 'The largest files and the space documents can use are set in <link>Storage</link>.',
       loading: 'Loading the setting…',
       legend: 'Who can change documents',
       saved: 'Documents can now be changed by: {policy}.',
@@ -192,6 +193,37 @@ export const documents = {
         everyone: {
           label: 'Every neighbor',
           description: 'Every neighbor can rename, move, replace and delete any file or folder.',
+        },
+      },
+    },
+    limits: {
+      title: 'Shared documents limits',
+      description: 'The largest files neighbors can upload and the space documents can use. Changes apply at once to new uploads; files already stored are kept, even above a lower limit.',
+      loading: 'Loading the limits…',
+      save: 'Save limits',
+      discard: 'Discard changes',
+      saved: 'The limits of shared documents have been saved.',
+      belowCommunity: 'Documents already use {size}, more than this: every upload will be refused until enough is deleted permanently.',
+      belowNeighbors: {
+        one: '{count} neighbor already uses more than this: their uploads will be refused until they have space again.',
+        other: '{count} neighbors already use more than this: their uploads will be refused until they have space again.',
+      },
+      fields: {
+        max_file_mb: {
+          label: 'Largest file',
+          help: 'The largest file a neighbor can upload to Documents, videos excepted: PDFs, pictures, Office and OpenDocument files, text and CSV. Larger files are refused before they are sent. Default: 50 MiB.',
+        },
+        max_video_mb: {
+          label: 'Largest video',
+          help: 'The largest MP4, M4V or MOV video a neighbor can upload. Videos are stored as recorded, without converting them: a minute of phone video often takes 100 MiB or more. Default: 1 GiB.',
+        },
+        user_quota_mb: {
+          label: 'Documents quota per neighbor',
+          help: 'The space each neighbor can use with the documents they upload. Every version counts, current, earlier and deleted ones, until you delete it permanently. What the technical administrator uploads only counts towards the community quota. Default: 2 GiB.',
+        },
+        community_quota_mb: {
+          label: 'Community documents quota',
+          help: 'The space all shared documents can use together, every version and the technical administrator\'s uploads included. When it is full, new uploads are refused until you raise it or delete documents permanently. Default: 20 GiB.',
         },
       },
     },

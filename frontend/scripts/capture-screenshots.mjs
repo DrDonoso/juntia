@@ -227,9 +227,10 @@ const SHOTS = [
     async capture(page) {
       await go(page, '/admin/storage')
       await heading(page, 'Storage').waitFor()
-      await page.getByRole('button', { name: /^Delete permanently/ }).nth(2).waitFor()
-      const withdrawn = page.locator('section', { has: page.getByRole('heading', { name: 'Withdrawn PDFs', exact: true }) }).last()
-      await scrollPast(withdrawn.locator('xpath=preceding-sibling::section[1]'))
+      const limits = page.getByRole('region', { name: 'Shared documents limits' })
+      await limits.getByRole('slider').first().waitFor()
+      // The limits of shared documents, right below the usage cards.
+      await scrollPast(page.locator('.storage-summary'))
     },
   },
   {

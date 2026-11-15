@@ -270,8 +270,9 @@ same operations as the API, so the history matches the data: the house rules and
 version, meeting minutes in year folders (one moved there), an insurance folder renamed by the
 administrator with a claims log in two versions, a renamed scan, a Word letter, the sample
 neighbor's garden folder and rota, and two deletions waiting for the administrator (Daniel Mensah's
-draft and Chloe Dubois's photos folder). Documents is on in the demo and the policy is `creator`,
-like a new installation's default.
+draft and Chloe Dubois's photos folder). Documents is on in the demo, and its settings are a new
+installation's defaults: the `creator` policy, 50 MiB per file, 1 GiB per video, 2 GiB per resident
+and 20 GiB for the community.
 
 - Rules as on the server: names unique per folder ignoring case and Unicode forms (409
   `document_name_taken`), `document_name_invalid`, ten levels of folders, a thousand items per
@@ -282,16 +283,26 @@ like a new installation's default.
   `request_too_large` above), resume from `received`, expire a day after their last chunk, and each
   person keeps four open. Completing checks the bytes like the backend (PDF, pictures, ISO-BMFF
   videos, OOXML and OpenDocument with their macro checks, text) and numbers names already taken.
-  Quotas: 50 MiB per file and 1 GiB per video, 2 GiB per resident and 20 GiB for the community
-  (every stored version counts until purged). Files stay in the page's memory, and uploads and
-  stored versions take their bytes from the synthetic volume's free space.
+  Files stay in the page's memory, and uploads and stored versions take their bytes from the
+  synthetic volume's free space.
+- The limits are not fixed: the administrator sets them with the policy, in Settings > Storage
+  (`GET|PATCH /api/admin/settings/documents`, in whole MiB): the largest file and the largest video
+  (1 MiB to 10 GiB, so a single file always fits in a ZIP download) and the quotas of each resident
+  author and of the community (1 MiB to 10 TiB; every stored version counts until it is purged). A
+  `PATCH` changes only the settings it sends and answers all of them; an empty body, `null`, an
+  unknown key or anything but a whole number in range answers 422 `invalid_request`. A change
+  applies at once to the `limits` of browsing, to the size check when an upload starts, to both
+  quota checks (when an upload starts and when it completes) and to the storage summary's
+  `quota_bytes` and `resident_quota_bytes`.
 - Downloads and previews answer single `Range` requests with 206, and earlier versions download as
   `Name (version N).ext`. Archives are ZIPs with stored entries built in memory by `core/zip.ts`.
 - The administrator restores deletions (at the top level when their folder is gone, numbered when
   the name is taken) or purges them, purges earlier versions from the storage page, and sets the
-  policy; these routes work while Documents is off.
+  policy and the limits; these routes work while Documents is off.
 - Not simulated: the four concurrent archives (503 `document_archive_busy`), the disk reserve (507
   `storage_low_space`) and missing or unreadable stored files. The demo writes no ZIP64, so an
   archive over 4 GiB answers 422 `document_archive_too_large`, and office files with ZIP64, bzip2
   or LZMA entries are refused as `document_type_mismatch`. A chunk over 4 MiB is refused after the
-  session and feature checks, not before them like the server's body limit.
+  session and feature checks, not before them like the server's body limit. A limit written as a
+  number with a zero fraction (`50.0`) is accepted: JavaScript's JSON reads it as `50`, while the
+  server's strict integers refuse it.

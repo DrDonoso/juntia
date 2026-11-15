@@ -717,13 +717,33 @@ dialog.document-info, dialog.document-move { width: min(720px, calc(100vw - 30px
 .document-history { margin-top: var(--space-5); }
 .document-events > li > p { margin: 0; font-size: var(--text-sm); overflow-wrap: anywhere; }
 .document-policy fieldset { display: grid; gap: var(--space-3); border: 0; padding: 0; margin: var(--space-3) 0 0; }
+.document-policy p a { text-decoration: underline; text-underline-offset: 3px; }
 .document-policy-option { align-items: flex-start; gap: var(--space-3); }
 .document-policy-option input { margin-top: 3px; }
 .document-policy-option > span { display: grid; gap: 2px; }
 .document-deleted-list > li { align-items: center; }
 .document-deleted-list > li > .icon { flex: 0 0 auto; }
+/* Limits of shared documents (Storage) and their sizes with a slider and a box (size-field.tsx) */
+.document-limits { scroll-margin-top: calc(var(--topbar-height) + var(--space-4)); }
+.document-limits-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: var(--space-5) var(--space-6); margin: var(--space-4) 0; }
+.size-field { display: grid; align-content: start; gap: var(--space-2); min-width: 0; }
+.size-field-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-width: 0; }
+.size-field-label { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
+.size-field-label label { display: inline; color: var(--text); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.size-field-value { color: var(--primary); font-family: var(--font-num); font-size: var(--text-sm); font-weight: 600; white-space: nowrap; }
+.size-field-controls { display: flex; align-items: flex-start; gap: var(--space-3); }
+.size-field-slider { flex: 1 1 auto; min-width: 0; }
+.size-field-slider input[type="range"] { display: block; width: 100%; min-height: 36px; margin: 0; padding: 0; border: 0; background: transparent; accent-color: var(--primary); cursor: pointer; }
+.size-field-scale { display: flex; justify-content: space-between; gap: var(--space-2); color: var(--text-muted); font-size: var(--text-xs); }
+.size-field-number { display: inline-flex; align-items: center; gap: var(--space-2); flex: 0 0 auto; color: var(--text-muted); font-size: var(--text-sm); }
+.size-field-number input { width: 11ch; text-align: right; font-family: var(--font-num); }
+.size-field .notice { margin: 0; }
+.info-tip { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 30px; min-width: 30px; min-height: 30px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--text-muted); cursor: help; }
+.info-tip:hover, .info-tip[data-focus-visible] { background: rgba(var(--primary-rgb), .08); color: var(--primary); filter: none; }
+.info-tooltip { max-width: min(340px, calc(100vw - 24px)); padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); box-shadow: var(--shadow); font-size: 12px; line-height: 1.5; z-index: 1000; }
 @media (pointer: coarse) {
   .document-check { opacity: 1; }
+  .info-tip { width: 44px; min-width: 44px; min-height: 44px; }
 }
 @media (max-width: 720px) {
   .documents-toolbar { width: 100%; justify-content: flex-start; }

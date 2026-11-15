@@ -7,7 +7,7 @@ import type {
   StoredAttachmentPage, StoredImageOut, StoredImagePage,
 } from './api/schema.gen'
 import { byteSize } from './community-action-shared'
-import { DocumentNeighborsCard, DocumentStorageCard, PreviousDocumentVersions } from './documents-admin'
+import { DocumentLimitsCard, DocumentNeighborsCard, DocumentStorageCard, PreviousDocumentVersions } from './documents-admin'
 import { compareText, dateTimeFormat, formatNumber, useI18n } from './i18n'
 import { Icon } from './icons'
 import { Modal, Notice, Pagination, authorName, connectionTime, useAction } from './shared'
@@ -17,8 +17,6 @@ const SETTINGS = {
   neighbor: 'ACTION_STORAGE_USER_QUOTA_MB',
   community: 'ACTION_STORAGE_COMMUNITY_QUOTA_MB',
   reserve: 'MIN_FREE_DISK_MB',
-  documentNeighbor: 'DOCUMENT_STORAGE_USER_QUOTA_MB',
-  documentCommunity: 'DOCUMENT_STORAGE_COMMUNITY_QUOTA_MB',
 } as const
 
 type Level = 'normal' | 'warning' | 'full'
@@ -368,8 +366,6 @@ function LimitsHelp({ storage }: { storage: StorageOut }) {
   const limits = [
     { label: 'storage.help.neighborQuota', bytes: storage.resident_quota_bytes, setting: SETTINGS.neighbor },
     { label: 'storage.help.communityQuota', bytes: storage.community.quota_bytes, setting: SETTINGS.community },
-    { label: 'storage.help.documentNeighborQuota', bytes: storage.documents.resident_quota_bytes, setting: SETTINGS.documentNeighbor },
-    { label: 'storage.help.documentCommunityQuota', bytes: storage.documents.quota_bytes, setting: SETTINGS.documentCommunity },
     { label: 'storage.help.reserve', bytes: storage.disk.reserve_bytes, setting: SETTINGS.reserve },
   ] as const
   return <section className="card storage-help" aria-labelledby={heading}>
@@ -410,6 +406,7 @@ export function StoragePage() {
         <DocumentStorageCard storage={summary.data.documents} />
         <DiskCard disk={summary.data.disk} />
       </div>
+      <DocumentLimitsCard storage={summary.data.documents} />
       <NeighborsCard storage={summary.data} />
     </>}
     <WithdrawnPDFs residents={summary.data?.residents ?? []} />

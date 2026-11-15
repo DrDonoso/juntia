@@ -8,8 +8,8 @@ from uuid import uuid4
 import pytest
 
 from juntia import community_documents
-from juntia.config import MAX_STORAGE_MB, Settings
-from juntia.contracts import reader_route
+from juntia.config import Settings
+from juntia.contracts import DOCUMENT_QUOTA_LIMIT_MB, DOCUMENT_SIZE_LIMIT_MB, reader_route
 from juntia.document_files import (
     check_content,
     checked_name,
@@ -27,10 +27,9 @@ from tests.test_feature_flags import set_flag
 from tests.test_users import current_user, visitor
 from tests.test_users import mailbox as mailbox
 
-DOCUMENT_FIELDS = (
-    "DOCUMENT_MAX_FILE_MB", "DOCUMENT_MAX_VIDEO_MB", "DOCUMENT_STORAGE_USER_QUOTA_MB",
-    "DOCUMENT_STORAGE_COMMUNITY_QUOTA_MB",
-)
+LIMITS = {
+    "max_file_mb": 50, "max_video_mb": 1024, "user_quota_mb": 2048, "community_quota_mb": 20480,
+}
 OOXML_MAIN = "application/vnd.openxmlformats-officedocument.{}.main+xml"
 
 
@@ -42,6 +41,12 @@ def enabled(admin):
 
 def refused(response, status, code):
     assert (response.status_code, response.json()["code"]) == (status, code), response.text
+
+
+def set_limits(admin, **values):
+    response = admin.patch("/api/admin/settings/documents", json=values)
+    assert response.status_code == 200, response.text
+    return response.json()
 
 
 def pdf(text="Synthetic minutes", size=0):
@@ -276,25 +281,41 @@ def test_names_work_on_every_system():
     assert not reader_route("/documents/folders/0") and not reader_route("/documents/files/1")
 
 
-def test_document_settings_are_validated(monkeypatch):
-    for name in DOCUMENT_FIELDS:
-        monkeypatch.delenv(name, raising=False)
+def test_the_administrator_sets_the_limits_of_documents(admin, config, monkeypatch):
+    path = "/api/admin/settings/documents"
+    # Available while Documents is off, with the defaults of a new installation.
+    assert admin.get(path).json() == {"manage_policy": "creator", **LIMITS}
+    # Only what is sent changes; the extremes are accepted.
+    changed = {**LIMITS, "max_file_mb": 1, "community_quota_mb": DOCUMENT_QUOTA_LIMIT_MB}
+    assert set_limits(admin, max_file_mb=1, community_quota_mb=DOCUMENT_QUOTA_LIMIT_MB) == {
+        "manage_policy": "creator", **changed,
+    }
+    assert set_limits(admin, max_video_mb=DOCUMENT_SIZE_LIMIT_MB, user_quota_mb=1) == {
+        "manage_policy": "creator", **changed, "max_video_mb": DOCUMENT_SIZE_LIMIT_MB,
+        "user_quota_mb": 1,
+    }
+    # A single file or video fits in a ZIP download.
+    assert DOCUMENT_SIZE_LIMIT_MB * MIB == community_documents.ARCHIVE_MAX_BYTES
+    saved = admin.get(path).json()
+    for invalid in (
+        {}, {"max_file_mb": None}, {"max_file_mb": 0}, {"max_file_mb": DOCUMENT_SIZE_LIMIT_MB + 1},
+        {"max_video_mb": -1}, {"user_quota_mb": 0},
+        {"community_quota_mb": DOCUMENT_QUOTA_LIMIT_MB + 1}, {"max_file_mb": 1.5},
+        {"max_file_mb": "50"}, {"max_file_mb": True}, {"quota_mb": 5},
+    ):
+        refused(admin.patch(path, json=invalid), 422, "invalid_request")
+    assert admin.get(path).json() == saved
+    with visitor(config) as anonymous:
+        refused(anonymous.get(path), 401, "authentication_required")
+        refused(anonymous.patch(path, json={"max_file_mb": 5}), 401, "authentication_required")
+    # The environment no longer sets them: leftover variables are ignored.
+    monkeypatch.setenv("DOCUMENT_MAX_FILE_MB", "0")
     local = {
         "database_url": "sqlite+aiosqlite:///:memory:", "admin_username": "admin",
         "admin_password": "a-long-synthetic-password", "auth_secret": "s" * 32,
         "auth_cookie_secure": False,
     }
-    settings = Settings(_env_file=None, **local)
-    assert (
-        settings.document_max_file_mb, settings.document_max_video_mb,
-        settings.document_storage_user_quota_mb, settings.document_storage_community_quota_mb,
-    ) == (50, 1024, 2048, 20480)
-    for name in DOCUMENT_FIELDS:
-        for invalid in ("0", str(MAX_STORAGE_MB + 1), "1.5", "plenty"):
-            monkeypatch.setenv(name, invalid)
-            with pytest.raises(ValueError, match=name.lower()):
-                Settings(_env_file=None, **local)
-        monkeypatch.delenv(name)
+    assert not hasattr(Settings(_env_file=None, **local), "document_max_file_mb")
 
 
 def test_documents_are_off_by_default_and_need_a_session(admin, config):
@@ -307,7 +328,9 @@ def test_documents_are_off_by_default_and_need_a_session(admin, config):
     ), 404, "documents_disabled")
     # The administration keeps working while the section is off.
     assert admin.get("/api/admin/documents/deleted").json()["items"] == []
-    assert admin.get("/api/admin/settings/documents").json() == {"manage_policy": "creator"}
+    assert admin.get("/api/admin/settings/documents").json() == {
+        "manage_policy": "creator", **LIMITS,
+    }
     set_flag(admin, "documents", True)
     with visitor(config) as anonymous:
         refused(anonymous.get("/api/documents/browse"), 401, "authentication_required")
@@ -442,22 +465,27 @@ def test_type_size_and_storage_limits(actors, enabled, config, monkeypatch):
     a, b, first, _ = actors
     refused(start(a, "programa.exe", b"MZ")[1], 415, "document_type_unsupported")
     refused(start(a, "vacio.txt", b"")[1], 422, "document_file_empty")
-    config.document_max_file_mb = 1
-    config.document_max_video_mb = 2
+    # The administrator's limits apply at once, and residents see them when browsing.
+    set_limits(enabled, max_file_mb=1, max_video_mb=2)
+    assert {key: browse(a)["limits"][key] for key in ("max_file_bytes", "max_video_bytes")} == {
+        "max_file_bytes": MIB, "max_video_bytes": 2 * MIB,
+    }
     refused(start(a, "grande.pdf", pdf(size=MIB + 1))[1], 413, "document_too_large")
     assert start(a, "video.mov", mp4(payload=MIB + 100))[1].status_code == 201
     refused(start(a, "largo.mp4", mp4(payload=2 * MIB))[1], 413, "document_too_large")
-    config.document_storage_user_quota_mb = 1
+    set_limits(enabled, user_quota_mb=1)
     uploaded(a, "uno.pdf", pdf(size=600_000))
     refused(start(a, "dos.pdf", pdf(size=600_000))[1], 409, "document_storage_user_quota")
     # The binding check happens on completion, when the bytes become a version.
     upload_id, response = start(b, "dos.pdf", pdf(size=600_000))
     assert response.status_code == 201
     send(b, upload_id, pdf(size=600_000))
-    config.document_storage_community_quota_mb = 1
+    set_limits(enabled, community_quota_mb=1)
     refused(b.post(f"/api/documents/uploads/{upload_id}/complete"), 409,
             "document_storage_community_quota")
-    config.document_storage_community_quota_mb = 20480
+    summary = enabled.get("/api/admin/storage").json()["documents"]
+    assert (summary["quota_bytes"], summary["resident_quota_bytes"]) == (MIB, MIB)
+    set_limits(enabled, community_quota_mb=20480)
     assert b.post(f"/api/documents/uploads/{upload_id}/complete").status_code == 200
     free_space(monkeypatch, config, 1024 * MIB)
     refused(start(b, "tres.pdf", pdf())[1], 507, "storage_low_space")
@@ -552,7 +580,7 @@ def test_who_manages_items_follows_the_administrators_policy(actors, enabled):
     assert response.status_code == 401
     assert enabled.patch("/api/admin/settings/documents", json={
         "manage_policy": "administrator",
-    }).json() == {"manage_policy": "administrator"}
+    }).json() == {"manage_policy": "administrator", **LIMITS}
     assert browse(a, shared["id"])["policy"] == "administrator"
     refused(edit(a, own, name="Propio"), 403, "document_permission_required")
     assert not any(item["can_manage"] for item in browse(a, shared["id"])["files"])

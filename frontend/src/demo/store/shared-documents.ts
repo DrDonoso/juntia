@@ -6,7 +6,7 @@
  * Deleting hides an item, and everything inside a folder, as one deletion that only the
  * administrator sees, restores or purges. Every item keeps a history of who created, uploaded,
  * renamed, moved, deleted, restored and purged it. Files arrive in resumable chunks of at most
- * 4 MiB.
+ * 4 MiB, within the largest file and video sizes and the byte quotas the administrator sets.
  *
  * The handlers parse a request and call an operation, which checks the rest in the backend's
  * order. The data of a page load replays ../scenario/shared-documents.ts through the same
@@ -43,17 +43,20 @@ export const DOCUMENT_PAGE_SIZE = 20
 /** Largest chunk of an upload (`CHUNK_BYTES`). */
 export const CHUNK_BYTES = 4 * MIB
 
-/** `DOCUMENT_MAX_FILE_MB` and `DOCUMENT_MAX_VIDEO_MB`, the backend's defaults. */
-export const MAX_FILE_BYTES = 50 * MIB
-export const MAX_VIDEO_BYTES = 1024 * MIB
-
 /**
- * `DOCUMENT_STORAGE_USER_QUOTA_MB` (2 GiB per resident author) and
- * `DOCUMENT_STORAGE_COMMUNITY_QUOTA_MB` (20 GiB): every stored version counts, current, earlier or
- * deleted, until the administrator purges it.
+ * The settings of a new installation: who manages items, the largest file (videos excepted) and the
+ * largest video, and the byte budgets of each resident author and of the community, in whole MiB.
+ * Every stored version counts towards the budgets, current, earlier or deleted, until it is purged.
  */
-export const DOCUMENT_USER_QUOTA_BYTES = 2048 * MIB
-export const DOCUMENT_COMMUNITY_QUOTA_BYTES = 20480 * MIB
+export const DEFAULT_DOCUMENT_SETTINGS: Readonly<DocumentSettings> = {
+  manage_policy: 'creator', max_file_mb: 50, max_video_mb: 1024, user_quota_mb: 2048, community_quota_mb: 20480,
+}
+
+/** The largest file or video limit the administrator may choose, 10 GiB: a single file always fits in a ZIP download. */
+export const DOCUMENT_SIZE_LIMIT_MB = 10 * 1024
+
+/** The largest quota the administrator may choose, 10 TiB. */
+export const DOCUMENT_QUOTA_LIMIT_MB = 10 * 1024 * 1024
 
 export const ARCHIVE_MAX_ITEMS = 100
 export const ARCHIVE_MAX_FILES = 5000
@@ -173,7 +176,8 @@ export interface DemoDocumentUpload {
 }
 
 export interface SharedDocumentsState {
-  policy: DocumentPolicy
+  /** The administrator's policy and limits, which apply at once to browsing, uploads and quotas. */
+  settings: DocumentSettings
   folders: DemoDocumentFolder[]
   documents: DemoDocument[]
   versions: DemoDocumentVersion[]
@@ -383,13 +387,13 @@ function folderStats(documents: SharedDocumentsState, folder: DemoDocumentFolder
 
 export function folderOut(documents: SharedDocumentsState, folder: DemoDocumentFolder, actor: ActorOut): DocumentFolderOut {
   const stats = folderStats(documents, folder, actor)
-  const manage = mayManage(folder, actor, documents.policy)
+  const manage = mayManage(folder, actor, documents.settings.manage_policy)
   return {
     id: folder.id, parent_id: folder.parentId, name: folder.name, version: folder.version, author: actorOut(folder.author),
     created_at: folder.createdAt, updated_at: folder.updatedAt, file_count: stats.files, folder_count: stats.folders,
     size: stats.size, can_manage: manage,
     // Under the "creator" policy a resident deletes a folder only if they created all it holds.
-    can_delete: manage && (actor.kind === 'administrator' || documents.policy !== 'creator' || stats.owned),
+    can_delete: manage && (actor.kind === 'administrator' || documents.settings.manage_policy !== 'creator' || stats.owned),
   }
 }
 
@@ -414,7 +418,7 @@ export function documentOut(documents: SharedDocumentsState, document: DemoDocum
     previewable: documentType(current.extension).previewType !== null, version: document.version,
     author: actorOut(document.author), created_at: document.createdAt, updated_at: document.updatedAt,
     current: versionOut(current), version_count: document.currentNumber,
-    can_manage: mayManage(document, actor, documents.policy),
+    can_manage: mayManage(document, actor, documents.settings.manage_policy),
   }
 }
 
@@ -446,10 +450,11 @@ export function historyPage(documents: SharedDocumentsState, item: Item, page: n
   return { ...info, items: items.map(eventOut) }
 }
 
-export function documentLimits(): DocumentLimitsOut {
+/** `limits`: the fixed limits, and the largest file and video the administrator chose. */
+export function documentLimits(settings: DocumentSettings): DocumentLimitsOut {
   return {
-    extensions: [...DOCUMENT_TYPES.keys()].sort(), video_extensions: [...VIDEO_EXTENSIONS], max_file_bytes: MAX_FILE_BYTES,
-    max_video_bytes: MAX_VIDEO_BYTES, chunk_bytes: CHUNK_BYTES, max_folder_items: MAX_FOLDER_ITEMS, max_depth: MAX_DEPTH,
+    extensions: [...DOCUMENT_TYPES.keys()].sort(), video_extensions: [...VIDEO_EXTENSIONS], max_file_bytes: settings.max_file_mb * MIB,
+    max_video_bytes: settings.max_video_mb * MIB, chunk_bytes: CHUNK_BYTES, max_folder_items: MAX_FOLDER_ITEMS, max_depth: MAX_DEPTH,
     archive_max_items: ARCHIVE_MAX_ITEMS, archive_max_files: ARCHIVE_MAX_FILES, archive_max_bytes: ARCHIVE_MAX_BYTES,
   }
 }
@@ -461,7 +466,7 @@ export function browse(documents: SharedDocumentsState, folderId: number | null,
     folder: folder && folderOut(documents, folder, actor), path: refs(folderPath(documents, folderId)),
     folders: childFolders(documents, folderId).map(child => folderOut(documents, child, actor)),
     files: folderFiles(documents, folderId).map(document => documentOut(documents, document, actor)),
-    policy: documents.policy, limits: documentLimits(),
+    policy: documents.settings.manage_policy, limits: documentLimits(documents.settings),
   }
 }
 
@@ -536,7 +541,7 @@ function applyEdit(
 export function editFolder(documents: SharedDocumentsState, actor: ActorOut, folderId: number, edit: ItemEdit, at: string): DemoDocumentFolder {
   const folder = activeFolder(documents, folderId)
   if (folder.version !== edit.version) throw stale()
-  requireManage(folder, actor, documents.policy)
+  requireManage(folder, actor, documents.settings.manage_policy)
   const name = edit.name === null ? folder.name : checkedName(edit.name)
   const moving = edit.folderId !== undefined && edit.folderId !== folder.parentId
   const destination = moving ? edit.folderId ?? null : folder.parentId
@@ -561,7 +566,7 @@ export function editFolder(documents: SharedDocumentsState, actor: ActorOut, fol
 export function editDocument(documents: SharedDocumentsState, actor: ActorOut, documentId: number, edit: ItemEdit, at: string): DemoDocument {
   const document = activeDocument(documents, documentId)
   if (document.version !== edit.version) throw stale()
-  requireManage(document, actor, documents.policy)
+  requireManage(document, actor, documents.settings.manage_policy)
   const name = edit.name === null ? document.name : documentName(edit.name, currentVersion(documents, document).extension)
   const moving = edit.folderId !== undefined && edit.folderId !== document.folderId
   const destination = moving ? edit.folderId ?? null : document.folderId
@@ -602,9 +607,9 @@ function deleteItems(
 export function deleteFolder(documents: SharedDocumentsState, actor: ActorOut, folderId: number, expected: number, at: string): void {
   const folder = activeFolder(documents, folderId)
   if (folder.version !== expected) throw stale()
-  requireManage(folder, actor, documents.policy)
+  requireManage(folder, actor, documents.settings.manage_policy)
   const { folders, files } = subtree(documents, folder)
-  if (actor.kind !== 'administrator' && documents.policy === 'creator' && ![...folders, ...files].every(item => owns(item, actor))) {
+  if (actor.kind !== 'administrator' && documents.settings.manage_policy === 'creator' && ![...folders, ...files].every(item => owns(item, actor))) {
     throw new DemoApiError('document_folder_not_owned', 403)
   }
   deleteItems(documents, actor, folder, folders, files, at)
@@ -613,7 +618,7 @@ export function deleteFolder(documents: SharedDocumentsState, actor: ActorOut, f
 export function deleteDocument(documents: SharedDocumentsState, actor: ActorOut, documentId: number, expected: number, at: string): void {
   const document = activeDocument(documents, documentId)
   if (document.version !== expected) throw stale()
-  requireManage(document, actor, documents.policy)
+  requireManage(document, actor, documents.settings.manage_policy)
   deleteItems(documents, actor, document, [], [document], at)
 }
 
@@ -623,14 +628,15 @@ function totalSize(versions: readonly DemoDocumentVersion[]): number {
   return versions.reduce((sum, version) => sum + version.size, 0)
 }
 
-/** `check_quota`: the uploader's budget (residents only), then the community's. */
+/** `check_quota`: the uploader's budget (residents only), then the community's, as the administrator set them now. */
 export function checkDocumentQuota(documents: SharedDocumentsState, actor: ActorOut, size: number): void {
   const stored = documents.versions.filter(version => version.purgedAt === null)
+  const { user_quota_mb, community_quota_mb } = documents.settings
   if (actor.kind === 'resident' && actor.user_id !== null) {
     const own = stored.filter(version => version.author.kind === 'resident' && version.author.user_id === actor.user_id)
-    if (totalSize(own) + size > DOCUMENT_USER_QUOTA_BYTES) throw new DemoApiError('document_storage_user_quota', 409)
+    if (totalSize(own) + size > user_quota_mb * MIB) throw new DemoApiError('document_storage_user_quota', 409)
   }
-  if (totalSize(stored) + size > DOCUMENT_COMMUNITY_QUOTA_BYTES) throw new DemoApiError('document_storage_community_quota', 409)
+  if (totalSize(stored) + size > community_quota_mb * MIB) throw new DemoApiError('document_storage_community_quota', 409)
 }
 
 /** `DocumentUploadIn`, validated. */
@@ -662,7 +668,8 @@ function discard(documents: SharedDocumentsState, upload: DemoDocumentUpload): v
 export function startUpload(documents: SharedDocumentsState, actor: ActorOut, input: UploadInput, at: string): DemoDocumentUpload {
   const { name, extension } = uploadName(input.name)
   if (input.size === 0) throw new DemoApiError('document_file_empty', 422)
-  if (input.size > (documentType(extension).kind === 'video' ? MAX_VIDEO_BYTES : MAX_FILE_BYTES)) throw new DemoApiError('document_too_large', 413)
+  const { max_file_mb, max_video_mb } = documents.settings
+  if (input.size > (documentType(extension).kind === 'video' ? max_video_mb : max_file_mb) * MIB) throw new DemoApiError('document_too_large', 413)
   const existing = documents.uploads.find(upload => upload.id === input.uploadId)
   if (existing) {
     const same = owns(existing, actor) && existing.name === name && existing.size === input.size
@@ -673,7 +680,7 @@ export function startUpload(documents: SharedDocumentsState, actor: ActorOut, in
   if (documents.versions.some(version => version.id === input.uploadId)) throw new DemoApiError('document_upload_conflict', 409)
   if (input.documentId !== null) {
     const document = activeDocument(documents, input.documentId)
-    requireManage(document, actor, documents.policy)
+    requireManage(document, actor, documents.settings.manage_policy)
     if (currentVersion(documents, document).extension !== extension) throw new DemoApiError('document_version_extension', 422)
   } else {
     if (input.folderId !== null) activeFolder(documents, input.folderId)
@@ -765,7 +772,8 @@ export async function completeUpload(documents: SharedDocumentsState, actor: Act
 /**
  * The end of `complete_upload`, for a file whose content is known to match its type (the
  * scenario's): a new version of a document, or a new document named like the file, numbered when
- * the name is taken.
+ * the name is taken. The policy and the quotas are the administrator's current ones, which may have
+ * changed since the upload began.
  */
 export function publishUpload(documents: SharedDocumentsState, actor: ActorOut, uploadId: string, at: string): DemoDocument {
   const upload = documents.uploads.find(item => item.id === uploadId)
@@ -780,7 +788,7 @@ export function publishUpload(documents: SharedDocumentsState, actor: ActorOut, 
       discard(documents, upload)
       throw new DemoApiError('document_deleted', 409)
     }
-    if (!mayManage(target, actor, documents.policy)) {
+    if (!mayManage(target, actor, documents.settings.manage_policy)) {
       discard(documents, upload)
       throw new DemoApiError('document_permission_required', 403)
     }
@@ -1021,7 +1029,7 @@ export function purgeDocumentVersion(documents: SharedDocumentsState, actor: Act
 
 function emptySharedDocuments(): SharedDocumentsState {
   return {
-    policy: 'creator', folders: [], documents: [], versions: [], deletions: [], events: [], uploads: [],
+    settings: { ...DEFAULT_DOCUMENT_SETTINGS }, folders: [], documents: [], versions: [], deletions: [], events: [], uploads: [],
     sequences: { folder: new IdSequence(), document: new IdSequence(), event: new IdSequence(), activity: new IdSequence() },
     random: demoRandom('documents:deletions'),
   }

@@ -547,7 +547,19 @@ export interface DocumentResidentStorageOut {
 }
 
 export interface DocumentSettings {
+  community_quota_mb: number
   manage_policy: 'creator' | 'administrator' | 'everyone'
+  max_file_mb: number
+  max_video_mb: number
+  user_quota_mb: number
+}
+
+export interface DocumentSettingsEdit {
+  community_quota_mb?: number | null
+  manage_policy?: 'creator' | 'administrator' | 'everyone' | null
+  max_file_mb?: number | null
+  max_video_mb?: number | null
+  user_quota_mb?: number | null
 }
 
 export interface DocumentStorageOut {

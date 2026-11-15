@@ -64,6 +64,14 @@ class State(Base):
     documents_manage_policy: Mapped[str] = mapped_column(
         String(20), default="creator", server_default="creator"
     )
+    # Limits of shared documents in whole MiB, set by the administrator in Storage: the largest
+    # file (videos excepted) and video, and the byte budgets per resident and for the community.
+    documents_max_file_mb: Mapped[int] = mapped_column(default=50, server_default="50")
+    documents_max_video_mb: Mapped[int] = mapped_column(default=1024, server_default="1024")
+    documents_user_quota_mb: Mapped[int] = mapped_column(default=2048, server_default="2048")
+    documents_community_quota_mb: Mapped[int] = mapped_column(
+        default=20480, server_default="20480"
+    )
 
 
 class Account(Base):

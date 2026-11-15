@@ -460,7 +460,8 @@ Purging again is harmless, and if the file cannot be deleted nothing changes
 **Documents** (`/documents`) is off by default: turn it on in **Settings > Features**, where you
 also choose who can rename, move, replace and delete documents (whoever created them, only the
 technical administrator, or every neighbor). It has its own limits and quotas, separate from those
-of actions:
+of actions. They are not environment variables: change them in **Settings > Storage > Shared
+documents limits**, with a slider or an exact size in whole MiB for each, and they apply at once.
 
 - **Types.** PDF; JPG, PNG, GIF, WebP and HEIC/HEIF pictures; Word, Excel and PowerPoint (DOCX,
   XLSX, PPTX) and OpenDocument (ODT, ODS, ODP) files; plain text and CSV; and MP4, M4V and MOV
@@ -468,8 +469,9 @@ of actions:
   content matches it: Office and OpenDocument files with macros, scripts, ActiveX controls or
   embedded objects are refused, and so is any file whose content is not of its type. See the
   [security model](security-model.md#shared-documents) for what these checks do and do not cover.
-- **Sizes.** Up to `DOCUMENT_MAX_FILE_MB` per file (50 MiB by default) and `DOCUMENT_MAX_VIDEO_MB`
-  per video (1024 MiB). Videos are stored as they are, without converting them.
+- **Sizes.** Up to 50 MiB per file and 1 GiB per video by default, adjustable from 1 MiB to 10 GiB
+  (the size of a ZIP download). They apply to uploads started afterwards. Videos are stored as they
+  are, without converting them.
 - **Uploads in chunks.** The browser sends each file in chunks of 256 KiB to 4 MiB, sized to take a
   few seconds each on the current connection, and the server assembles it in `documents/` on the
   uploads volume. An interrupted upload continues where it stopped when it is retried within a day
@@ -478,11 +480,13 @@ of actions:
   also removes partial files that no upload refers to. The type is checked once the file is
   complete, so a large video may show "Checking the file…" for a moment.
 - **Quotas.** Every stored version counts, current, earlier or deleted, until the administrator
-  purges it: towards the quota of whoever uploaded that version (`DOCUMENT_STORAGE_USER_QUOTA_MB`,
-  2048 MiB by default) and towards the community quota (`DOCUMENT_STORAGE_COMMUNITY_QUOTA_MB`,
-  20480 MiB), which also counts what the technical administrator uploads. Both are checked when an
-  upload starts and again when it completes. Unfinished uploads count towards neither, but each
-  chunk must leave `MIN_FREE_DISK_MB` free on the uploads volume.
+  purges it: towards the documents quota of whoever uploaded that version (2 GiB by default) and
+  towards the community documents quota (20 GiB), which also counts what the technical
+  administrator uploads; both are adjustable from 1 MiB to 10 TiB. Both are checked when an upload
+  starts and again when it completes, with the values saved at that moment. Lowering a quota below
+  the current usage is allowed: the page warns about it, and uploads are refused until enough is
+  purged. Unfinished uploads count towards neither, but each chunk must leave `MIN_FREE_DISK_MB`
+  free on the uploads volume.
 - **Folders.** Up to 10 levels of folders and 1000 items (files and folders) in each folder. Names
   have up to 200 characters without `/ \ : * ? " < > |`, are unique in their folder regardless of
   case, and are not names Windows reserves (such as `CON` or `NUL`), so that downloaded ZIP files
@@ -497,7 +501,7 @@ of actions:
 | `document_type_unsupported` | 415 | The extension is not one of the accepted types. |
 | `document_type_mismatch` | 415 | The content does not match the extension. The upload is discarded. |
 | `document_macros_unsupported` | 415 | The Office or OpenDocument file contains macros, scripts, ActiveX controls or embedded objects. The upload is discarded. |
-| `document_too_large` | 413 | The file exceeds `DOCUMENT_MAX_FILE_MB` or, for videos, `DOCUMENT_MAX_VIDEO_MB`. |
+| `document_too_large` | 413 | The file exceeds the largest file or, for videos, the largest video set in Storage. |
 | `storage_low_space` | 507 | The free-disk reserve would be crossed. |
 | `document_storage_user_quota` | 409 | The uploader's documents quota would be exceeded. |
 | `document_storage_community_quota` | 409 | The community documents quota would be exceeded. |

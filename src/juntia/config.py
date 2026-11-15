@@ -94,16 +94,10 @@ class Settings(LanguageSettings):
     # administrator, who has no own budget).
     action_storage_user_quota_mb: int = 250
     action_storage_community_quota_mb: int = 2048
-    # Free space kept on the upload volume (1 GiB): action PDFs, images and statement imports that
-    # would leave less free space are refused.
+    # Free space kept on the upload volume (1 GiB): action PDFs, images, shared documents and
+    # statement imports that would leave less free space are refused. The limits of shared
+    # documents are not environment settings: the administrator sets them in Storage.
     min_free_disk_mb: int = 1024
-    # Shared documents, in MiB: the largest file (videos have their own limit) and the byte
-    # budgets. Every stored version counts, current, earlier or deleted, until the administrator
-    # purges it: 2 GiB per resident author and 20 GiB for the whole community.
-    document_max_file_mb: int = 50
-    document_max_video_mb: int = 1024
-    document_storage_user_quota_mb: int = 2048
-    document_storage_community_quota_mb: int = 20480
     preview_hours: int = 24
     openai_api_key: SecretStr = SecretStr("")
     openai_base_url: str = "https://api.openai.com/v1"
@@ -193,8 +187,6 @@ class Settings(LanguageSettings):
 
     @field_validator(
         "action_storage_user_quota_mb", "action_storage_community_quota_mb", "min_free_disk_mb",
-        "document_max_file_mb", "document_max_video_mb", "document_storage_user_quota_mb",
-        "document_storage_community_quota_mb",
     )
     @classmethod
     def valid_storage_size(cls, value: int, info: ValidationInfo) -> int:

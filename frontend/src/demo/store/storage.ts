@@ -15,10 +15,7 @@ import { DemoApiError } from '../core/errors'
 import { findResident } from './core'
 import { compareText, type CommunityState, type DemoActionAttachment, type DemoCommunityImage } from './community-model'
 import { casefold } from './community-text'
-import {
-  DOCUMENT_COMMUNITY_QUOTA_BYTES, DOCUMENT_USER_QUOTA_BYTES, findDocument, folderNames, folderPath, versionOut, type DemoDocument,
-  type DemoDocumentVersion, type SharedDocumentsState,
-} from './shared-documents'
+import { findDocument, folderNames, folderPath, versionOut, type DemoDocument, type DemoDocumentVersion, type SharedDocumentsState } from './shared-documents'
 
 export const MIB = 1024 * 1024
 
@@ -165,8 +162,8 @@ function versionDocument(documents: SharedDocumentsState, version: DemoDocumentV
 
 /**
  * `document_storage`: the shared documents' stored versions (current, earlier and of deleted
- * documents) by uploader, with their own byte budgets, and the uploads still being received.
- * Deleted accounts are named by the author name of their latest version.
+ * documents) by uploader, with the byte budgets the administrator set for them, and the uploads
+ * still being received. Deleted accounts are named by the author name of their latest version.
  */
 export function documentStorage(documents: SharedDocumentsState): DocumentStorageOut {
   const stored = storedDocumentVersions(documents)
@@ -181,7 +178,7 @@ export function documentStorage(documents: SharedDocumentsState): DocumentStorag
     if (userId !== null) residents.set(userId, [...residents.get(userId) ?? [], version])
   }
   return {
-    quota_bytes: DOCUMENT_COMMUNITY_QUOTA_BYTES, resident_quota_bytes: DOCUMENT_USER_QUOTA_BYTES,
+    quota_bytes: documents.settings.community_quota_mb * MIB, resident_quota_bytes: documents.settings.user_quota_mb * MIB,
     stored_bytes: totalSize(stored), current_bytes: totalSize(current), previous_bytes: totalSize(previous),
     deleted_bytes: totalSize(deleted), files: current.length, previous_versions: previous.length,
     deleted_files: new Set(deleted.map(version => version.documentId)).size,

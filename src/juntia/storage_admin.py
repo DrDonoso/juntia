@@ -25,10 +25,17 @@ from .community_actions import (
     page_info,
     session_actor,
 )
-from .community_documents import actor_of, chain, lock_documents, record, version_out
+from .community_documents import (
+    actor_of,
+    chain,
+    document_settings,
+    lock_documents,
+    record,
+    version_out,
+)
 from .community_documents import names as location_names
 from .community_images import file_response, image_path, remove_image_file, stored_image_out
-from .config import Language, Settings
+from .config import Language
 from .contracts import (
     ActionAttachmentOut,
     ActionChange,
@@ -162,12 +169,13 @@ async def storage_summary(db: DB, request: Request) -> StorageOut:
             free_bytes=space.free if space else None,
             reserve_bytes=config.min_free_disk_mb * MIB,
         ),
-        documents=await document_storage(db, config),
+        documents=await document_storage(db),
     )
 
 
-async def document_storage(db: AsyncSession, config: Settings) -> DocumentStorageOut:
+async def document_storage(db: AsyncSession) -> DocumentStorageOut:
     """Stored versions of shared documents, by state and by uploader, and uploads in progress."""
+    stored_settings = await document_settings(db)
     category = case(
         (Document.deleted_at.is_not(None), "deleted"),
         (DocumentVersion.number == Document.current_number, "current"),
@@ -223,8 +231,8 @@ async def document_storage(db: AsyncSession, config: Settings) -> DocumentStorag
         select(func.coalesce(func.sum(DocumentUpload.received), 0), func.count())
     )).one()
     return DocumentStorageOut(
-        quota_bytes=config.document_storage_community_quota_mb * MIB,
-        resident_quota_bytes=config.document_storage_user_quota_mb * MIB,
+        quota_bytes=stored_settings.community_quota_mb * MIB,
+        resident_quota_bytes=stored_settings.user_quota_mb * MIB,
         stored_bytes=current[0] + previous[0] + deleted[0], current_bytes=current[0],
         previous_bytes=previous[0], deleted_bytes=deleted[0], files=current[1],
         previous_versions=previous[1], deleted_files=deleted[2],

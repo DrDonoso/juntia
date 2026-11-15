@@ -82,7 +82,7 @@ describe('the shared documents scenario', () => {
     ])
     const earlier = state.documents.filter(document => document.currentNumber > 1)
     expect(earlier.map(document => [document.name, document.author.kind])).toEqual([['House rules.pdf', 'administrator'], ['Claims log.csv', 'resident']])
-    expect(state.policy).toBe('creator')
+    expect(state.settings).toEqual({ manage_policy: 'creator', max_file_mb: 50, max_video_mb: 1024, user_quota_mb: 2048, community_quota_mb: 20480 })
     expect(state.uploads).toEqual([])
   })
 

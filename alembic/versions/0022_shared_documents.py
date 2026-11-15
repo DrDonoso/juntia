@@ -13,6 +13,10 @@ TABLES = (
     "document_uploads", "document_events", "document_deletions", "document_versions",
     "documents", "document_folders",
 )
+LIMITS = (
+    ("documents_max_file_mb", 50), ("documents_max_video_mb", 1024),
+    ("documents_user_quota_mb", 2048), ("documents_community_quota_mb", 20480),
+)
 
 
 def author_columns():
@@ -45,6 +49,11 @@ def upgrade():
         batch.add_column(sa.Column(
             "documents_manage_policy", sa.String(20), nullable=False, server_default="creator",
         ))
+        # The limits of shared documents, in whole MiB, which the administrator changes.
+        for column, default in LIMITS:
+            batch.add_column(sa.Column(
+                column, sa.Integer(), nullable=False, server_default=str(default),
+            ))
     op.create_table(
         "document_folders",
         sa.Column("id", sa.Integer(), primary_key=True),
@@ -195,5 +204,7 @@ def downgrade():
     for table in TABLES:
         op.drop_table(table)
     with op.batch_alter_table("state") as batch:
+        for column, _ in LIMITS:
+            batch.drop_column(column)
         batch.drop_column("documents_manage_policy")
         batch.drop_column("feature_documents")

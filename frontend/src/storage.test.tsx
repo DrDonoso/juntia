@@ -4,10 +4,11 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest'
 import { cache } from './api/client'
 import type {
-  ResidentStorageOut, StorageOut, StoredAttachmentOut, StoredAttachmentPage, StoredDocumentVersionOut, StoredDocumentVersionPage,
-  StoredImageOut, StoredImagePage,
+  DocumentSettings, ResidentStorageOut, StorageOut, StoredAttachmentOut, StoredAttachmentPage, StoredDocumentVersionOut,
+  StoredDocumentVersionPage, StoredImageOut, StoredImagePage,
 } from './api/schema.gen'
 import { setLanguage } from './i18n'
+import { sizeStops } from './size-field'
 import { StoragePage } from './storage'
 
 const MiB = 1024 ** 2, GiB = 1024 ** 3
@@ -64,7 +65,7 @@ const defaults = cache.getDefaultOptions()
 const originalShow = HTMLDialogElement.prototype.showModal
 const originalClose = HTMLDialogElement.prototype.close
 let summary: StorageOut, withdrawn: StoredAttachmentOut[], total: number | null, images: StoredImageOut[]
-let versions: StoredDocumentVersionOut[]
+let versions: StoredDocumentVersionOut[], settings: DocumentSettings
 let purge: (body: unknown) => Response, purgeImage: () => Response
 const requests: string[] = []
 
@@ -82,6 +83,7 @@ beforeEach(() => {
   withdrawn = [quote]
   images = [photo]
   versions = []
+  settings = { manage_policy: 'creator', max_file_mb: 50, max_video_mb: 1024, user_quota_mb: 2048, community_quota_mb: 20480 }
   total = null
   requests.length = 0
   purge = () => {
@@ -103,8 +105,12 @@ function reply(body: unknown, status = 200) {
 }
 
 async function respond(input: string, options: RequestInit = {}) {
-  requests.push(options.method === 'POST' ? `POST ${input} ${String(options.body)}` : input)
+  requests.push(options.method === 'POST' || options.method === 'PATCH' ? `${options.method} ${input} ${String(options.body)}` : input)
   if (input === '/api/admin/storage') return reply(summary)
+  if (input === '/api/admin/settings/documents') {
+    if (options.method === 'PATCH') settings = { ...settings, ...JSON.parse(String(options.body)) }
+    return reply(settings)
+  }
   if (input.startsWith('/api/admin/storage/withdrawn?')) {
     const page = Number(new URL(input, 'http://localhost').searchParams.get('page'))
     const count = total ?? withdrawn.length
@@ -170,7 +176,7 @@ test('the summary shows the community, administrator and disk usage with accessi
   const disk = region('Server disk')
   expect(disk.getByText('50 GiB free of 200 GiB')).toBeVisible()
   expect(disk.getByRole('meter', { name: 'Server disk space used' })).toHaveAttribute('aria-valuetext', '150 GiB of 200 GiB used (75%)')
-  expect(disk.getByText('1 GiB are kept free as a reserve. Below it, uploads of PDFs and images and statement imports are refused.')).toBeVisible()
+  expect(disk.getByText('1 GiB are kept free as a reserve. Below it, uploads of PDFs, images and documents and statement imports are refused.')).toBeVisible()
   expect(screen.queryByRole('alert')).toBeNull()
   const help = region('How storage limits work')
   for (const [label, size, setting] of [
@@ -183,15 +189,15 @@ test('the summary shows the community, administrator and disk usage with accessi
     expect(value?.querySelector('code')).toHaveTextContent(setting)
   }
   expect(help.getByText('Withdrawn PDFs, and images removed from their text, keep counting towards both quotas until you delete them permanently on this page.')).toBeVisible()
-  expect(help.getByText('To change a limit, set the server environment variable shown next to it, in whole MiB, and recreate the Juntia container (docker compose up -d): a plain restart keeps the previous values.')).toBeVisible()
+  expect(help.getByText('To change one of the limits above, set the server environment variable shown next to it, in whole MiB, and recreate the Juntia container (docker compose up -d): a plain restart keeps the previous values.')).toBeVisible()
   expect(help.getByText('Deleting a PDF or an image permanently cannot be undone.')).toBeVisible()
 })
 
 test.each([
   { name: 'a full community quota', change: (value: StorageOut) => { value.community.stored_bytes = 2100 * MiB }, alert: 'The community quota is full, so new PDFs and images are refused. Delete withdrawn PDFs or images permanently, or raise the quota.' },
-  { name: 'free space below the reserve', change: (value: StorageOut) => { value.disk.free_bytes = 512 * MiB }, alert: 'The free space is below the reserve, so uploads of PDFs and images and statement imports are refused. Free space on the server or delete withdrawn PDFs or images permanently.' },
+  { name: 'free space below the reserve', change: (value: StorageOut) => { value.disk.free_bytes = 512 * MiB }, alert: 'The free space is below the reserve, so uploads of PDFs, images and documents and statement imports are refused. Free space on the server or delete withdrawn PDFs or images permanently.' },
   { name: 'a community quota almost full', change: (value: StorageOut) => { value.community.stored_bytes = 1900 * MiB }, warning: 'The community quota is almost full. Delete withdrawn PDFs or images permanently to free space.' },
-  { name: 'free space close to the reserve', change: (value: StorageOut) => { value.disk.free_bytes = 1536 * MiB }, warning: 'The free space is close to the reserve. Free space on the server soon to keep accepting uploads of PDFs and images and statement imports.' },
+  { name: 'free space close to the reserve', change: (value: StorageOut) => { value.disk.free_bytes = 1536 * MiB }, warning: 'The free space is close to the reserve. Free space on the server soon to keep accepting uploads of PDFs, images and documents and statement imports.' },
 ])('the summary warns about $name', async ({ change, alert, warning }) => {
   change(summary)
   renderPage()
@@ -216,7 +222,7 @@ test('a disk the server cannot read is explained without an alarm', async () => 
   summary.disk = { total_bytes: null, free_bytes: null, reserve_bytes: GiB }
   renderPage()
   const disk = within(await screen.findByRole('region', { name: 'Server disk' }))
-  expect(disk.getByText('The server cannot read the free space of its upload folder right now. While it cannot, uploads of PDFs and images and statement imports are refused.'))
+  expect(disk.getByText('The server cannot read the free space of its upload folder right now. While it cannot, uploads of PDFs, images and documents and statement imports are refused.'))
     .toHaveAttribute('role', 'status')
   expect(disk.queryByRole('meter')).toBeNull()
   expect(disk.getByText(/^1 GiB are kept free/)).toBeVisible()
@@ -269,9 +275,12 @@ test('shared documents have their own quotas, neighbors and earlier versions to 
   expect(documents.getByText('Uploads in progress').nextElementSibling).toHaveTextContent('5 MiB · 1 upload')
   const neighbors = within(screen.getByRole('table', { name: 'Documents by neighbor' }))
   expect(neighbors.getByRole('meter', { name: 'Quota used by Alice' })).toHaveAttribute('data-level', 'warning')
+  // Their limits are no longer server variables: they are edited above.
   const help = region('How storage limits work')
-  expect(help.getByText('Documents quota per neighbor').nextElementSibling).toHaveTextContent('2 GiBDOCUMENT_STORAGE_USER_QUOTA_MB')
-  expect(help.getByText('Community documents quota').nextElementSibling).toHaveTextContent('20 GiBDOCUMENT_STORAGE_COMMUNITY_QUOTA_MB')
+  expect(help.queryByText(/DOCUMENT_/)).toBeNull()
+  expect(help.getByText(/^Shared documents count separately/)).toHaveTextContent('Their limits are set in Shared documents limits, at the top of this page, and apply at once.')
+  expect(documents.getByRole('link', { name: 'Change the limits' })).toHaveAttribute('href', '#document-limits')
+  expect(screen.getByRole('region', { name: 'Shared documents limits' })).toHaveAttribute('id', 'document-limits')
   const earlier = await findRegion('Earlier versions of documents')
   fireEvent.click(await earlier.findByRole('button', { name: 'Delete permanently: version 1 of Budget.xlsx' }))
   const dialog = within(screen.getByRole('dialog', { name: 'Delete version permanently' }))
@@ -280,6 +289,47 @@ test('shared documents have their own quotas, neighbors and earlier versions to 
   expect(await earlier.findByText('Version 1 of Budget.xlsx has been deleted permanently. 60 MiB freed.')).toBeVisible()
   expect(requests).toContain('POST /api/admin/storage/document-versions/version-1/purge undefined')
   expect(await earlier.findByText('There are no earlier versions using space.')).toBeVisible()
+})
+
+test('the limits of shared documents are edited with a slider or an exact size and saved together', async () => {
+  summary.documents.residents = [{ user_id: 7, name: 'Alice', account_deleted: false, stored_bytes: 1946 * MiB, versions: 14 }]
+  renderPage()
+  const limits = await findRegion('Shared documents limits')
+  const file = await limits.findByRole('textbox', { name: 'Largest file' })
+  expect(limits.getAllByRole('slider').map(slider => slider.getAttribute('aria-valuetext'))).toEqual(['50 MiB', '1 GiB', '2 GiB', '20 GiB'])
+  expect(limits.getAllByRole('button', { name: /^More about / }).map(button => button.getAttribute('aria-label'))).toEqual([
+    'More about Largest file', 'More about Largest video', 'More about Documents quota per neighbor', 'More about Community documents quota',
+  ])
+  const save = limits.getByRole('button', { name: 'Save limits' })
+  const discard = limits.getByRole('button', { name: 'Discard changes' })
+  expect(save).toBeDisabled()
+  expect(discard).toBeDisabled()
+  fireEvent.change(file, { target: { value: '0' } })
+  expect(limits.getByRole('alert')).toHaveTextContent('Enter a whole number of MiB from 1 to 10,240.')
+  expect(save).toBeDisabled()
+  fireEvent.change(file, { target: { value: '100' } })
+  fireEvent.change(limits.getByRole('slider', { name: 'Largest video' }), { target: { value: String(sizeStops(1, 10240).indexOf(2048)) } })
+  expect(limits.getByRole('textbox', { name: 'Largest video' })).toHaveValue('2048')
+  // A quota below what is already stored is allowed, with a warning.
+  const neighborQuota = limits.getByRole('textbox', { name: 'Documents quota per neighbor' })
+  fireEvent.change(neighborQuota, { target: { value: '1024' } })
+  expect(neighborQuota).toHaveAccessibleDescription(/1 neighbor already uses more than this: their uploads will be refused until they have space again\.$/)
+  const communityQuota = limits.getByRole('textbox', { name: 'Community documents quota' })
+  fireEvent.change(communityQuota, { target: { value: '200' } })
+  expect(limits.getByText('Documents already use 300 MiB, more than this: every upload will be refused until enough is deleted permanently.')).toBeVisible()
+  fireEvent.change(communityQuota, { target: { value: '20480' } })
+  const summaries = requests.filter(request => request === '/api/admin/storage').length
+  fireEvent.click(save)
+  expect(await limits.findByText('The limits of shared documents have been saved.')).toBeVisible()
+  expect(requests).toContain('PATCH /api/admin/settings/documents {"max_file_mb":100,"max_video_mb":2048,"user_quota_mb":1024}')
+  await waitFor(() => expect(requests.filter(request => request === '/api/admin/storage').length).toBeGreaterThan(summaries))
+  expect(file).toHaveValue('100')
+  expect(save).toBeDisabled()
+  fireEvent.change(file, { target: { value: '7' } })
+  expect(limits.queryByText('The limits of shared documents have been saved.')).toBeNull()
+  fireEvent.click(discard)
+  expect(file).toHaveValue('100')
+  expect(discard).toBeDisabled()
 })
 
 test('stored images show a thumbnail, their details and author, and can be sorted and filtered', async () => {

@@ -8,8 +8,7 @@ import { communityStore } from '../store/community'
 import type { DemoActionAttachment } from '../store/community-model'
 import { coreStore } from '../store/core'
 import {
-  DOCUMENT_COMMUNITY_QUOTA_BYTES, DOCUMENT_USER_QUOTA_BYTES, deleteDocument, publishUpload, receiveChunk, sharedDocumentsStore, startUpload,
-  type DemoDocument, type DemoDocumentVersion,
+  deleteDocument, publishUpload, receiveChunk, sharedDocumentsStore, startUpload, type DemoDocument, type DemoDocumentVersion,
 } from '../store/shared-documents'
 import { COMMUNITY_QUOTA_BYTES, DISK_RESERVE_BYTES, DISK_TOTAL_BYTES, MIB, USER_QUOTA_BYTES } from '../store/storage'
 import { demoFetch, demoRequest, demoUrl } from '../testing'
@@ -242,17 +241,18 @@ describe('shared documents', () => {
     return found
   }
 
-  test('the summary counts every stored version by state and by uploader, with their own quotas', async () => {
+  test("the summary counts every stored version by state and by uploader, with the administrator's quotas", async () => {
     await adminLogin()
     const before = await summary()
     const documents = sharedDocumentsStore()
     const stored = documents.versions.filter(item => item.purgedAt === null)
     expect(before.documents).toMatchObject({
-      quota_bytes: DOCUMENT_COMMUNITY_QUOTA_BYTES, resident_quota_bytes: DOCUMENT_USER_QUOTA_BYTES, stored_bytes: size(stored),
+      quota_bytes: 20480 * MIB, resident_quota_bytes: 2048 * MIB, stored_bytes: size(stored),
       files: 10, previous_versions: 2, deleted_files: 2, upload_bytes: 0, uploads: 0,
       administrator_bytes: size(stored.filter(item => item.author.kind === 'administrator')),
     })
-    expect([DOCUMENT_COMMUNITY_QUOTA_BYTES, DOCUMENT_USER_QUOTA_BYTES]).toEqual([20480 * MIB, 2048 * MIB])
+    expect(await demoRequest('PATCH', '/api/admin/settings/documents', { body: { user_quota_mb: 100, community_quota_mb: 1000 } })).toMatchObject({ status: 200 })
+    expect((await summary()).documents).toMatchObject({ quota_bytes: 1000 * MIB, resident_quota_bytes: 100 * MIB })
     const { current_bytes, previous_bytes, deleted_bytes } = before.documents
     expect(current_bytes + previous_bytes + deleted_bytes).toBe(before.documents.stored_bytes)
     expect(previous_bytes).toBe(version('House rules.pdf', 1).size + version('Claims log.csv', 1).size)

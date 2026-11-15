@@ -2972,6 +2972,10 @@
       "DocumentSettings": {
         "additionalProperties": false,
         "properties": {
+          "community_quota_mb": {
+            "title": "Community Quota Mb",
+            "type": "integer"
+          },
           "manage_policy": {
             "enum": [
               "creator",
@@ -2980,12 +2984,103 @@
             ],
             "title": "Manage Policy",
             "type": "string"
+          },
+          "max_file_mb": {
+            "title": "Max File Mb",
+            "type": "integer"
+          },
+          "max_video_mb": {
+            "title": "Max Video Mb",
+            "type": "integer"
+          },
+          "user_quota_mb": {
+            "title": "User Quota Mb",
+            "type": "integer"
           }
         },
         "required": [
-          "manage_policy"
+          "manage_policy",
+          "max_file_mb",
+          "max_video_mb",
+          "user_quota_mb",
+          "community_quota_mb"
         ],
         "title": "DocumentSettings",
+        "type": "object"
+      },
+      "DocumentSettingsEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "community_quota_mb": {
+            "anyOf": [
+              {
+                "maximum": 10485760.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Community Quota Mb"
+          },
+          "manage_policy": {
+            "anyOf": [
+              {
+                "enum": [
+                  "creator",
+                  "administrator",
+                  "everyone"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manage Policy"
+          },
+          "max_file_mb": {
+            "anyOf": [
+              {
+                "maximum": 10240.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max File Mb"
+          },
+          "max_video_mb": {
+            "anyOf": [
+              {
+                "maximum": 10240.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Video Mb"
+          },
+          "user_quota_mb": {
+            "anyOf": [
+              {
+                "maximum": 10485760.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Quota Mb"
+          }
+        },
+        "title": "DocumentSettingsEdit",
         "type": "object"
       },
       "DocumentStorageOut": {
@@ -9766,12 +9861,13 @@
         ]
       },
       "patch": {
+        "description": "Change only the settings sent; the limits apply to the next uploads and checks.",
         "operationId": "update_document_settings_api_admin_settings_documents_patch",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DocumentSettings"
+                "$ref": "#/components/schemas/DocumentSettingsEdit"
               }
             }
           },

@@ -1,15 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import type {
-  DocumentBrowseOut, DocumentDeletionPage, DocumentFolderInfoOut, DocumentFolderOut, DocumentHistoryPage, DocumentInfoOut,
-  DocumentOut, DocumentTreeFolderOut, DocumentUploadOut,
+  DocumentBrowseOut, DocumentDeletionPage, DocumentFolderInfoOut, DocumentFolderOut, DocumentHistoryPage, DocumentInfoOut, DocumentOut,
+  DocumentSettings, DocumentTreeFolderOut, DocumentUploadOut, StorageOut,
 } from '../../api/schema.gen'
 import { MUTATION_HEADER, readZip, readZipMember, setClock, zipArchive } from '../core'
 import { resetDemo } from '../store'
 import { sha256Hex } from '../store/community-sha256'
 import { coreStore } from '../store/core'
-import {
-  ARCHIVE_MAX_BYTES, CHUNK_BYTES, DOCUMENT_COMMUNITY_QUOTA_BYTES, DOCUMENT_USER_QUOTA_BYTES, sharedDocumentsStore,
-} from '../store/shared-documents'
+import { ARCHIVE_MAX_BYTES, CHUNK_BYTES, DOCUMENT_QUOTA_LIMIT_MB, DOCUMENT_SIZE_LIMIT_MB, sharedDocumentsStore } from '../store/shared-documents'
 import { demoFetch, demoRequest, demoUrl } from '../testing'
 
 // Thursday 29 October 2026, midday (local time), like the other demo tests.
@@ -18,6 +16,9 @@ const MIB = 1024 * 1024
 const OLIVIA = { kind: 'resident', name: 'Olivia Bennett', user_id: 6 }
 const JAMES = { kind: 'resident', name: 'James Okafor', user_id: 1 }
 const ADMIN = { kind: 'administrator', name: 'Technical administrator', user_id: null }
+// The settings of a new installation, in MiB.
+const LIMITS = { max_file_mb: 50, max_video_mb: 1024, user_quota_mb: 2048, community_quota_mb: 20480 }
+const SETTINGS = '/api/admin/settings/documents'
 
 beforeEach(() => resetDemo({ now: () => NOW }))
 afterEach(() => resetDemo())
@@ -31,6 +32,15 @@ const remove = (kind: 'files' | 'folders', item: { id: number; version: number }
 const signIn = (email: string) => post('/api/auth/login', { email, password: 'demo' })
 const adminLogin = () => post('/api/admin/auth/login', { username: 'demo', password: 'demo' })
 const adminLogout = () => post('/api/admin/auth/logout')
+
+/** The administrator changes some settings, then the visit goes on as the neighbor signed in. */
+async function setLimits(values: Record<string, unknown>) {
+  await adminLogin()
+  const answer = await patch<DocumentSettings>(SETTINGS, values)
+  await adminLogout()
+  expect(answer.status, JSON.stringify(answer.body)).toBe(200)
+  return answer.body
+}
 // Typed arrays of the test and of the demo may come from different realms: compare their bytes.
 const bytesOf = (value: Uint8Array | null) => value && Array.from(value)
 
@@ -143,7 +153,7 @@ describe('the Documents section', () => {
     await adminLogin()
     expect(await get('/api/documents/browse')).toMatchObject({ status: 404, body: { code: 'documents_disabled' } })
     expect((await get<DocumentDeletionPage>('/api/admin/documents/deleted')).body).toMatchObject({ total: 2, page: 1, pages: 1 })
-    expect(await get('/api/admin/settings/documents')).toMatchObject({ status: 200, body: { manage_policy: 'creator' } })
+    expect(await get(SETTINGS)).toMatchObject({ status: 200, body: { manage_policy: 'creator', ...LIMITS } })
     expect(await patch('/api/admin/settings/features/documents', { enabled: true })).toMatchObject({ status: 200, body: { documents: true } })
     expect((await get('/api/documents/browse')).status).toBe(200)
     await post('/api/auth/logout')
@@ -287,29 +297,17 @@ describe('chunked uploads', () => {
     expect(await start('Plan.pdf', content.length, { document_id: original.id })).toMatchObject({ status: 404, body: { code: 'document_not_found' } })
   })
 
-  test('check the type, the size, the quotas and the request', async () => {
+  test('check the type, the size and the request', async () => {
     expect(await start('program.exe', 2)).toMatchObject({ status: 415, body: { code: 'document_type_unsupported' } })
     expect(await start('notes.pdf.exe', 2)).toMatchObject({ status: 415, body: { code: 'document_type_unsupported' } })
     expect(await start('empty.txt', 0)).toMatchObject({ status: 422, body: { code: 'document_file_empty' } })
+    // The default limits: 50 MiB per file and 1 GiB per video.
     expect(await start('large.pdf', 50 * MIB + 1)).toMatchObject({ status: 413, body: { code: 'document_too_large' } })
     expect(await start('long.mov', 1024 * MIB)).toMatchObject({ status: 201 })
     expect(await start('longer.mp4', 1024 * MIB + 1)).toMatchObject({ status: 413, body: { code: 'document_too_large' } })
     // Names are made valid instead of refused.
     expect((await start('../../etc/Budget: 2026?.xlsx', 10)).body.name).toBe('Budget_ 2026_.xlsx')
     expect((await start('C:\\fakepath\\con.PDF', 10)).body.name).toBe('_con.PDF')
-    // Every stored version of a resident counts toward their 2 GiB; the binding check is on completion.
-    const content = pdf()
-    const own = sharedDocumentsStore().versions.find(version => version.author.user_id === 6)!
-    own.size += DOCUMENT_USER_QUOTA_BYTES - own.size - content.length + 1
-    expect(await start('Over.pdf', content.length)).toMatchObject({ status: 409, body: { code: 'document_storage_user_quota' } })
-    own.size -= 1
-    const pending = await start('Fits.pdf', content.length)
-    await send(pending.uploadId, content)
-    const community = sharedDocumentsStore().versions.find(version => version.author.kind === 'administrator')!
-    community.size += DOCUMENT_COMMUNITY_QUOTA_BYTES
-    expect(await post(`/api/documents/uploads/${pending.uploadId}/complete`)).toMatchObject({ status: 409, body: { code: 'document_storage_community_quota' } })
-    community.size -= DOCUMENT_COMMUNITY_QUOTA_BYTES
-    expect(await post(`/api/documents/uploads/${pending.uploadId}/complete`)).toMatchObject({ status: 200, body: { name: 'Fits.pdf' } })
     for (const body of [
       { name: 'a.pdf', size: 1 }, { upload_id: 'not-a-uuid', name: 'a.pdf', size: 1 }, { upload_id: crypto.randomUUID(), name: '', size: 1 },
       { upload_id: crypto.randomUUID(), name: 'a.pdf', size: -1 }, { upload_id: crypto.randomUUID(), name: 'a.pdf', size: 1, folder_id: 1, document_id: 1 },
@@ -319,6 +317,61 @@ describe('chunked uploads', () => {
     }
     expect(await demoRequest('POST', '/api/documents/uploads', { body: { upload_id: crypto.randomUUID(), name: 'a.pdf', size: 1 }, mutationHeader: false }))
       .toMatchObject({ status: 403, body: { code: 'invalid_origin' } })
+  })
+})
+
+describe('settings', () => {
+  test('the administrator changes only the limits sent, within their ranges, also while Documents is off', async () => {
+    coreStore().features.documents = false
+    expect(await get(SETTINGS)).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
+    expect(await patch(SETTINGS, { max_file_mb: 5 })).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
+    await adminLogin()
+    expect((await get<DocumentSettings>(SETTINGS)).body).toEqual({ manage_policy: 'creator', ...LIMITS })
+    // Only what is sent changes, and the extremes are accepted.
+    const changed = { ...LIMITS, max_file_mb: 1, community_quota_mb: DOCUMENT_QUOTA_LIMIT_MB }
+    expect(await patch(SETTINGS, { max_file_mb: 1, community_quota_mb: DOCUMENT_QUOTA_LIMIT_MB }))
+      .toMatchObject({ status: 200, body: { manage_policy: 'creator', ...changed } })
+    expect((await patch(SETTINGS, { max_video_mb: DOCUMENT_SIZE_LIMIT_MB, user_quota_mb: 1 })).body)
+      .toEqual({ manage_policy: 'creator', ...changed, max_video_mb: DOCUMENT_SIZE_LIMIT_MB, user_quota_mb: 1 })
+    expect((await patch(SETTINGS, { manage_policy: 'everyone' })).body)
+      .toEqual({ manage_policy: 'everyone', ...changed, max_video_mb: DOCUMENT_SIZE_LIMIT_MB, user_quota_mb: 1 })
+    // A single file or video fits in a ZIP download.
+    expect(DOCUMENT_SIZE_LIMIT_MB * MIB).toBe(ARCHIVE_MAX_BYTES)
+    const saved = (await get<DocumentSettings>(SETTINGS)).body
+    for (const body of [
+      {}, { max_file_mb: null }, { manage_policy: null }, { max_file_mb: 0 }, { max_file_mb: DOCUMENT_SIZE_LIMIT_MB + 1 },
+      { max_video_mb: -1 }, { user_quota_mb: 0 }, { community_quota_mb: DOCUMENT_QUOTA_LIMIT_MB + 1 }, { max_file_mb: 1.5 },
+      { max_file_mb: '50' }, { max_file_mb: true }, { quota_mb: 5 }, { max_file_mb: 5, note: '' }, { manage_policy: 'nobody' },
+    ]) {
+      expect(await patch(SETTINGS, body), JSON.stringify(body)).toEqual({ status: 422, body: { code: 'invalid_request' }, headers: expect.anything() })
+    }
+    expect((await get<DocumentSettings>(SETTINGS)).body).toEqual(saved)
+    expect(await demoRequest('PATCH', SETTINGS, { body: { max_file_mb: 5 }, mutationHeader: false })).toMatchObject({ status: 403, body: { code: 'invalid_origin' } })
+  })
+
+  test('the limits apply at once to browsing, new uploads, both quota checks and the storage summary', async () => {
+    await setLimits({ max_file_mb: 1, max_video_mb: 2 })
+    expect((await browse()).limits).toMatchObject({ max_file_bytes: MIB, max_video_bytes: 2 * MIB })
+    expect(await start('large.pdf', MIB + 1)).toMatchObject({ status: 413, body: { code: 'document_too_large' } })
+    expect(await start('video.mov', MIB + 100)).toMatchObject({ status: 201 })
+    expect(await start('long.mp4', 2 * MIB + 1)).toMatchObject({ status: 413, body: { code: 'document_too_large' } })
+    // Every stored version of a resident counts towards their quota.
+    await setLimits({ user_quota_mb: 1 })
+    await uploaded('One.pdf', pdf('one', 600_000))
+    expect(await start('Two.pdf', 600_000)).toMatchObject({ status: 409, body: { code: 'document_storage_user_quota' } })
+    // The community's quota is checked again on completion, with the limits of that moment.
+    await signIn('james.okafor@example.com')
+    const content = pdf('two', 600_000)
+    const pending = await start('Two.pdf', content.length)
+    expect(pending.status).toBe(201)
+    await send(pending.uploadId, content)
+    await setLimits({ community_quota_mb: 1 })
+    expect(await post(`/api/documents/uploads/${pending.uploadId}/complete`)).toMatchObject({ status: 409, body: { code: 'document_storage_community_quota' } })
+    await adminLogin()
+    expect((await get<StorageOut>('/api/admin/storage')).body.documents).toMatchObject({ quota_bytes: MIB, resident_quota_bytes: MIB })
+    await adminLogout()
+    await setLimits({ community_quota_mb: 20480 })
+    expect(await post(`/api/documents/uploads/${pending.uploadId}/complete`)).toMatchObject({ status: 200, body: { name: 'Two.pdf', author: JAMES } })
   })
 })
 
@@ -402,7 +455,7 @@ describe('folders and files', () => {
     expect(await remove('files', own)).toMatchObject({ status: 403, body: { code: 'document_permission_required' } })
     expect(await start('Mine.pdf', 10, { document_id: own.id })).toMatchObject({ status: 403, body: { code: 'document_permission_required' } })
     expect((await patch(`/api/documents/files/${other.id}`, { version: other.version, name: 'Yours renamed' })).status).toBe(200)
-    expect(await patch('/api/admin/settings/documents', { manage_policy: 'everyone' })).toMatchObject({ status: 401 })
+    expect(await patch(SETTINGS, { manage_policy: 'everyone' })).toMatchObject({ status: 401 })
 
     await signIn('olivia.bennett@example.com')
     expect((await browse()).folders.find(item => item.id === shared.id)).toMatchObject({ can_manage: true, can_delete: false })
@@ -412,8 +465,8 @@ describe('folders and files', () => {
     await send(version.uploadId, pdf('newer'))
 
     await adminLogin()
-    expect(await patch('/api/admin/settings/documents', { manage_policy: 'administrator' })).toMatchObject({ status: 200, body: { manage_policy: 'administrator' } })
-    expect(await patch('/api/admin/settings/documents', { manage_policy: 'nobody' })).toMatchObject({ status: 422, body: { code: 'invalid_request' } })
+    expect(await patch(SETTINGS, { manage_policy: 'administrator' })).toMatchObject({ status: 200, body: { manage_policy: 'administrator', ...LIMITS } })
+    expect(await patch(SETTINGS, { manage_policy: 'nobody' })).toMatchObject({ status: 422, body: { code: 'invalid_request' } })
     const renamedByAdmin = await patch<DocumentOut>(`/api/documents/files/${own.id}`, { version: own.version, name: 'Renamed by the administration' })
     expect(renamedByAdmin).toMatchObject({ status: 200, body: { can_manage: true } })
     await adminLogout()
@@ -427,7 +480,7 @@ describe('folders and files', () => {
     expect((await uploaded('New.pdf', pdf('new'), { folder_id: shared.id })).can_manage).toBe(false)
 
     await adminLogin()
-    await patch('/api/admin/settings/documents', { manage_policy: 'everyone' })
+    await patch(SETTINGS, { manage_policy: 'everyone' })
     await adminLogout()
     await signIn('james.okafor@example.com')
     const everyone = (await browse()).folders.find(item => item.id === shared.id)!

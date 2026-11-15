@@ -179,6 +179,7 @@ export const documents: Messages<typeof source> = {
     policy: {
       title: 'Quién puede cambiar los documentos compartidos',
       description: 'Todos los vecinos pueden subir archivos y crear carpetas. Elige quién puede cambiarles el nombre, moverlos, sustituirlos (subir una nueva versión) y eliminarlos. El administrador técnico siempre puede, y el historial registra quién hizo cada cambio.',
+      limits: 'El tamaño máximo de los archivos y el espacio que pueden ocupar los documentos se ajustan en <link>Almacenamiento</link>.',
       loading: 'Cargando el ajuste…',
       legend: 'Quién puede cambiar los documentos',
       saved: 'Ahora pueden cambiar los documentos: {policy}.',
@@ -194,6 +195,37 @@ export const documents: Messages<typeof source> = {
         everyone: {
           label: 'Todos los vecinos',
           description: 'Todos los vecinos pueden cambiar el nombre, mover, sustituir y eliminar cualquier archivo o carpeta.',
+        },
+      },
+    },
+    limits: {
+      title: 'Límites de los documentos compartidos',
+      description: 'El tamaño máximo de los archivos que pueden subir los vecinos y el espacio que pueden ocupar los documentos. Los cambios se aplican al momento a las subidas nuevas; los archivos ya guardados se conservan aunque superen un límite más bajo.',
+      loading: 'Cargando los límites…',
+      save: 'Guardar límites',
+      discard: 'Descartar cambios',
+      saved: 'Se han guardado los límites de los documentos compartidos.',
+      belowCommunity: 'Los documentos ya ocupan {size}, más que esto: se rechazará cualquier subida hasta que se elimine definitivamente lo suficiente.',
+      belowNeighbors: {
+        one: '{count} vecino ya ocupa más que esto: se rechazarán sus subidas hasta que vuelva a tener espacio.',
+        other: '{count} vecinos ya ocupan más que esto: se rechazarán sus subidas hasta que vuelvan a tener espacio.',
+      },
+      fields: {
+        max_file_mb: {
+          label: 'Tamaño máximo de archivo',
+          help: 'El archivo más grande que un vecino puede subir a Documentos, salvo los vídeos: PDF, fotos, documentos de Office y OpenDocument, texto y CSV. Los más grandes se rechazan antes de enviarlos. Por defecto: 50 MiB.',
+        },
+        max_video_mb: {
+          label: 'Tamaño máximo de vídeo',
+          help: 'El vídeo MP4, M4V o MOV más grande que un vecino puede subir. Los vídeos se guardan tal como se grabaron, sin convertirlos: un minuto de vídeo del móvil suele ocupar 100 MiB o más. Por defecto: 1 GiB.',
+        },
+        user_quota_mb: {
+          label: 'Cuota de documentos por vecino',
+          help: 'El espacio que puede ocupar cada vecino con los documentos que sube. Cuentan todas las versiones, actuales, anteriores y eliminadas, hasta que las eliminas definitivamente. Lo que sube el administrador técnico solo cuenta en la cuota de la comunidad. Por defecto: 2 GiB.',
+        },
+        community_quota_mb: {
+          label: 'Cuota de documentos de la comunidad',
+          help: 'El espacio que pueden ocupar entre todos los documentos compartidos, con todas sus versiones y lo que sube el administrador técnico. Cuando se llena, se rechazan las subidas nuevas hasta que la amplíes o elimines documentos definitivamente. Por defecto: 20 GiB.',
         },
       },
     },

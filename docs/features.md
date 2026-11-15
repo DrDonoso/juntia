@@ -350,7 +350,8 @@ PDFs attached to actions.
   already in use gets a number, such as "Minutes (2).pdf". Accepted files are PDFs; JPG, PNG, GIF,
   WebP and HEIC pictures; Word, Excel and PowerPoint files and their OpenDocument equivalents,
   without macros; plain text and CSV; and phone videos (MP4, M4V, MOV). Each file may take 50 MiB
-  and each video 1 GiB by default. Files of other types, empty or too large are explained in the
+  and each video 1 GiB by default; the administrator changes these sizes in
+  [Storage](#storage). Files of other types, empty or too large are explained in the
   upload list without sending them.
 - **Uploads** shows the progress of each file. Uploads go on while you move around Juntia, and the
   browser asks before closing the page while some are unfinished. An interrupted upload continues
@@ -670,6 +671,12 @@ images pasted into descriptions and comments use:
 - **Community**: the total against the community quota, with active and withdrawn PDFs and images;
 - **Technical administrator**: its PDFs and images, which count only towards the community quota;
 - **Server disk**: the free space against the reserve kept for uploads and imports;
+- **Shared documents limits**: the largest file and video that can be uploaded to
+  [Documents](#documents) and the documents quotas per neighbor and for the community. Each has a
+  slider between its minimum and maximum, which stops at round sizes, and a box to type an exact
+  size in MiB, which moves the slider; the (i) next to each name explains it on hover, focus or tap.
+  **Save limits** applies them at once to new uploads, and the page warns when a quota is below
+  what is already stored. **Change the limits**, on the Documents card, leads here.
 - **Storage by neighbor**: each resident against the personal quota, largest first, deleted
   accounts included;
 - **Withdrawn PDFs**: the withdrawn PDFs that still use space, largest or oldest withdrawal first,
@@ -684,12 +691,12 @@ images pasted into descriptions and comments use:
   purged, the administrator's uploads and unfinished uploads; the list of earlier versions,
   largest or oldest first and optionally for one uploader, deletes a replaced version permanently.
 
-The quotas, the reserve and the permanent deletion (purge) are explained in
-[storage quotas and purging](deployment.md#storage-quotas-and-purging) and, for documents, in
-[shared documents](deployment.md#shared-documents).
+The action quotas and the reserve are server settings; the quotas, the reserve and the permanent
+deletion (purge) are explained in [storage quotas and purging](deployment.md#storage-quotas-and-purging)
+and, for documents, in [shared documents](deployment.md#shared-documents).
 
 <p align="center">
-  <img src="screenshots/storage.png" alt="Storage page: the withdrawn PDFs that can be deleted permanently, and how the storage limits work" width="900"><br>
+  <img src="screenshots/storage.png" alt="Storage page: the limits of shared documents, each with a slider between its minimum and maximum, a box for an exact size in MiB and an (i) explanation, above the storage of each neighbor" width="900"><br>
   <sub><b>Storage</b> in the administration (synthetic demo data).</sub>
 </p>
 

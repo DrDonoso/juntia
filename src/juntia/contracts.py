@@ -1036,8 +1036,40 @@ class DocumentHistoryPage(ActionPagination):
     items: list[DocumentEventOut]
 
 
+# The administrator sets the limits of shared documents in Storage, in whole MiB (1 MiB =
+# 1,048,576 bytes): a file or a video can take up to the 10 GiB of a ZIP download, and the
+# quotas can grow to 10 TiB.
+DOCUMENT_SIZE_LIMIT_MB = 10 * 1024
+DOCUMENT_QUOTA_LIMIT_MB = 10 * 1024 * 1024
+DocumentFileLimit = Annotated[int, Field(strict=True, ge=1, le=DOCUMENT_SIZE_LIMIT_MB)]
+DocumentQuota = Annotated[int, Field(strict=True, ge=1, le=DOCUMENT_QUOTA_LIMIT_MB)]
+
+
 class DocumentSettings(Contract):
     manage_policy: DocumentPolicy
+    # The largest file, videos excepted, and the largest video.
+    max_file_mb: int
+    max_video_mb: int
+    # Every stored version counts, current, earlier or deleted, until it is purged: towards its
+    # uploader's quota (residents only) and the community's.
+    user_quota_mb: int
+    community_quota_mb: int
+
+
+class DocumentSettingsEdit(Contract):
+    manage_policy: DocumentPolicy | None = None
+    max_file_mb: DocumentFileLimit | None = None
+    max_video_mb: DocumentFileLimit | None = None
+    user_quota_mb: DocumentQuota | None = None
+    community_quota_mb: DocumentQuota | None = None
+
+    @model_validator(mode="after")
+    def validate_edit(self) -> "DocumentSettingsEdit":
+        if not self.model_fields_set or any(
+            getattr(self, field) is None for field in self.model_fields_set
+        ):
+            raise ValueError("Supply at least one non-null setting to change")
+        return self
 
 
 class DocumentDeletionOut(Contract):
