@@ -132,6 +132,10 @@ async function respond(input: string, options: RequestInit = {}) {
     const body: StoredImagePage = { items: page === 1 ? images : [], total: images.length, page, pages: 1 }
     return reply(body)
   }
+  // The viewer reads a first byte before showing a file.
+  if (input === '/api/admin/storage/images/img-1/file' || input === '/api/admin/storage/attachments/pdf-1/preview') {
+    return new Response(new Uint8Array([0x25]), { status: 206 })
+  }
   if (input === '/api/admin/storage/images/img-1/purge' && options.method === 'POST') {
     expect(options.body).toBeUndefined()
     return purgeImage()
@@ -403,7 +407,7 @@ test('stored images show a thumbnail, their details and author, the newest first
   expect(requests).toContain('/api/admin/storage/images?page=1')
   expect(section.queryByRole('combobox')).toBeNull()
   const entry = within(list).getByRole('listitem')
-  const thumbnail = within(entry).getByRole('link', { name: 'Open Leak on the roof.jpg at full size in a new tab' })
+  const thumbnail = within(entry).getByRole('link', { name: 'See Leak on the roof.jpg at full size' })
   expect(thumbnail).toHaveAttribute('href', '/api/admin/storage/images/img-1/file')
   expect(thumbnail).toHaveAttribute('target', '_blank')
   expect(thumbnail.querySelector('img')).toHaveAttribute('src', '/api/admin/storage/images/img-1/file')
@@ -412,6 +416,11 @@ test('stored images show a thumbnail, their details and author, the newest first
   expect(entry).toHaveTextContent('Uploaded by Carol · Uploaded: 10 Oct 2026')
   expect(within(entry).getByText('Uploaded:', { exact: false }).querySelector('time')).toHaveAttribute('datetime', stamp)
   expect(section.getByText('1 image uses space.')).toBeVisible()
+  // The thumbnail opens the image in the portal's viewer.
+  fireEvent.click(thumbnail)
+  const viewer = within(screen.getByRole('dialog', { name: 'Leak on the roof.jpg' }))
+  expect(await viewer.findByRole('img', { name: 'Leak on the roof.jpg' })).toHaveAttribute('src', '/api/admin/storage/images/img-1/file')
+  expect(viewer.getByRole('link', { name: 'Download' })).toHaveAttribute('href', '/api/admin/storage/images/img-1/file')
 })
 
 test('deleting an image permanently is confirmed and refreshes the usage and the list', async () => {
@@ -458,11 +467,23 @@ test('withdrawn PDFs, the latest withdrawn first, can be viewed and downloaded b
   expect(entry).toHaveTextContent('40 MiB · Uploaded by Alice · Withdrawn: 10 Oct 2026')
   expect(within(entry).getByText('Withdrawn:', { exact: false }).querySelector('time')).toHaveAttribute('datetime', stamp)
   expect(within(entry).getByRole('link', { name: '#12 · Entrance door' })).toHaveAttribute('href', '/actions/12')
-  const view = within(entry).getByRole('link', { name: 'View old-quote.pdf (new tab)' })
+  const view = within(entry).getByRole('link', { name: 'View old-quote.pdf' })
   expect(view).toHaveAttribute('href', '/api/admin/storage/attachments/pdf-1/preview')
   expect(view).toHaveAttribute('target', '_blank')
   expect(within(entry).getByRole('link', { name: 'Download old-quote.pdf' })).toHaveAttribute('href', '/api/admin/storage/attachments/pdf-1/download')
   expect(within(entry).getByRole('button', { name: 'Delete permanently: old-quote.pdf' })).toHaveTextContent('Delete permanently')
+  // On a computer whose browser shows PDFs inside pages, the eye opens it in the portal's viewer.
+  Object.defineProperty(navigator, 'pdfViewerEnabled', { configurable: true, value: true })
+  vi.stubGlobal('matchMedia', vi.fn((query: string) => ({ matches: query === '(pointer: fine)', media: query })))
+  try {
+    fireEvent.click(view)
+    const viewer = within(screen.getByRole('dialog', { name: 'old-quote.pdf' }))
+    expect(await viewer.findByTitle('old-quote.pdf')).toHaveAttribute('src', '/api/admin/storage/attachments/pdf-1/preview')
+    expect(viewer.getByRole('link', { name: 'Download' })).toHaveAttribute('href', '/api/admin/storage/attachments/pdf-1/download')
+    fireEvent.click(viewer.getByRole('button', { name: 'Close' }))
+  } finally {
+    Reflect.deleteProperty(navigator, 'pdfViewerEnabled')
+  }
   expect(section.getByText('21 withdrawn PDFs still use space.')).toBeVisible()
   fireEvent.click(section.getByRole('button', { name: 'Next: withdrawn PDFs' }))
   await waitFor(() => expect(requests).toContain('/api/admin/storage/withdrawn?page=2'))
@@ -583,7 +604,7 @@ test('Free up space renders in Spanish and follows a language switch', async () 
   const section = region('PDFs retirados')
   const entry = within(await section.findByRole('list', { name: 'PDFs retirados' })).getByRole('listitem')
   expect(entry).toHaveTextContent('40 MiB · Subido por Alice · Retirado: 10 oct 2026')
-  expect(within(entry).getByRole('link', { name: 'Visualizar old-quote.pdf (nueva pestaña)' })).toBeVisible()
+  expect(within(entry).getByRole('link', { name: 'Visualizar old-quote.pdf' })).toBeVisible()
   fireEvent.click(section.getByRole('button', { name: 'Eliminar definitivamente: old-quote.pdf' }))
   const dialog = within(screen.getByRole('dialog', { name: 'Eliminar PDF definitivamente' }))
   expect(dialog.getByText('El archivo se eliminará del servidor para siempre. No se puede deshacer.')).toBeVisible()

@@ -35,6 +35,27 @@ UPLOAD_PATH = re.compile(r"/api/(?:admin/imports/preview|actions/items/[^/]+/att
 IMAGE_UPLOAD_PATH = re.compile(r"/api/(?:actions|events)/images")
 # Shared documents arrive in raw chunks, whatever the size of the whole file.
 DOCUMENT_CHUNK_PATH = re.compile(r"/api/documents/uploads/[^/]+/content")
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; font-src 'self'; connect-src 'self'; "
+    "frame-ancestors {ancestors}; base-uri 'none'; form-action 'self'; object-src 'none'"
+)
+DENY_FRAMING = (b"DENY", CONTENT_SECURITY_POLICY.format(ancestors="'none'").encode())
+SAME_ORIGIN_FRAMING = (b"SAMEORIGIN", CONTENT_SECURITY_POLICY.format(ancestors="'self'").encode())
+
+
+def framing(headers: list[tuple[bytes, bytes]]) -> tuple[bytes, bytes]:
+    """X-Frame-Options and Content-Security-Policy of a response.
+
+    Nothing may be shown inside a frame, except the PDFs served inline: the portal shows them in
+    its own viewer, a frame of the same origin, so they also open where new tabs lose the session.
+    """
+    values = {name.lower(): value for name, value in headers}
+    media_type = values.get(b"content-type", b"").split(b";", 1)[0].strip().lower()
+    disposition = values.get(b"content-disposition", b"").lstrip().lower()
+    if media_type == b"application/pdf" and disposition.startswith(b"inline"):
+        return SAME_ORIGIN_FRAMING
+    return DENY_FRAMING
 
 
 def body_limit(path: str, method: str) -> int:
@@ -97,20 +118,17 @@ class SecurityMiddleware:
 
         async def secure_send(message: Message) -> None:
             if message["type"] == "http.response.start":
+                headers = message.get("headers", [])
+                frame_options, policy = framing(headers)
                 message["headers"] = [
-                    *message.get("headers", []),
+                    *headers,
                     (b"x-request-id", request_id.encode()),
                     (b"x-content-type-options", b"nosniff"),
-                    (b"x-frame-options", b"DENY"),
+                    (b"x-frame-options", frame_options),
                     (b"referrer-policy", b"no-referrer"),
                     (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
                     (b"cache-control", b"no-store"),
-                    (
-                        b"content-security-policy",
-                        b"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-                        b"img-src 'self' data:; font-src 'self'; connect-src 'self'; "
-                        b"frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'",
-                    ),
+                    (b"content-security-policy", policy),
                 ]
                 if config.auth_cookie_secure:
                     message["headers"].append((b"strict-transport-security", b"max-age=31536000"))

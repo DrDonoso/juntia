@@ -201,7 +201,7 @@ sites open in a new tab, and headings are shown smaller than the page's own head
   them to at most **2,560 pixels** a side and saves them again, which removes their metadata
   (camera, date, GPS position). GIFs are uploaded as they are, to keep their animation.
 - Only images uploaded this way are shown as pictures; links to images on other sites are shown as
-  links and never loaded. Selecting an image opens it at full size in a new tab.
+  links and never loaded. Selecting an image shows it at full size in Juntia's viewer.
 - Images are visible to every member, like the text that shows them. Removing an image from the
   text does not delete it: earlier versions in the history may still show it, and it keeps counting
   against the [storage quotas](deployment.md#storage-quotas-and-purging). Only the administrator
@@ -222,8 +222,9 @@ sites open in a new tab, and headings are shown smaller than the page's own head
 - Each PDF also counts against the [storage quotas](deployment.md#storage-quotas-and-purging): a
   per-resident and a community-wide budget, withdrawn PDFs included until the administrator purges
   them.
-- The eye icon opens the PDF in a new browser tab (an authenticated preview on the portal's own
-  address); the download icon saves it. The author or the administrator can also rename it
+- The eye icon shows the PDF in Juntia's viewer, an authenticated preview on the portal's own
+  address (on phones and tablets, and where the browser cannot show PDFs inside a page, in a new
+  tab); the download icon saves it. The author or the administrator can also rename it
   (the `.pdf` extension and the content are kept) and withdraw it.
 - PDF contents never change: to correct a document, upload a new one and withdraw the old one.
 - **Withdrawing** frees an active slot but **does not erase the file**: it stays visible and
@@ -359,13 +360,19 @@ PDFs attached to actions.
 - **Uploads** shows the progress of each file. Uploads go on while you move around Juntia, and the
   browser asks before closing the page while some are unfinished. An interrupted upload continues
   where it stopped when you **Retry** it within a day.
-- The **eye** of PDFs, pictures and videos opens them in a new tab (HEIC pictures only in browsers
-  that can show them); the eye of text and CSV files shows them in Juntia itself, CSV files as a
-  table, in the encoding they were saved with (large files show their first MiB). Clicking a file
-  opens that preview, or downloads the file when it has none.
+- The **eye** shows a file in Juntia's own viewer, with its download: PDFs in the browser's PDF
+  viewer, pictures, videos, and text and CSV files, CSV files as a table, in the encoding they were
+  saved with (large text files show their first MiB). On phones and tablets, and in browsers that
+  cannot show PDFs inside a page, PDFs open in a new tab instead. Pictures and videos the browser
+  cannot show, such as HEIC pictures outside Safari, say so. Clicking a file opens that preview, or
+  downloads the file when it has none; Ctrl-click or the middle button opens it in a new tab.
+- **Search all documents**, above the cards, finds folders and files in any folder by name,
+  ignoring capitals and accents, 20 at a time. Each result says where it is, with a link to its
+  folder, and works like the cards of a folder: open, select, download together, or use its
+  options. Emptying the box shows the folder again.
 
 <p align="center">
-  <img src="screenshots/documents.png" alt="Documents: folders and files as cards, two of them selected for one ZIP download, and the options menu of a folder, with Delete in red" width="900"><br>
+  <img src="screenshots/documents.png" alt="Documents: the box that searches all documents above folders and files as cards, two of them selected for one ZIP download, and the options menu of a folder, with Delete in red" width="900"><br>
   <sub><b>Documents</b>, with a selection and the options of a folder (synthetic demo data).</sub>
 </p>
 
@@ -693,15 +700,16 @@ and, for documents, in [shared documents](deployment.md#shared-documents).
 
 **Free up space** (`/admin/cleanup`) lists the files that stay on the server until the
 administrator deletes them permanently, each list 5 per page with a box that finds files by name,
-ignoring capitals and accents:
+ignoring capitals and accents. Previews open in the same viewer as in [Documents](#folders-and-files):
 
 - **Withdrawn PDFs**: the withdrawn PDFs that still use space, the latest withdrawn first, each with
-  its size, uploader, withdrawal date and action. The eye opens it in a new tab and the arrow
-  downloads it, also while Actions is turned off. **Delete permanently** removes a file for good
-  after a confirmation that names its action and the space it frees.
-- **Images in texts**: every stored image with a thumbnail, its size, dimensions, section, uploader
-  and upload date, the newest first. **Delete permanently** removes it for good after a
-  confirmation; the texts and history entries that show it then say "Image not available".
+  its size, uploader, withdrawal date and action. The eye shows it and the arrow downloads it, also
+  while Actions is turned off. **Delete permanently** removes a file for good after a confirmation
+  that names its action and the space it frees.
+- **Images in texts**: every stored image with a thumbnail, which shows it at full size, its size,
+  dimensions, section, uploader and upload date, the newest first. **Delete permanently** removes it
+  for good after a confirmation; the texts and history entries that show it then say "Image not
+  available".
 - **Earlier versions of documents**: the replaced versions of shared documents, the latest uploaded
   first. Each can be previewed (PDFs, pictures, videos, text and CSV files), downloaded and deleted
   permanently; the current version of a file is only deleted with the file.

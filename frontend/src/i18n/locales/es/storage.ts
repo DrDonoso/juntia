@@ -87,7 +87,7 @@ export const storage: Messages<typeof source> = {
       events: 'Eventos',
     },
     uploadedAt: 'Subida: <time></time>',
-    open: 'Abrir {filename} a tamaño completo en una pestaña nueva',
+    open: 'Ver {filename} a tamaño completo',
     delete: 'Eliminar definitivamente',
     deleteLabel: 'Eliminar definitivamente: {filename}',
     empty: {

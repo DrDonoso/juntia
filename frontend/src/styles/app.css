@@ -666,6 +666,11 @@ dialog.action-history-dialog { width: min(900px, calc(100vw - 30px)); }
 .notice.documents-public .icon { flex: 0 0 auto; margin-top: 2px; }
 .documents-browser-header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
 .documents-browser-header h2 { margin: 0; }
+.documents-browser-filters { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: flex-end; justify-content: flex-end; gap: var(--space-3); }
+.documents-search { flex: 0 1 320px; min-width: min(100%, 220px); }
+.document-location { margin: 0; font-size: var(--text-xs); text-align: center; overflow-wrap: anywhere; }
+.document-location a { display: inline-flex; align-items: center; gap: var(--space-1); }
+.document-location .icon { flex: 0 0 auto; }
 .document-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)); gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
 .document-card { position: relative; display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; padding: var(--space-8) var(--space-4) var(--space-4); border: 1px solid var(--border); border-radius: 10px; background: var(--surface); transition: border-color .15s ease, box-shadow .15s ease; }
 .document-card:hover, .document-card:focus-within { border-color: rgba(var(--primary-rgb), .45); box-shadow: var(--shadow); }
@@ -718,8 +723,13 @@ dialog.document-info.with-history { width: min(1080px, calc(100vw - 30px)); }
 .document-timeline > li::before { content: ''; position: absolute; top: 3px; left: -21px; width: 12px; height: 12px; box-sizing: border-box; border: 2px solid var(--primary); border-radius: 50%; background: var(--surface); }
 .document-timeline time { color: var(--text-muted); font-size: var(--text-xs); }
 .document-timeline p { margin: 0; }
-/* Text and CSV files shown in the portal (text-preview.tsx) */
-dialog.text-preview-dialog { width: min(1100px, calc(100vw - 30px)); }
+/* Files shown in the portal (file-preview.tsx, text-preview.tsx). PDFs fill the dialog. */
+dialog.file-preview-dialog { width: min(1100px, calc(100vw - 30px)); }
+dialog.file-preview-pdf[open] { display: flex; flex-direction: column; height: 85vh; }
+.file-preview-frame { display: block; flex: 1 1 auto; width: 100%; min-height: 280px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.file-preview-media { display: flex; justify-content: center; }
+.file-preview-media img, .file-preview-media video { display: block; max-width: 100%; max-height: calc(85vh - 130px); border-radius: 8px; background: var(--bg); }
+.file-preview-dialog > .empty { margin: 0; }
 .text-preview, .text-preview-table { max-height: 65vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
 .text-preview pre { margin: 0; padding: var(--space-4); font-family: var(--font-num); font-size: var(--text-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
 .text-preview-table table { font-size: var(--text-sm); }
@@ -765,6 +775,8 @@ dialog.text-preview-dialog { width: min(1100px, calc(100vw - 30px)); }
   .documents-toolbar { width: 100%; justify-content: flex-start; }
   .documents-toolbar > button { flex: 1 1 140px; min-height: 44px; }
   .document-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: var(--space-3); }
+  .documents-browser-filters, .documents-search { flex: 1 1 100%; }
+  .documents-browser-filters > label { flex: 1 1 160px; }
   .document-selection { top: calc(var(--topbar-height) + var(--space-1)); }
   .document-details > div { grid-template-columns: 1fr; gap: 0; }
   .document-info.with-history .document-info-layout { grid-template-columns: minmax(0, 1fr); }

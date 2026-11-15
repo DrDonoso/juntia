@@ -57,9 +57,9 @@ OOXML_MAIN = {
 class FileType:
     kind: DocumentKind
     media_type: str
-    # Shown by the eye icon with this type: PDFs, pictures and videos in a new tab, where phones'
-    # QuickTime videos only play when browsers are told they are MP4, the format they derive from;
-    # text and CSV files in the portal's viewer, which reads their encoding itself.
+    # Shown by the eye icon, in the portal's viewer, with this type: phones' QuickTime videos only
+    # play when browsers are told they are MP4, the format they derive from, and the viewer reads
+    # the encoding of text and CSV files itself.
     preview_type: str | None = None
 
 

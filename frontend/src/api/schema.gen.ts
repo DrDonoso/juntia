@@ -433,6 +433,22 @@ export interface DocumentEventOut {
   size: number | null
 }
 
+export interface DocumentFileMatch {
+  author: ActorOut
+  can_manage: boolean
+  created_at: string
+  current: DocumentVersionOut
+  folder_id: number | null
+  id: number
+  kind: 'pdf' | 'image' | 'video' | 'document' | 'spreadsheet' | 'presentation' | 'text'
+  location: DocumentFolderRef[]
+  name: string
+  previewable: boolean
+  updated_at: string
+  version: number
+  version_count: number
+}
+
 export interface DocumentFolderIn {
   name: string
   parent_id?: number | null
@@ -452,6 +468,22 @@ export interface DocumentFolderInfoOut {
   name: string
   parent_id: number | null
   purged_at: string | null
+  size: number
+  updated_at: string
+  version: number
+}
+
+export interface DocumentFolderMatch {
+  author: ActorOut
+  can_delete: boolean
+  can_manage: boolean
+  created_at: string
+  file_count: number
+  folder_count: number
+  id: number
+  location: DocumentFolderRef[]
+  name: string
+  parent_id: number | null
   size: number
   updated_at: string
   version: number
@@ -544,6 +576,14 @@ export interface DocumentResidentStorageOut {
   stored_bytes: number
   user_id: number
   versions: number
+}
+
+export interface DocumentSearchPage {
+  files: DocumentFileMatch[]
+  folders: DocumentFolderMatch[]
+  page: number
+  pages: number
+  total: number
 }
 
 export interface DocumentSettings {

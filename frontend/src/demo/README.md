@@ -27,10 +27,13 @@ lasts until the page is reloaded; a reload starts again from the same scenario. 
 - **Chrome.** `DemoChrome.tsx` adds a persistent banner (`DemoBanner`), a welcome dialog once per
   page load (`DemoWelcome`: "Explore as a neighbor" / "Open administration"), the credentials on
   the `/login` and `/admin` sign-in screens, filled in (`DemoSignInNotice`), and serves plain links
-  to API files through the demo API (`DemoApiLinks`: navigations bypass the service worker). Texts
-  live in the `demo` i18n namespace (English and Spanish).
+  to API files through the demo API (`DemoApiLinks`: navigations bypass the service worker; clicks
+  the app handles itself, such as its file viewer, are left alone). The viewer shows PDFs from a
+  copy read through the demo API, since frames bypass the worker too. Texts live in the `demo` i18n
+  namespace (English and Spanish).
 - **Static host.** `vite.config.ts` writes `dist-demo/_headers` (the backend's CSP and security
-  headers plus `worker-src 'self'`; `no-cache` for the worker, immutable `/assets/*`) and a
+  headers plus `worker-src 'self'` and `frame-src 'self' blob:`; `no-cache` for the worker,
+  immutable `/assets/*`) and a
   `manifest.webmanifest` (the backend serves the production one), and titles the page "Juntia demo".
 
 ## Deployment (Cloudflare Workers Builds)
@@ -198,8 +201,8 @@ Every operation of `src/api/openapi.json` belongs to exactly one module (`{x}` i
   `POST /api/admin/storage/images/{image_id}/purge`, `GET /api/admin/storage/document-versions`,
   `POST /api/admin/storage/document-versions/{version_id}/purge`.
 - **documents** (`handlers/shared-documents.ts`): everything under `/api/documents/` (browse, the
-  folder tree, folders and files with their history, uploads with their chunks and completion,
-  downloads, previews and archives), `GET /api/admin/documents/deleted`,
+  search by name, the folder tree, folders and files with their history, uploads with their chunks
+  and completion, downloads, previews and archives), `GET /api/admin/documents/deleted`,
   `POST /api/admin/documents/deletions/{deletion_id}/restore|purge`,
   `GET /api/admin/documents/files/{document_id}` and its `/history`,
   `GET /api/admin/documents/folders/{folder_id}/history`,

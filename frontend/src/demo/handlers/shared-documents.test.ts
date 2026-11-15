@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import type {
   DocumentBrowseOut, DocumentDeletionPage, DocumentFolderInfoOut, DocumentFolderOut, DocumentHistoryPage, DocumentInfoOut, DocumentOut,
-  DocumentSettings, DocumentTreeFolderOut, DocumentUploadOut, StorageOut,
+  DocumentSearchPage, DocumentSettings, DocumentTreeFolderOut, DocumentUploadOut, StorageOut,
 } from '../../api/schema.gen'
 import { MUTATION_HEADER, readZip, readZipMember, setClock, zipArchive } from '../core'
 import { resetDemo } from '../store'
@@ -191,6 +191,40 @@ describe('the Documents section', () => {
     for (const query of ['?folder=0', '?folder=x', '?folder=']) {
       expect(await get(`/api/documents/browse${query}`), query).toMatchObject({ status: 422, body: { code: 'invalid_request' } })
     }
+  })
+})
+
+describe('the search', () => {
+  const search = async (query: string) => (await get<DocumentSearchPage>(`/api/documents/search?${query}`)).body
+
+  test('finds folders and files anywhere by name, ignoring case and accents, and says where they are', async () => {
+    const found = await search(`q=${encodeURIComponent(' MÍNUTES ')}`)
+    expect(found).toMatchObject({ total: 3, page: 1, pages: 1 })
+    expect(found.folders.map(item => [item.name, item.location])).toEqual([['Meeting minutes', []]])
+    expect(found.files.map(item => [item.name, item.location.map(folder => folder.name)])).toEqual([
+      ['Minutes - annual general meeting.pdf', ['Meeting minutes', '2025']],
+      ['Minutes - ordinary meeting.pdf', ['Meeting minutes', '2026']],
+    ])
+    // Each match is described as in its folder, with what the visitor may do.
+    const minutes = scenarioFolder('Meeting minutes')
+    const year = (await browse(minutes.id)).folders[1]
+    const { location, ...ordinary } = found.files[1]
+    expect(ordinary).toEqual((await browse(year.id)).files[0])
+    expect(location).toEqual([{ id: minutes.id, name: 'Meeting minutes' }, { id: year.id, name: '2026' }])
+    // Deleted items stay hidden; the largest or the latest changed come first when asked.
+    const deleted = sharedDocumentsStore().folders.find(item => item.deletedAt !== null)!
+    expect((await search(`q=${encodeURIComponent(deleted.name)}`)).folders.map(item => item.id)).not.toContain(deleted.id)
+    const sizes = (await search('q=e&sort=size')).files.map(item => item.current.size)
+    expect(sizes.length).toBeGreaterThan(1)
+    expect(sizes).toEqual([...sizes].sort((a, b) => b - a))
+    const changes = (await search('q=e&sort=modified')).files.map(item => item.updated_at)
+    expect(changes).toEqual([...changes].sort().reverse())
+    expect(await search('q=%20%20')).toEqual({ total: 0, page: 1, pages: 1, folders: [], files: [] })
+    for (const query of ['', '?q=', `?q=${'x'.repeat(201)}`, '?q=a&sort=type', '?q=a&page=0']) {
+      expect(await get(`/api/documents/search${query}`), query).toMatchObject({ status: 422, body: { code: 'invalid_request' } })
+    }
+    coreStore().features.documents = false
+    expect(await get('/api/documents/search?q=a')).toMatchObject({ status: 404, body: { code: 'documents_disabled' } })
   })
 })
 

@@ -4,7 +4,8 @@ import type { Plugin } from 'vite'
 
 /**
  * Security headers of the static demo: the ones src/juntia/middleware.py sends (keep them in
- * step), plus `worker-src 'self'` for the MSW service worker that answers the demo's API.
+ * step), plus `worker-src 'self'` for the MSW service worker that answers the demo's API and
+ * `frame-src blob:` for the copies of PDFs its viewer shows (frames do not go through the worker).
  */
 const DEMO_CSP = [
   "default-src 'self'",
@@ -14,6 +15,7 @@ const DEMO_CSP = [
   "font-src 'self'",
   "connect-src 'self'",
   "worker-src 'self'",
+  "frame-src 'self' blob:",
   "frame-ancestors 'none'",
   "base-uri 'none'",
   "form-action 'self'",

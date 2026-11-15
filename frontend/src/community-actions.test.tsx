@@ -552,7 +552,7 @@ test('history opens on demand in a paginated modal without replacing the comment
   expect(await within(dialog).findByText('Withdrew a PDF')).toBeVisible()
   expect(await within(dialog).findByRole('button', { name: 'Download old-quote.pdf' })).toBeVisible()
   expect(requests).toContain('/api/actions/items/1/attachments/retired-pdf')
-  expect(within(dialog).getByRole('link', { name: 'View old-quote.pdf (new tab)' })).toHaveAttribute('title', 'View PDF (new tab)')
+  expect(within(dialog).getByRole('link', { name: 'View old-quote.pdf' })).toHaveAttribute('title', 'View PDF')
   fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   expect(opener).toHaveFocus()
@@ -811,7 +811,7 @@ test.each([reader, { ...reader, user_id: 8 }, { ...reader, kind: 'administrator'
   'PDF icon controls show preview first and preserve moderation permissions (%s)', async currentReader => {
     vi.stubGlobal('fetch', vi.fn(async () => reply(page([attachment]))))
     renderView(<ActionAttachments item={item} reader={currentReader} />)
-    const preview = await screen.findByRole('link', { name: 'View quote.pdf (new tab)' })
+    const preview = await screen.findByRole('link', { name: 'View quote.pdf' })
     expect(preview).toHaveAttribute('href', '/api/actions/items/1/attachments/pdf-id/preview')
     expect(preview).toHaveAttribute('target', '_blank')
     expect(preview).toHaveAttribute('rel', 'noopener noreferrer')
@@ -853,7 +853,7 @@ test.each([reader, { ...reader, kind: 'administrator' as const, user_id: null }]
     expect(purged.querySelector('time')).toHaveAttribute('datetime', purgedAt)
     expect(screen.getByText('Withdrawn:', { exact: false }).querySelector('time')).toHaveAttribute('datetime', stamp)
     expect(screen.getByText('quote.pdf')).toBeVisible()
-    expect(screen.queryByRole('link', { name: 'View quote.pdf (new tab)' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'View quote.pdf' })).toBeNull()
     for (const name of ['Download quote.pdf', 'Rename quote.pdf', 'Withdraw quote.pdf']) expect(screen.queryByRole('button', { name })).toBeNull()
     act(() => setLanguage('es'))
     expect(screen.getByText('Eliminado definitivamente:', { exact: false }).querySelector('time')).toHaveAttribute('datetime', purgedAt)
@@ -897,7 +897,7 @@ test('history entries of a PDF deleted permanently never offer its file, whereve
   expect(within(purgeEntry).queryByText('Permanently deleted:', { exact: false })).toBeNull()
   for (const filename of ['new.pdf', 'old.pdf']) {
     expect(within(dialog).queryByRole('button', { name: `Download ${filename}` })).toBeNull()
-    expect(within(dialog).queryByRole('link', { name: `View ${filename} (new tab)` })).toBeNull()
+    expect(within(dialog).queryByRole('link', { name: `View ${filename}` })).toBeNull()
   }
   // A purge listed on the page is enough: only the other PDFs are asked for their state.
   expect(requests).not.toContain('/api/actions/items/1/attachments/new-pdf')
@@ -933,7 +933,7 @@ test('a download of a PDF deleted permanently since the history loaded stops off
   fireEvent.click(await within(dialog).findByRole('button', { name: 'Download quote.pdf' }))
   expect((await within(dialog).findByText('Permanently deleted:', { exact: false })).querySelector('time')).toHaveAttribute('datetime', purgedAt)
   expect(within(dialog).queryByRole('button', { name: 'Download quote.pdf' })).toBeNull()
-  expect(within(dialog).queryByRole('link', { name: 'View quote.pdf (new tab)' })).toBeNull()
+  expect(within(dialog).queryByRole('link', { name: 'View quote.pdf' })).toBeNull()
   expect(requests.filter(path => path === '/api/actions/items/1/attachments/pdf-id')).toHaveLength(2)
   expect(translate('en', 'errors.codes.action_attachment_purged')).toBe('This PDF has been deleted permanently. Its name, size and checksum remain in the history.')
 })

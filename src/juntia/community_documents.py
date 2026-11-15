@@ -41,8 +41,10 @@ from .contracts import (
     DocumentDeletionPage,
     DocumentEventKind,
     DocumentEventOut,
+    DocumentFileMatch,
     DocumentFolderIn,
     DocumentFolderInfoOut,
+    DocumentFolderMatch,
     DocumentFolderOut,
     DocumentFolderRef,
     DocumentHistoryPage,
@@ -51,8 +53,10 @@ from .contracts import (
     DocumentLimitsOut,
     DocumentOut,
     DocumentPolicy,
+    DocumentSearchPage,
     DocumentSettings,
     DocumentSettingsEdit,
+    DocumentSort,
     DocumentTreeFolderOut,
     DocumentUploadIn,
     DocumentUploadOut,
@@ -93,6 +97,7 @@ from .document_files import (
     write_chunk,
 )
 from .errors import AppError
+from .query_sql import fold_text
 from .storage import MIB, ensure_free_space
 from .texts import ServerLanguage, author_name, texts
 
@@ -114,6 +119,7 @@ POLICIES: tuple[DocumentPolicy, ...] = ("creator", "administrator", "everyone")
 DETAILS = ("name", "previous_name", "location", "previous_location", "number", "size", "folder")
 ItemId = Annotated[int, Path(ge=1, le=2147483647)]
 PageNumber = Annotated[int, Query(ge=1, le=1000000)]
+SearchText = Annotated[str, Query(min_length=1, max_length=200)]
 Reader = Annotated[UserAuthOut, Depends(reader_session)]
 
 
@@ -249,7 +255,10 @@ class TreeFile:
     size: int
     storage_key: str
     extension: str
+    # When its current version was uploaded, and when the file last changed in any way.
     modified: datetime
+    updated: datetime
+    name_key: str
 
 
 @dataclass
@@ -285,13 +294,15 @@ async def load_tree(db: AsyncSession) -> Tree:
             Document.id, Document.folder_id, Document.name, Document.name_key,
             Document.author_kind, Document.author_user_id, DocumentVersion.size,
             DocumentVersion.storage_key, DocumentVersion.extension, DocumentVersion.created_at,
+            Document.updated_at,
         ).join(DocumentVersion, current_join()).where(Document.deleted_at.is_(None))
         .order_by(Document.name_key, Document.id)
     )
     for row in rows:
         files.setdefault(row.folder_id, []).append(TreeFile(
             row.id, row.folder_id, row.name, row.author_kind, row.author_user_id, int(row.size),
-            row.storage_key, row.extension, aware(row.created_at),
+            row.storage_key, row.extension, aware(row.created_at), aware(row.updated_at),
+            row.name_key,
         ))
     return Tree(folders, children, files)
 
@@ -631,6 +642,65 @@ async def browse(
     )
 
 
+def search_order(
+    sort: DocumentSort, name_key: str, item_id: int, updated: datetime, size: int,
+) -> tuple[float | str | int, ...]:
+    """The order of the folder views: the latest change or the largest first, then by name."""
+    if sort == "modified":
+        return (-updated.timestamp(), name_key, item_id)
+    if sort == "size":
+        return (-size, name_key, item_id)
+    return (name_key, item_id)
+
+
+@router.get("/search", response_model=DocumentSearchPage)
+async def search(
+    q: SearchText, db: DB, language: ServerLanguage, identity: Reader,
+    page: PageNumber = 1, sort: DocumentSort = "name",
+) -> DocumentSearchPage:
+    """Folders and files anywhere in Documents whose name contains the text, ignoring case and
+    accents."""
+    actor = actor_of(identity, language)
+    needle = fold_text(q.strip())
+    tree = await load_tree(db)
+    stats = folder_stats(tree, actor)
+    folders = sorted(
+        (value for value in tree.folders.values() if needle and needle in fold_text(value.name)),
+        key=lambda value: search_order(
+            sort, value.name_key, value.id, aware(value.updated_at), stats[value.id].size,
+        ),
+    )
+    files = sorted(
+        (
+            item for items in tree.files.values() for item in items
+            if needle and needle in fold_text(item.name)
+        ),
+        key=lambda item: search_order(sort, item.name_key, item.id, item.updated, item.size),
+    )
+    matches: list[DocumentFolder | TreeFile] = [*folders, *files]
+    shown = matches[(page - 1) * PAGE_SIZE:page * PAGE_SIZE]
+    shown_files = [item.id for item in shown if isinstance(item, TreeFile)]
+    rows = {
+        value.id: (value, current) for value, current in (await db.execute(
+            select(Document, DocumentVersion).join(DocumentVersion, current_join())
+            .where(Document.id.in_(shown_files))
+        )).all()
+    } if shown_files else {}
+    policy = await manage_policy(db)
+    return DocumentSearchPage(
+        **page_info(len(matches), page),
+        folders=[DocumentFolderMatch.model_validate({
+            **folder_out(item, stats[item.id], actor, policy, language).model_dump(),
+            "location": refs(tree_path(tree, item.parent_id)),
+        }) for item in shown if isinstance(item, DocumentFolder)],
+        # A file deleted while searching is left out of this page.
+        files=[DocumentFileMatch.model_validate({
+            **document_out(*rows[item.id], actor, policy, language).model_dump(),
+            "location": refs(tree_path(tree, item.folder_id)),
+        }) for item in shown if isinstance(item, TreeFile) and item.id in rows],
+    )
+
+
 @router.get("/folders", response_model=list[DocumentTreeFolderOut])
 async def folder_tree(db: DB) -> list[DocumentTreeFolderOut]:
     rows = await db.execute(
@@ -638,7 +708,9 @@ async def folder_tree(db: DB) -> list[DocumentTreeFolderOut]:
         .where(DocumentFolder.deleted_at.is_(None))
         .order_by(DocumentFolder.name_key, DocumentFolder.id)
     )
-    return [DocumentTreeFolderOut(id=row.id, parent_id=row.parent_id, name=row.name) for row in rows]
+    return [
+        DocumentTreeFolderOut(id=row.id, parent_id=row.parent_id, name=row.name) for row in rows
+    ]
 
 
 @router.post("/folders", response_model=DocumentFolderOut, status_code=201)
@@ -679,8 +751,9 @@ async def folder_details(
         raise AppError("document_folder_not_found", 404)
     value = tree.folders[folder_id]
     stats = folder_stats(tree, actor)
+    policy = await manage_policy(db)
     return DocumentFolderInfoOut.model_validate({
-        **folder_out(value, stats[folder_id], actor, await manage_policy(db), language).model_dump(),
+        **folder_out(value, stats[folder_id], actor, policy, language).model_dump(),
         "location": refs(tree_path(tree, value.parent_id)),
         "deleted_at": None, "deleted_by": None, "purged_at": None,
     })
@@ -896,8 +969,8 @@ async def download_version(
     return await version_response(version_id, db, request, "attachment", language)
 
 
-# PDFs, pictures and videos, in a new tab on the portal's own address (videos can be sought), and
-# the text and CSV files the portal's viewer reads, also in part.
+# PDFs, pictures, videos, and text and CSV files, which the portal's viewer shows from its own
+# address: videos can be sought, and text files read in part. Phones and tablets open PDFs in a tab.
 @router.get("/versions/{version_id}/preview", response_class=FileResponse)
 async def preview_version(
     version_id: UUID, db: DB, request: Request, language: ServerLanguage,

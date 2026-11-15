@@ -2327,6 +2327,99 @@
         "title": "DocumentEventOut",
         "type": "object"
       },
+      "DocumentFileMatch": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "$ref": "#/components/schemas/ActorOut"
+          },
+          "can_manage": {
+            "title": "Can Manage",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current": {
+            "$ref": "#/components/schemas/DocumentVersionOut"
+          },
+          "folder_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "pdf",
+              "image",
+              "video",
+              "document",
+              "spreadsheet",
+              "presentation",
+              "text"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "location": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentFolderRef"
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "previewable": {
+            "title": "Previewable",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "version_count": {
+            "title": "Version Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "folder_id",
+          "name",
+          "kind",
+          "previewable",
+          "version",
+          "author",
+          "created_at",
+          "updated_at",
+          "current",
+          "version_count",
+          "can_manage",
+          "location"
+        ],
+        "title": "DocumentFileMatch",
+        "type": "object"
+      },
       "DocumentFolderIn": {
         "additionalProperties": false,
         "properties": {
@@ -2476,6 +2569,91 @@
           "purged_at"
         ],
         "title": "DocumentFolderInfoOut",
+        "type": "object"
+      },
+      "DocumentFolderMatch": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "$ref": "#/components/schemas/ActorOut"
+          },
+          "can_delete": {
+            "title": "Can Delete",
+            "type": "boolean"
+          },
+          "can_manage": {
+            "title": "Can Manage",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "file_count": {
+            "title": "File Count",
+            "type": "integer"
+          },
+          "folder_count": {
+            "title": "Folder Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "location": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentFolderRef"
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "parent_id",
+          "name",
+          "version",
+          "author",
+          "created_at",
+          "updated_at",
+          "file_count",
+          "folder_count",
+          "size",
+          "can_manage",
+          "can_delete",
+          "location"
+        ],
+        "title": "DocumentFolderMatch",
         "type": "object"
       },
       "DocumentFolderOut": {
@@ -2967,6 +3145,46 @@
           "versions"
         ],
         "title": "DocumentResidentStorageOut",
+        "type": "object"
+      },
+      "DocumentSearchPage": {
+        "additionalProperties": false,
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentFileMatch"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "folders": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentFolderMatch"
+            },
+            "title": "Folders",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "page",
+          "pages",
+          "folders",
+          "files"
+        ],
+        "title": "DocumentSearchPage",
         "type": "object"
       },
       "DocumentSettings": {
@@ -12416,6 +12634,78 @@
           }
         },
         "summary": "Folder History",
+        "tags": [
+          "Shared documents"
+        ]
+      }
+    },
+    "/api/documents/search": {
+      "get": {
+        "description": "Folders and files anywhere in Documents whose name contains the text, ignoring case and\naccents.",
+        "operationId": "search_api_documents_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 1000000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "name",
+              "enum": [
+                "name",
+                "modified",
+                "size"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentSearchPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search",
         "tags": [
           "Shared documents"
         ]

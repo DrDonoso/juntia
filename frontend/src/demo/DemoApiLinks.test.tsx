@@ -79,6 +79,15 @@ describe('links to API files', () => {
     expect(fetcher).not.toHaveBeenCalled()
   })
 
+  test('a link the app opens itself, such as a preview in its viewer, is left alone', async () => {
+    const user = userEvent.setup()
+    const open = vi.spyOn(window, 'open')
+    render(<><DemoApiLinks /><a href="/api/documents/versions/x/preview" target="_blank" onClick={event => event.preventDefault()}>Preview</a></>)
+    await user.click(screen.getByRole('link', { name: 'Preview' }))
+    expect(open).not.toHaveBeenCalled()
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
   test('file names come from Content-Disposition', () => {
     expect(dispositionFilename('attachment; filename="statement 2026-09.pdf"')).toBe('statement 2026-09.pdf')
     expect(dispositionFilename("inline; filename*=UTF-8''minutes%20of%20the%20meeting.pdf")).toBe('minutes of the meeting.pdf')

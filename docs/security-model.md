@@ -289,13 +289,20 @@ trusted content. No banking parser, OCR or AI service receives these attachments
 
 Downloads are served with `Content-Disposition: attachment`. The eye icon opens a
 separate, equally authenticated preview endpoint that serves the same file
-**inline, on the application's own origin**, in a new tab. Both responses carry
+**inline, on the application's own origin**. Both responses carry
 `Content-Type: application/pdf`, `nosniff`, `no-store` and the application's
-Content Security Policy (`script-src 'self'`, `object-src 'none'`,
-`frame-ancestors 'none'`). The browser displays the preview in its built-in PDF
-viewer, isolated from the application's pages, and the review found no way for a
-document to run script in the application's origin through this path. Two
-residual risks remain:
+Content Security Policy (`script-src 'self'`, `object-src 'none'`). Nothing the
+server sends may be shown in a frame (`frame-ancestors 'none'`, `X-Frame-Options:
+DENY`), except PDFs served inline: the portal shows them in its own viewer, a
+frame of the same origin, so they may be framed by the portal's pages and by no
+other site (`frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`). The viewer
+reads the file's first byte before framing it, so a deleted file or an expired
+session is explained instead of shown as the server's raw answer; and it is used
+only on computers whose browser shows PDFs inside a page (phones and tablets open
+the preview in a new tab). Either way, the browser displays the preview in its
+built-in PDF viewer, isolated from the application's pages, and the review found
+no way for a document to run script in the application's origin through this
+path. Two residual risks remain:
 
 - a resident can upload a convincing fake document, such as a forged invoice or a
   notice asking neighbors to sign in elsewhere, and it is displayed under the
@@ -471,16 +478,21 @@ that ask to update, misleading text, or content that exploits flaws in the
 programs that open it. Treat member files as untrusted, open Office files in
 protected view and keep office software and browsers up to date.
 
-**Preview.** The eye icon opens PDFs, pictures and videos **inline, on the
-application's own origin**, in a new tab, with the recognized type (MOV and M4V
-videos as `video/mp4`, which browsers can play), `nosniff`, `no-store` and the
-application's Content Security Policy, like
-[action PDFs](#community-actions-and-retained-pdfs), with the same residual
+**Preview.** The eye icon shows PDFs, pictures and videos **inline, on the
+application's own origin**, in the portal's viewer (PDFs framed like
+[action PDFs](#community-actions-and-retained-pdfs)), with the recognized type
+(MOV and M4V videos as `video/mp4`, which browsers can play), `nosniff`,
+`no-store` and the application's Content Security Policy, with the same residual
 risks: convincing fake documents shown under the community's address, and
 flaws in the browser's PDF or media engines. Browsers that cannot display HEIC
-download it instead. Other types are only sent as attachments. SVG, HTML and
-other active formats are never accepted, so no upload can run script in the
-application's origin.
+say so and offer the download. Other types are only sent as attachments. SVG,
+HTML and other active formats are never accepted, so no upload can run script in
+the application's origin.
+
+**Search.** Members find folders and files by name anywhere in Documents
+(`GET /api/documents/search`, up to 200 characters, ignoring capitals and
+accents). The search only covers what they can already browse: deleted items
+stay hidden, and each result shows what the person searching may do with it.
 
 **Downloads.** File names in `Content-Disposition` and in ZIP files come from
 the validated names (at most 200 characters, without `/ \ : * ? " < > |` or

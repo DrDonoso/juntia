@@ -931,7 +931,7 @@ class DocumentOut(Contract):
     folder_id: int | None
     name: str
     kind: DocumentKind
-    # PDFs, pictures and videos open in a new tab from the eye icon.
+    # PDFs, pictures, videos, and text and CSV files, which the portal's viewer shows.
     previewable: bool
     version: int
     # Who uploaded the first version.
@@ -974,6 +974,24 @@ class DocumentBrowseOut(Contract):
     files: list[DocumentOut]
     policy: DocumentPolicy
     limits: DocumentLimitsOut
+
+
+DocumentSort = Literal["name", "modified", "size"]
+
+
+class DocumentFolderMatch(DocumentFolderOut):
+    # The folders above it, from the top level of Documents.
+    location: list[DocumentFolderRef]
+
+
+class DocumentFileMatch(DocumentOut):
+    location: list[DocumentFolderRef]
+
+
+class DocumentSearchPage(ActionPagination):
+    # This page of the matches: folders first, then files, each in the order asked for.
+    folders: list[DocumentFolderMatch]
+    files: list[DocumentFileMatch]
 
 
 class DocumentFolderIn(Contract):

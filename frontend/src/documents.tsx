@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { useQuery } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { Link, useParams, useSearchParams } from 'react-router'
 import { ApiError, api, cache, errorMessage } from './api/client'
 import type {
   DocumentBrowseOut, DocumentEventOut, DocumentFolderInfoOut, DocumentFolderOut, DocumentFolderRef, DocumentHistoryPage,
-  DocumentInfoOut, DocumentLimitsOut, DocumentOut, DocumentTreeFolderOut, DocumentVersionOut,
+  DocumentInfoOut, DocumentLimitsOut, DocumentOut, DocumentSearchPage, DocumentTreeFolderOut, DocumentVersionOut,
 } from './api/schema.gen'
 import { useReaderAuth } from './auth'
 import { ActionTime, byteSize } from './community-action-shared'
 import { extensionOf, uploads, useUploads, type UploadEntry } from './document-upload'
+import { FilePreview, opensInViewer, plainClick, type PreviewFile } from './file-preview'
 import { compareText, dateTimeFormat, formatNumber, useI18n, type Translate } from './i18n'
 import { Icon, type IconName } from './icons'
 import { Modal, Notice, Pagination, authorName, useAction, useFeatures } from './shared'
-import { TextPreview, isTextFile, plainClick } from './text-preview'
 
 export type DocumentKind = DocumentOut['kind']
 export type DocumentItem = { kind: 'folder'; value: DocumentFolderOut } | { kind: 'file'; value: DocumentOut }
 type Sort = 'name' | 'modified' | 'size'
-type Dialog = { kind: 'folder' } | { kind: 'rename' | 'move' | 'delete' | 'info'; item: DocumentItem } | { kind: 'view'; file: DocumentOut }
+type Dialog = { kind: 'folder' } | { kind: 'rename' | 'move' | 'delete' | 'info'; item: DocumentItem } | { kind: 'view'; file: PreviewFile }
 
 const KIND_ICONS: Record<DocumentKind, IconName> = {
   pdf: 'file-text', image: 'image', video: 'video', document: 'file-text', spreadsheet: 'table',
@@ -29,6 +29,21 @@ export const itemKey = (item: DocumentItem) => `${item.kind}:${item.value.id}`
 export const kindIcon = (kind: DocumentKind) => KIND_ICONS[kind]
 export const previewUrl = (versionId: string) => `/api/documents/versions/${versionId}/preview`
 export const downloadUrl = (versionId: string) => `/api/documents/versions/${versionId}/download`
+
+/** How the portal's viewer shows a file, if it does: PDFs, pictures, videos, and text and CSV files. */
+export function documentPreview(file: DocumentOut): PreviewFile | null {
+  const { kind } = file
+  if (!file.previewable) return null
+  const base = { name: file.name, path: `/documents/versions/${file.current.id}/preview`, download: downloadUrl(file.current.id) }
+  if (kind === 'text') return { ...base, kind, extension: file.current.extension, size: file.current.size }
+  return kind === 'pdf' || kind === 'image' || kind === 'video' ? { ...base, kind } : null
+}
+
+/** The folder that holds an item, from the folders above it. */
+function folderLink(location: readonly DocumentFolderRef[]): string {
+  const parent = location.at(-1)
+  return parent ? `/documents/folders/${parent.id}` : '/documents'
+}
 
 export function archiveUrl(items: DocumentItem[]): string {
   const params = new URLSearchParams()
@@ -102,6 +117,21 @@ function useBrowse(folderId: number | null) {
   })
 }
 
+/** Folders and files anywhere in Documents whose name contains `q`, a page at a time. */
+function useSearch(q: string, sort: Sort, page: number) {
+  const params = new URLSearchParams({ q, sort, page: String(page) })
+  return useQuery({
+    queryKey: ['documents', 'search', q, sort, page],
+    queryFn: ({ signal }) => api<DocumentSearchPage>(`/documents/search?${params}`, 'GET', undefined, signal),
+    enabled: q !== '', placeholderData: keepPreviousData,
+  })
+}
+
+function pageParam(value: string | null): number {
+  const page = Number(value ?? '1')
+  return Number.isInteger(page) && page >= 1 && page <= 1000000 ? page : 1
+}
+
 function Breadcrumbs({ path }: { path: DocumentFolderRef[] }) {
   const { t } = useI18n()
   // At the top level the title already says where people are.
@@ -121,7 +151,11 @@ function accept(limits: DocumentLimitsOut): string {
 function FolderView({ folderId }: { folderId: number | null }) {
   const { t } = useI18n()
   const query = useBrowse(folderId)
+  const [params, setParams] = useSearchParams()
+  // The search covers all of Documents, wherever it is typed; the address keeps it for Back.
+  const search = params.get('q') ?? '', q = search.trim(), searchPage = pageParam(params.get('page'))
   const [sort, setSort] = useState<Sort>('name')
+  const results = useSearch(q, sort, searchPage)
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [message, setMessage] = useState('')
@@ -134,7 +168,26 @@ function FolderView({ folderId }: { folderId: number | null }) {
     ...data.folders.map(value => ({ kind: 'folder' as const, value })),
     ...data.files.map(value => ({ kind: 'file' as const, value })),
   ], sort) : []
-  const chosen = items.filter(item => selected.has(itemKey(item)))
+  const found = q ? results.data : undefined
+  const matches = found ? sorted([
+    ...found.folders.map(value => ({ kind: 'folder' as const, value })),
+    ...found.files.map(value => ({ kind: 'file' as const, value })),
+  ], sort) : []
+  const locations = new Map<string, DocumentFolderRef[]>([
+    ...(found?.folders ?? []).map(value => [`folder:${value.id}`, value.location] as const),
+    ...(found?.files ?? []).map(value => [`file:${value.id}`, value.location] as const),
+  ])
+  const shown = q ? matches : items
+  const chosen = shown.filter(item => selected.has(itemKey(item)))
+  function filter(changes: { q?: string; page?: number }) {
+    const next = new URLSearchParams(params)
+    if (changes.q !== undefined) {
+      if (changes.q) next.set('q', changes.q); else next.delete('q')
+      setSelected(new Set())
+    }
+    if (changes.page && changes.page > 1) next.set('page', String(changes.page)); else next.delete('page')
+    setParams(next, { replace: true })
+  }
   function toggle(item: DocumentItem) {
     setSelected(previous => {
       const next = new Set(previous), key = itemKey(item)
@@ -194,17 +247,37 @@ function FolderView({ folderId }: { folderId: number | null }) {
       {chosen.length > 0 && <SelectionBar items={chosen} limits={data.limits} clear={() => setSelected(new Set())} />}
       <section className="card documents-browser" aria-labelledby={headingId}>
         <div className="documents-browser-header">
-          <h2 id={headingId} ref={list} tabIndex={-1}>{t('documents.list.title', { count: items.length })}</h2>
-          <label>{t('documents.sort.label')}<select value={sort} onChange={event => {
-            const value = event.target.value
-            setSort(value === 'modified' || value === 'size' ? value : 'name')
-          }}>
-            <option value="name">{t('documents.sort.name')}</option>
-            <option value="modified">{t('documents.sort.modified')}</option>
-            <option value="size">{t('documents.sort.size')}</option>
-          </select></label>
+          <h2 id={headingId} ref={list} tabIndex={-1}>{!q ? t('documents.list.title', { count: items.length })
+            : found ? t('documents.search.results', { count: found.total }) : t('documents.search.loading')}</h2>
+          <div className="documents-browser-filters">
+            <label className="documents-search">{t('documents.search.label')}<input type="search" maxLength={200}
+              placeholder={t('documents.search.placeholder')} value={search} onChange={event => filter({ q: event.target.value })} /></label>
+            <label>{t('documents.sort.label')}<select value={sort} onChange={event => {
+              const value = event.target.value
+              setSort(value === 'modified' || value === 'size' ? value : 'name')
+              if (searchPage > 1) filter({ page: 1 })
+            }}>
+              <option value="name">{t('documents.sort.name')}</option>
+              <option value="modified">{t('documents.sort.modified')}</option>
+              <option value="size">{t('documents.sort.size')}</option>
+            </select></label>
+          </div>
         </div>
-        {items.length === 0 ? <p className="empty">{folderId === null ? t('documents.empty.root') : t('documents.empty.folder')}</p>
+        {q ? <>
+          {results.isPending && <Notice>{t('documents.search.loading')}</Notice>}
+          {results.error && <><Notice error>{errorMessage(results.error)}</Notice>
+            <button type="button" className="secondary" disabled={results.isFetching} onClick={() => void results.refetch()}>{t('common.retryLoading')}</button></>}
+          {found && (matches.length === 0
+            ? <p className="empty">{searchPage > 1 ? t('documents.search.emptyPage') : t('documents.search.empty', { query: q })}</p>
+            : <ul className="document-grid" aria-label={t('documents.search.listLabel', { query: q })} aria-busy={results.isFetching}
+              data-selecting={chosen.length > 0 || undefined}>
+              {matches.map(item => <DocumentCard key={itemKey(item)} item={item} selected={selected.has(itemKey(item))}
+                toggle={() => toggle(item)} act={action => act(action, item)} newVersion={newVersion}
+                view={file => { setMessage(''); setDialog({ kind: 'view', file }) }} location={locations.get(itemKey(item))} />)}
+            </ul>)}
+          {found && <Pagination page={searchPage} pages={found.pages} change={page => filter({ page })} busy={results.isFetching}
+            label={t('documents.search.pagination')} />}
+        </> : items.length === 0 ? <p className="empty">{folderId === null ? t('documents.empty.root') : t('documents.empty.folder')}</p>
           : <ul className="document-grid" aria-label={t('documents.list.label', { folder: folderName })} data-selecting={chosen.length > 0 || undefined}>
             {items.map(item => <DocumentCard key={itemKey(item)} item={item} selected={selected.has(itemKey(item))}
               toggle={() => toggle(item)} act={action => act(action, item)} newVersion={newVersion}
@@ -227,8 +300,7 @@ function FolderView({ folderId }: { folderId: number | null }) {
         if (dialog.item.kind === 'file') newVersion(dialog.item.value)
         setDialog(null)
       } : undefined} />}
-    {dialog?.kind === 'view' && <TextPreview name={dialog.file.name} extension={dialog.file.current.extension} size={dialog.file.current.size}
-      path={`/documents/versions/${dialog.file.current.id}/preview`} download={downloadUrl(dialog.file.current.id)} close={() => setDialog(null)} />}
+    {dialog?.kind === 'view' && <FilePreview file={dialog.file} close={() => setDialog(null)} />}
   </>
 }
 
@@ -306,24 +378,28 @@ export function ItemMenu({ label, options }: { label: string; options: MenuOptio
   </div>
 }
 
-function DocumentCard({ item, selected, toggle, act, newVersion, view }: {
+function DocumentCard({ item, selected, toggle, act, newVersion, view, location }: {
   item: DocumentItem; selected: boolean; toggle: () => void
   act: (action: 'rename' | 'move' | 'delete' | 'info') => void; newVersion: (file: DocumentOut) => void
-  view: (file: DocumentOut) => void
+  view: (file: PreviewFile) => void
+  // The folders above a search result.
+  location?: DocumentFolderRef[]
 }) {
   const { t } = useI18n()
   const name = item.value.name
   const options: MenuOption[] = []
-  const text = item.kind === 'file' && item.value.previewable && isTextFile(item.value.current.extension) ? item.value : null
-  const viewText = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (!text || !plainClick(event)) return
+  const preview = item.kind === 'file' ? documentPreview(item.value) : null
+  // Left to the browser: PDFs on phones and tablets.
+  const viewer = preview && opensInViewer(preview.kind) ? preview : null
+  const openViewer = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!preview || !plainClick(event) || !opensInViewer(preview.kind)) return
     event.preventDefault()
-    view(text)
+    view(preview)
   }
   if (item.kind === 'file') {
     const file = item.value
-    if (file.previewable) options.push(text
-      ? { id: 'preview', label: t('documents.menu.preview'), icon: 'eye', run: () => view(file) }
+    if (preview) options.push(viewer
+      ? { id: 'preview', label: t('documents.menu.preview'), icon: 'eye', run: () => view(viewer) }
       : { id: 'preview', label: t('documents.menu.preview'), icon: 'eye', href: previewUrl(file.current.id), newTab: true })
     options.push({ id: 'download', label: t('documents.menu.download'), icon: 'download', href: downloadUrl(file.current.id) })
   } else {
@@ -348,7 +424,7 @@ function DocumentCard({ item, selected, toggle, act, newVersion, view }: {
       ? <Link className="document-open" to={`/documents/folders/${item.value.id}`}>
         <Icon name="folder" size={40} className="document-icon document-icon-folder" /><span className="document-name">{name}</span></Link>
       : <a className="document-open" href={item.value.previewable ? previewUrl(item.value.current.id) : downloadUrl(item.value.current.id)}
-        {...item.value.previewable ? { target: '_blank', rel: 'noopener noreferrer' } : { download: '' }} onClick={viewText}>
+        {...item.value.previewable ? { target: '_blank', rel: 'noopener noreferrer' } : { download: '' }} onClick={openViewer}>
         <Icon name={kindIcon(item.value.kind)} size={40} className={`document-icon document-icon-${item.value.kind}`} />
         <span className="document-name">{name}</span></a>}
     <p className="document-meta">{item.kind === 'folder'
@@ -356,10 +432,12 @@ function DocumentCard({ item, selected, toggle, act, newVersion, view }: {
       : t('documents.card.fileMeta', { size: byteSize(item.value.current.size), date: shortDate(item.value.updated_at) })}
       {item.kind === 'file' && item.value.version_count > 1 && <span className="tag">{t('documents.card.version', { number: item.value.version_count })}</span>}
     </p>
+    {location && <p className="document-location"><Link to={folderLink(location)}><Icon name="folder" size={14} />
+      {t('documents.card.location', { location: locationText(location.map(folder => folder.name), t) })}</Link></p>}
     <div className="document-card-actions">
-      {item.kind === 'file' && item.value.previewable && <a className="button quiet icon-button" href={previewUrl(item.value.current.id)}
+      {preview && <a className="button quiet icon-button" href={`/api${preview.path}`}
         target="_blank" rel="noopener noreferrer" aria-label={t('documents.card.preview', { name })}
-        title={text ? t('documents.card.viewTitle') : t('documents.card.previewTitle')} onClick={viewText}>
+        title={t('documents.card.previewTitle')} onClick={openViewer}>
         <Icon name="eye" /></a>}
       <ItemMenu label={t('documents.menu.label', { name })} options={options} />
     </div>

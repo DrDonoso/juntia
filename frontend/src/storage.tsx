@@ -8,6 +8,7 @@ import type {
 } from './api/schema.gen'
 import { byteSize } from './community-action-shared'
 import { DocumentLimitsCard, DocumentStorageCard, PreviousDocumentVersions } from './documents-admin'
+import { PreviewLink } from './file-preview'
 import { compareText, dateTimeFormat, formatNumber, useI18n } from './i18n'
 import { Icon } from './icons'
 import { Modal, Notice, Pagination, SortableHeader, authorName, connectionTime, useAction, useTableSort } from './shared'
@@ -255,8 +256,10 @@ function WithdrawnPDFs() {
                 <p><Link to={`/actions/${item.action_id}`}>#{item.action_id} · {item.action_title}</Link></p>
               </div>
               <div className="storage-file-actions">
-                <a className="button secondary icon-button" href={storedPdfUrl(item, 'preview')} target="_blank" rel="noopener noreferrer"
-                  aria-label={t('actions.pdf.view', { filename: item.filename })} title={t('actions.pdf.viewTitle')}><Icon name="eye" /></a>
+                <PreviewLink file={{
+                  name: item.filename, kind: 'pdf', path: `/admin/storage/attachments/${item.id}/preview`, download: storedPdfUrl(item, 'download'),
+                }} className="button secondary icon-button"
+                  aria-label={t('actions.pdf.view', { filename: item.filename })} title={t('actions.pdf.viewTitle')}><Icon name="eye" /></PreviewLink>
                 <a className="button secondary icon-button" href={storedPdfUrl(item, 'download')} download=""
                   aria-label={t('actions.pdf.download', { filename: item.filename })} title={t('actions.pdf.downloadTitle')}><Icon name="download" /></a>
                 <button type="button" className="secondary danger" aria-label={t('storage.withdrawnPDFs.deleteLabel', { filename: item.filename })}
@@ -340,10 +343,11 @@ function StoredImages() {
           : q ? t('storage.search.empty', { query: q }) : t('storage.storedImages.empty.all')}</p>
         : <ul className="action-attachment-list storage-image-list" aria-label={title} aria-busy={query.isFetching}>
           {query.data.items.map(item => <li key={item.id}>
-            <a className="storage-image-thumb" href={imageFileUrl(item)} target="_blank" rel="noopener noreferrer"
-              aria-label={t('storage.storedImages.open', { filename: item.filename })}>
+            <PreviewLink className="storage-image-thumb" file={{
+              name: item.filename, kind: 'image', path: `/admin/storage/images/${item.id}/file`, download: imageFileUrl(item),
+            }} aria-label={t('storage.storedImages.open', { filename: item.filename })}>
               <img src={imageFileUrl(item)} alt="" loading="lazy" decoding="async" />
-            </a>
+            </PreviewLink>
             <div className="action-file-info"><strong>{item.filename}</strong>
               <p className="muted">{t('storage.storedImages.details', {
                 size: byteSize(item.size), width: formatNumber(item.width), height: formatNumber(item.height),

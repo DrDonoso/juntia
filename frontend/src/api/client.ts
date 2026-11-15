@@ -149,6 +149,15 @@ export async function readBytes(path: string, limit: number, signal?: AbortSigna
   return bytes.subarray(0, limit)
 }
 
+/** A whole file, with the media type the server gave it. */
+export async function readFile(path: string, signal?: AbortSignal): Promise<Blob> {
+  const { response, generation, identityBound, eventRevision } = await request(path, 'GET', undefined, signal)
+  const content = await response.blob()
+  checkIdentity(generation, identityBound)
+  checkEventGeneration(eventRevision)
+  return content
+}
+
 export async function downloadFile(path: string, filename: string): Promise<void> {
   const { response, generation, identityBound, eventRevision } = await request(path, 'GET')
   const content = await response.blob()

@@ -75,8 +75,8 @@ describes every part in detail.
 - **Events** form a shared agenda, with multi-day and all-day events, links to actions and export to
   Google Calendar or any `.ics` calendar.
 - **Documents** is a shared drive for every neighbor: folders, PDFs, pictures, Office files and
-  phone videos, with previews, versions, a history of who changed what, and ZIP downloads of
-  folders or selections.
+  phone videos, with a search by name, previews, versions, a history of who changed what, and ZIP
+  downloads of folders or selections.
 - Descriptions and comments are written in **Markdown**, and images can be pasted, dropped or added
   into them like on GitHub: the browser reduces them and removes their metadata before uploading.
 

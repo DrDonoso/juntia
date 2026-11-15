@@ -8,11 +8,11 @@ import type {
 } from './api/schema.gen'
 import { ActionTime, byteSize } from './community-action-shared'
 import { DocumentHistory, DocumentInfoDialog, FileDetails, VersionList, kindIcon, locationText } from './documents'
+import { PreviewLink, previewKind, type PreviewFile } from './file-preview'
 import { formatNumber, useI18n, type Translate } from './i18n'
 import { Icon } from './icons'
 import { Modal, Notice, Pagination, authorName, useAction } from './shared'
 import { SizeField, parseSize } from './size-field'
-import { TextPreview, isTextFile, plainClick } from './text-preview'
 
 const MIB = 1024 * 1024
 const POLICIES: readonly DocumentSettings['manage_policy'][] = ['creator', 'administrator', 'everyone']
@@ -304,12 +304,22 @@ function VersionPurgeDialog({ item, close, done }: { item: StoredDocumentVersion
 // The administrator's own copies, also while Documents is turned off.
 const versionUrl = (item: StoredDocumentVersionOut, action: 'preview' | 'download') => `/api/admin/documents/versions/${item.id}/${action}`
 
+/** How the portal's viewer shows an earlier version, if it does. */
+function versionPreview(item: StoredDocumentVersionOut, translate: Translate): PreviewFile | null {
+  const kind = item.previewable ? previewKind(item.media_type) : null
+  if (!kind) return null
+  const base = {
+    name: `${item.document_name} · ${translate('documents.info.versionNumber', { number: item.number })}`,
+    path: `/admin/documents/versions/${item.id}/preview`, download: versionUrl(item, 'download'),
+  }
+  return kind === 'text' ? { ...base, kind, extension: item.extension, size: item.size } : { ...base, kind }
+}
+
 // The latest uploaded first, 5 per page.
 export function PreviousDocumentVersions() {
   const { t, rich } = useI18n()
   const [page, setPage] = useState(1), [search, setSearch] = useState('')
   const [purging, setPurging] = useState<StoredDocumentVersionOut | null>(null)
-  const [viewing, setViewing] = useState<StoredDocumentVersionOut | null>(null)
   const [outcome, setOutcome] = useState<{ name: string; number: number; size: number } | null>(null)
   const heading = useRef<HTMLHeadingElement>(null), headingId = useId()
   const q = search.trim()
@@ -340,6 +350,7 @@ export function PreviousDocumentVersions() {
         : <ul className="action-attachment-list storage-withdrawn-list" aria-label={title} aria-busy={query.isFetching}>
           {query.data.items.map(item => {
             const labels = { name: item.document_name, number: item.number }
+            const preview = versionPreview(item, t)
             return <li key={item.id}>
               <div className="action-file-info"><strong>{item.document_name}</strong>
                 <p className="muted">{t('documents.info.versionNumber', { number: item.number })} · {byteSize(item.size)} · {t('storage.withdrawnPDFs.uploadedBy', { name: authorName(item.author, t) })} · {rich('storage.documents.previousVersions.uploadedAt', {
@@ -348,13 +359,9 @@ export function PreviousDocumentVersions() {
                 <p className="muted">{locationText(item.location, t)}</p>
               </div>
               <div className="storage-file-actions">
-                {item.previewable && <a className="button secondary icon-button" href={versionUrl(item, 'preview')} target="_blank" rel="noopener noreferrer"
-                  aria-label={t('storage.documents.previousVersions.preview', labels)}
-                  title={isTextFile(item.extension) ? t('documents.card.viewTitle') : t('documents.card.previewTitle')} onClick={event => {
-                    if (!isTextFile(item.extension) || !plainClick(event)) return
-                    event.preventDefault()
-                    setViewing(item)
-                  }}><Icon name="eye" /></a>}
+                {preview && <PreviewLink file={preview} className="button secondary icon-button"
+                  aria-label={t('storage.documents.previousVersions.preview', labels)} title={t('documents.card.previewTitle')}>
+                  <Icon name="eye" /></PreviewLink>}
                 <a className="button secondary icon-button" href={versionUrl(item, 'download')} download=""
                   aria-label={t('storage.documents.previousVersions.download', labels)} title={t('documents.menu.download')}><Icon name="download" /></a>
                 <button type="button" className="secondary danger" aria-label={t('storage.documents.previousVersions.deleteLabel', labels)}
@@ -365,9 +372,6 @@ export function PreviousDocumentVersions() {
         </ul>}
       <Pagination page={page} pages={query.data.pages} change={setPage} busy={query.isFetching} label={t('storage.documents.previousVersions.pagination')} />
     </>}
-    {viewing && <TextPreview name={`${viewing.document_name} · ${t('documents.info.versionNumber', { number: viewing.number })}`}
-      extension={viewing.extension} size={viewing.size} path={`/admin/documents/versions/${viewing.id}/preview`}
-      download={versionUrl(viewing, 'download')} close={() => setViewing(null)} />}
     {purging && <VersionPurgeDialog key={purging.id} item={purging} close={() => setPurging(null)} done={() => {
       setOutcome({ name: purging.document_name, number: purging.number, size: purging.size })
       setPurging(null)

@@ -31,14 +31,25 @@ export const documents = {
     root: 'There are no documents yet. Create a folder or upload the first files.',
     folder: 'This folder is empty.',
   },
+  // Finds folders and files by name anywhere in Documents, ignoring capitals and accents.
+  search: {
+    label: 'Search all documents',
+    placeholder: 'Name of a file or folder',
+    loading: 'Searching…',
+    results: { zero: 'No results', one: '{count} result', other: '{count} results' },
+    listLabel: 'Folders and files whose name contains “{query}”',
+    empty: 'No file or folder name contains “{query}”.',
+    emptyPage: 'There are no results on this page.',
+    pagination: 'search results',
+  },
   card: {
     select: 'Select {name}',
     folderMeta: { zero: 'Empty · {size}', one: '{count} file · {size}', other: '{count} files · {size}' },
     fileMeta: '{size} · {date}',
     version: 'Version {number}',
     preview: 'Preview {name}',
-    previewTitle: 'Preview in a new tab',
-    viewTitle: 'Preview',
+    previewTitle: 'Preview',
+    location: 'In {location}',
   },
   menu: {
     label: 'Options for {name}',
@@ -163,13 +174,6 @@ export const documents = {
     purged: 'Deleted it permanently.',
     purgedWith: 'Deleted it permanently together with the folder “{folder}”.',
     versionPurged: 'Deleted version {number} ({size}) permanently.',
-  },
-  viewer: {
-    loading: 'Loading the file…',
-    partial: 'Only the first {size} of the file are shown. Download it to see all of it.',
-    rows: 'Only the first {count} rows are shown.',
-    empty: 'The file is empty.',
-    column: 'Column {number}',
   },
   kinds: {
     pdf: 'PDF',

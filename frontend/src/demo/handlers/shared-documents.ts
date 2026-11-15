@@ -1,22 +1,23 @@
 /**
  * Shared documents routes of the demo API (src/juntia/community_documents.py): folders and files
- * with their details, edits, deletions and history, chunked uploads, downloads, previews and ZIP
- * archives for every member while Documents is on (404 `documents_disabled` otherwise); and the
- * administrator's deleted documents (restore and purge), copies of any stored version, and the
- * settings (management policy, largest file and video, quotas), which keep working while the
- * feature is off.
+ * with their details, edits, deletions and history, the search by name across all of them, chunked
+ * uploads, downloads, previews and ZIP archives for every member while Documents is on (404
+ * `documents_disabled` otherwise); and the administrator's deleted documents (restore and purge),
+ * copies of any stored version, and the settings (management policy, largest file and video,
+ * quotas), which keep working while the feature is off.
  */
 import type { ActorOut, DocumentDeletionPage, DocumentSettings } from '../../api/schema.gen'
 import {
-  DemoApiError, HttpResponse, actorOf, fileDisposition, http, idParam, nowIso, pageParam, paginate, parseBody, queryInt, readJson,
-  route, type Body, type HttpHandler, type RouteContext,
+  DemoApiError, HttpResponse, actorOf, fileDisposition, http, idParam, nowIso, pageParam, paginate, parseBody, queryChoice, queryInt,
+  queryText, readJson, route, type Body, type HttpHandler, type RouteContext,
 } from '../core'
 import { canonicalUuid } from '../store/community-text'
 import {
-  CHUNK_BYTES, DOCUMENT_PAGE_SIZE, DOCUMENT_POLICIES, DOCUMENT_QUOTA_LIMIT_MB, DOCUMENT_SIZE_LIMIT_MB, activeDocument, activeFolder, browse, cancelUpload, completeUpload, createFolder,
+  CHUNK_BYTES, DOCUMENT_PAGE_SIZE, DOCUMENT_POLICIES, DOCUMENT_QUOTA_LIMIT_MB, DOCUMENT_SIZE_LIMIT_MB, DOCUMENT_SORTS, activeDocument, activeFolder, browse,
+  cancelUpload, completeUpload, createFolder,
   deleteDocument, deleteFolder, deletionOut, documentArchive, documentInfo, documentOut, editDocument, editFolder, findDocument,
   findFolder, folderInfo, folderOut, folderTree, historyPage, openDeletions, ownUpload, purgeDeletion, receiveChunk, restoreDeletion,
-  sharedDocumentsStore, startUpload, uploadOut, versionFile, type DemoDocument, type DemoDocumentFolder, type ItemEdit,
+  searchDocuments, sharedDocumentsStore, startUpload, uploadOut, versionFile, type DemoDocument, type DemoDocumentFolder, type ItemEdit,
   type SharedDocumentsState, type UploadInput, type VersionFile,
 } from '../store/shared-documents'
 import { MODEL, uuidParam, valid, version } from './community-contracts'
@@ -126,6 +127,13 @@ function anyDocument(documents: SharedDocumentsState, id: number): DemoDocument 
 
 const residentHandlers: HttpHandler[] = [
   http.get('/api/documents/browse', route('session', context => browse(sharedDocumentsStore(), queryInt(context.url, 'folder'), author(context)), DOCUMENTS)),
+  // A name anywhere in Documents: `q` is required, 1 to 200 characters.
+  http.get('/api/documents/search', route('session', context => {
+    const { url } = context
+    if (!url.searchParams.get('q')) throw new DemoApiError('invalid_request', 422)
+    const q = queryText(url, 'q', { max: 200 })
+    return searchDocuments(sharedDocumentsStore(), q, queryChoice(url, 'sort', DOCUMENT_SORTS, 'name'), pageParam(url), author(context))
+  }, DOCUMENTS)),
   http.get('/api/documents/folders', route('session', () => folderTree(sharedDocumentsStore()), DOCUMENTS)),
   http.post('/api/documents/folders', route('session', async context => {
     const input = parseBody(await readJson(context.request), folderInput)
@@ -173,7 +181,7 @@ const residentHandlers: HttpHandler[] = [
     return historyPage(documents, activeDocument(documents, documentId), page)
   }, DOCUMENTS)),
   http.get('/api/documents/versions/:versionId/download', route('session', context => download(context, 'attachment'), DOCUMENTS)),
-  // PDFs, pictures and videos, in a new tab; videos can be sought.
+  // What the portal's viewer shows: PDFs, pictures, videos (which can be sought), and text and CSV files.
   http.get('/api/documents/versions/:versionId/preview', route('session', context => download(context, 'inline'), DOCUMENTS)),
   http.get('/api/documents/archive', route('session', ({ url }) => {
     const { filename, bytes } = documentArchive(sharedDocumentsStore(), queryIdList(url, 'folder'), queryIdList(url, 'file'))

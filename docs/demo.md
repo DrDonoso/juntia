@@ -118,7 +118,9 @@ before committing them, for example with
 - Production builds contain no demo code: `main.tsx` loads it only behind a build-time check, and
   `mockServiceWorker.js` is removed from `dist/`.
 - The static host gets a `_headers` file with the backend's security headers and Content Security
-  Policy, plus `worker-src 'self'` for the service worker, and a static web app manifest.
+  Policy, plus `worker-src 'self'` for the service worker and `frame-src blob:` for the PDFs its
+  viewer shows from a copy (frames do not go through the service worker), and a static web app
+  manifest.
 
 The code lives in `frontend/src/demo/`; its [README](../frontend/src/demo/README.md) explains the
 structure and how to write handlers.

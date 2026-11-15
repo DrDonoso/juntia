@@ -87,7 +87,7 @@ export const storage = {
       events: 'Events',
     },
     uploadedAt: 'Uploaded: <time></time>',
-    open: 'Open {filename} at full size in a new tab',
+    open: 'See {filename} at full size',
     delete: 'Delete permanently',
     deleteLabel: 'Delete permanently: {filename}',
     empty: {

@@ -430,9 +430,9 @@ reserve, and each resident against the personal quota and the documents quota (a
 since keep their totals), in a table that sorts by any column. **Housekeeping > Free up space**
 (`/admin/cleanup`) lists what can be purged: its **Withdrawn PDFs** list shows the withdrawn PDFs
 that still use space, the latest withdrawn first, 5 per page, each with its uploader, an eye to view
-it in a new tab and a download button, also while Actions is turned off; its **Images in texts**
-list shows every stored image with a thumbnail, the newest first. Both lists find files by name,
-ignoring capitals and accents.
+it and a download button, also while Actions is turned off; its **Images in texts** list shows every
+stored image with a thumbnail, the newest first. Both lists find files by name, ignoring capitals
+and accents.
 
 **Purging** a withdrawn PDF (**Delete permanently** in that list) deletes its file for good and
 frees its bytes at once. Its record and its history stay: the action's history gains an entry,

@@ -76,6 +76,8 @@ test('neighbors share folders and files, preview PDFs, follow their history and 
   })).json()
   const first = await browser.newContext({ baseURL: origin, locale: 'en-GB' })
   const second = await browser.newContext({ baseURL: origin, locale: 'en-GB' })
+  // Ana's browser shows PDFs inside pages, like desktop browsers do.
+  await first.addInitScript(() => Object.defineProperty(Navigator.prototype, 'pdfViewerEnabled', { configurable: true, get: () => true }))
   try {
     const ana = await resident(first, admin, 'documents-ana@example.org', 'Ana Documents', unit.id)
     const leo = await resident(second, admin, 'documents-leo@example.org', 'Leo Documents', unit.id)
@@ -119,6 +121,17 @@ test('neighbors share folders and files, preview PDFs, follow their history and 
     expect(preview.headers()['content-disposition']).toMatch(/^inline;/)
     expect((await preview.body()).subarray(0, 8).toString()).toBe('%PDF-1.4')
     expect((await new AxeBuilder({ page: ana }).analyze()).violations).toEqual([])
+    // Where the browser shows PDFs inside pages (Ana's does; Playwright's headless shell does
+    // not), the eye opens them in the portal's viewer too: a frame of the portal, which keeps the
+    // session where new tabs lose it.
+    const framed = ana.waitForResponse(response => response.url().endsWith(previewPath ?? '') && response.request().resourceType() === 'document')
+    await folder.getByRole('link', { name: 'Preview General meeting.pdf' }).click()
+    const pdfViewer = ana.getByRole('dialog', { name: 'General meeting.pdf' })
+    await expect(pdfViewer.locator('iframe')).toHaveAttribute('src', previewPath ?? '')
+    expect((await framed).headers()['x-frame-options']).toBe('SAMEORIGIN')
+    await expect(pdfViewer.getByRole('link', { name: 'Download' })).toHaveAttribute('href', /\/download$/)
+    await pdfViewer.getByRole('button', { name: 'Close' }).click()
+    await expect(pdfViewer).toHaveCount(0)
 
     await choose(ana, 'Rules.txt', 'Rename')
     const rename = ana.getByRole('dialog', { name: 'Rename “Rules.txt”' })
@@ -134,6 +147,17 @@ test('neighbors share folders and files, preview PDFs, follow their history and 
     await expect(ana.getByText('“Community rules.txt” moved.')).toBeVisible()
     await expect(folder.getByRole('listitem')).toHaveCount(1)
     await ana.getByRole('navigation', { name: 'Folder path' }).getByRole('link', { name: 'Documents' }).click()
+    await expect(ana.getByRole('list', { name: 'Folders and files in Documents' }).getByRole('listitem')).toHaveCount(2)
+
+    // The search finds files in any folder, ignoring capitals, and says where they are.
+    const searchBox = ana.getByRole('searchbox', { name: 'Search all documents' })
+    await searchBox.fill('MEETING')
+    const results = ana.getByRole('list', { name: 'Folders and files whose name contains “MEETING”' })
+    await expect(results.getByRole('listitem')).toHaveCount(1)
+    await expect(ana.getByRole('heading', { name: '1 result', exact: true })).toBeVisible()
+    await expect(results.getByRole('link', { name: 'In Documents / Minutes 2026', exact: true })).toHaveAttribute('href', /^\/documents\/folders\/\d+$/)
+    expect((await new AxeBuilder({ page: ana }).analyze()).violations).toEqual([])
+    await searchBox.fill('')
     await expect(ana.getByRole('list', { name: 'Folders and files in Documents' }).getByRole('listitem')).toHaveCount(2)
 
     // With the default policy, other neighbors see and download everything but only change their own items.

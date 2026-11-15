@@ -35,11 +35,12 @@ function download(href: string, filename: string): void {
 }
 
 /**
- * Plain links to API files (a statement's original PDF, an action's PDF preview) make the browser
- * navigate, and navigations do not go through the demo's service worker: the static host would
- * answer with the app instead of the file, and leaving the page would restart the demo. A click on
- * such a link fetches the file through the demo API instead, then opens it in a new tab (links with
- * `target="_blank"`, middle or modified clicks) or downloads it.
+ * Plain links to API files (a statement's original PDF, a download) make the browser navigate, and
+ * navigations do not go through the demo's service worker: the static host would answer with the
+ * app instead of the file, and leaving the page would restart the demo. A click on such a link
+ * fetches the file through the demo API instead, then opens it in a new tab (links with
+ * `target="_blank"`, middle or modified clicks) or downloads it. Clicks the app handles itself,
+ * such as previews in its viewer, are left alone: the listener runs after React's.
  */
 export function DemoApiLinks() {
   useEffect(() => {
@@ -62,11 +63,11 @@ export function DemoApiLinks() {
         console.error(`[demo] ${found.url.pathname} could not be opened:`, error)
       })
     }
-    document.addEventListener('click', intercept, true)
-    document.addEventListener('auxclick', intercept, true)
+    document.addEventListener('click', intercept)
+    document.addEventListener('auxclick', intercept)
     return () => {
-      document.removeEventListener('click', intercept, true)
-      document.removeEventListener('auxclick', intercept, true)
+      document.removeEventListener('click', intercept)
+      document.removeEventListener('auxclick', intercept)
     }
   }, [])
   return null

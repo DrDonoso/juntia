@@ -6,8 +6,8 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest'
 import { ApiError, api, cache } from './api/client'
 import type {
-  ActorOut, DocumentBrowseOut, DocumentDeletionOut, DocumentEventOut, DocumentFolderOut, DocumentInfoOut, DocumentLimitsOut,
-  DocumentOut, DocumentTreeFolderOut, DocumentUploadIn, DocumentVersionOut, FeatureFlagsOut, UserAuthOut,
+  ActorOut, DocumentBrowseOut, DocumentDeletionOut, DocumentEventOut, DocumentFileMatch, DocumentFolderMatch, DocumentFolderOut, DocumentInfoOut,
+  DocumentLimitsOut, DocumentOut, DocumentSearchPage, DocumentTreeFolderOut, DocumentUploadIn, DocumentVersionOut, FeatureFlagsOut, UserAuthOut,
 } from './api/schema.gen'
 import { uploads } from './document-upload'
 import { DocumentsPage, eventText, folderOptions } from './documents'
@@ -65,6 +65,7 @@ const tree: DocumentTreeFolderOut[] = [
 ]
 
 let features: FeatureFlagsOut, browse: DocumentBrowseOut, events: DocumentEventOut[], deletions: DocumentDeletionOut[]
+let search: DocumentSearchPage
 // Replies to writes, by "METHOD /path".
 let writes: Record<string, (body: unknown) => unknown>
 const defaults = cache.getDefaultOptions()
@@ -85,6 +86,7 @@ beforeEach(() => {
   browse = { folder: null, path: [], folders: [folder], files: [docx, pdf], limits, policy: 'creator' }
   events = []
   deletions = []
+  search = { total: 0, page: 1, pages: 1, folders: [], files: [] }
   writes = {}
   vi.mocked(api).mockImplementation(async (url, method = 'GET', body) => {
     const write = writes[`${method} ${url}`]
@@ -105,6 +107,7 @@ beforeEach(() => {
     if (url === '/documents/browse') return browse
     if (url === '/documents/browse?folder=4') return { ...browse, folder, path: [{ id: 4, name: 'Minutes' }], folders: [], files: [] }
     if (url === '/documents/folders') return tree
+    if (url.startsWith('/documents/search?')) return search
     if (url === '/documents/files/7') return info
     if (/^\/(admin\/)?documents\/(files|folders)\/\d+\/history\?page=1$/.test(url)) {
       return { items: events, page: 1, pages: 1, total: events.length }
@@ -116,6 +119,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup(); uploads.reset(); cache.clear(); cache.setDefaultOptions(defaults); vi.restoreAllMocks(); vi.unstubAllGlobals()
   localStorage.removeItem('juntia_document_history_hidden')
+  Reflect.deleteProperty(navigator, 'pdfViewerEnabled')
 })
 
 function page(children: ReactNode = null) {
@@ -333,6 +337,67 @@ test('text and CSV files open in the portal, CSV files as a table in their own e
   const table = within(await screen.findByRole('table'))
   expect(table.getAllByRole('columnheader').map(cell => cell.textContent)).toEqual(['vivienda', 'cuota'])
   expect(table.getAllByRole('cell').map(cell => cell.textContent)).toEqual(['1º A', '45,00'])
+})
+
+test('on a computer that shows PDFs inside pages, PDFs open in the portal like the other previews', async () => {
+  Object.defineProperty(navigator, 'pdfViewerEnabled', { configurable: true, value: true })
+  vi.stubGlobal('matchMedia', vi.fn((query: string) => ({ matches: query === '(pointer: fine)', media: query })))
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array([0x25]), { status: 206 })))
+  const user = userEvent.setup()
+  page()
+  const list = await grid()
+  for (const open of [
+    () => user.click(list.getByRole('link', { name: 'Preview Acta.pdf' })),
+    () => user.click(list.getByRole('link', { name: 'Acta.pdf' })),
+    () => choose(user, 'Acta.pdf', 'Preview'),
+  ]) {
+    await open()
+    const viewer = within(screen.getByRole('dialog', { name: 'Acta.pdf' }))
+    expect(await viewer.findByTitle('Acta.pdf')).toHaveAttribute('src', '/api/documents/versions/v7-2/preview')
+    expect(viewer.getByRole('link', { name: 'Download' })).toHaveAttribute('href', '/api/documents/versions/v7-2/download')
+    await user.click(viewer.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+  }
+})
+
+test('the search finds folders and files anywhere in Documents, says where they are and opens their folder', async () => {
+  const year: DocumentFolderMatch = {
+    ...folder, id: 6, parent_id: 4, name: 'Minutes 2026', file_count: 1, folder_count: 0, size: 2 * MiB, location: [{ id: 4, name: 'Minutes' }],
+  }
+  const march: DocumentFileMatch = {
+    ...pdf, id: 9, folder_id: 6, name: 'Minutes of March.pdf', location: [{ id: 4, name: 'Minutes' }, { id: 6, name: 'Minutes 2026' }],
+  }
+  search = { total: 2, page: 1, pages: 1, folders: [year], files: [march] }
+  const user = userEvent.setup()
+  page()
+  await grid()
+  const box = screen.getByRole('searchbox', { name: 'Search all documents' })
+  await user.type(box, ' MINUTES')
+  expect(api).toHaveBeenLastCalledWith('/documents/search?q=MINUTES&sort=name&page=1', 'GET', undefined, expect.any(AbortSignal))
+  const results = within(await screen.findByRole('list', { name: 'Folders and files whose name contains “MINUTES”' }))
+  expect(screen.getByRole('heading', { name: '2 results' })).toBeVisible()
+  expect(results.getAllByRole('checkbox').map(check => check.getAttribute('aria-label'))).toEqual(['Select Minutes 2026', 'Select Minutes of March.pdf'])
+  expect(results.getByRole('link', { name: 'In Documents / Minutes' })).toHaveAttribute('href', '/documents/folders/4')
+  expect(results.getByRole('link', { name: 'In Documents / Minutes / Minutes 2026' })).toHaveAttribute('href', '/documents/folders/6')
+  expect(results.getByRole('link', { name: 'Minutes 2026' })).toHaveAttribute('href', '/documents/folders/6')
+  // Results can be selected and downloaded together, like the items of a folder.
+  await user.click(results.getByRole('checkbox', { name: 'Select Minutes of March.pdf' }))
+  expect(within(screen.getByRole('region', { name: 'Selection' })).getByRole('link', { name: 'Download ZIP' }))
+    .toHaveAttribute('href', '/api/documents/archive?file=9')
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'size')
+  expect(api).toHaveBeenLastCalledWith('/documents/search?q=MINUTES&sort=size&page=1', 'GET', undefined, expect.any(AbortSignal))
+  search = { total: 0, page: 1, pages: 1, folders: [], files: [] }
+  await user.type(box, 'x')
+  expect(await screen.findByText('No file or folder name contains “MINUTESx”.')).toBeVisible()
+  // Emptying the search shows the folder again.
+  await user.clear(box)
+  expect(await screen.findByRole('list', { name: 'Folders and files in Documents' })).toBeVisible()
+  expect(screen.getByRole('heading', { name: '3 items' })).toBeVisible()
+  search = { total: 2, page: 1, pages: 1, folders: [year], files: [march] }
+  await user.type(box, 'minutes')
+  await user.click(await screen.findByRole('link', { name: 'In Documents / Minutes' }))
+  expect(await screen.findByRole('heading', { name: 'Minutes', level: 1 })).toBeVisible()
+  expect(screen.getByRole('searchbox', { name: 'Search all documents' })).toHaveValue('')
 })
 
 test('history entries explain what happened together with a folder', () => {

@@ -14,7 +14,7 @@
  */
 import type {
   ActorOut, DocumentBrowseOut, DocumentDeletionOut, DocumentEventOut, DocumentFolderInfoOut, DocumentFolderOut,
-  DocumentFolderRef, DocumentHistoryPage, DocumentInfoOut, DocumentLimitsOut, DocumentOut, DocumentSettings,
+  DocumentFolderRef, DocumentHistoryPage, DocumentInfoOut, DocumentLimitsOut, DocumentOut, DocumentSearchPage, DocumentSettings,
   DocumentTreeFolderOut, DocumentUploadOut, DocumentVersionOut,
 } from '../../api/schema.gen'
 import { DemoApiError } from '../core/errors'
@@ -26,6 +26,7 @@ import { zipArchive, type ZipEntry, type ZipTime } from '../core/zip'
 import { sharedDocumentsScenario } from '../scenario/shared-documents'
 import { actorOut, compareText } from './community-model'
 import { sha256Hex } from './community-sha256'
+import { foldText } from './community-text'
 import { wallClock } from './community-time'
 import {
   DOCUMENT_TYPES, VIDEO_EXTENSIONS, checkContent, checkedName, documentName, documentType, nameKey, numbered, uploadName,
@@ -474,6 +475,37 @@ export function browse(documents: SharedDocumentsState, folderId: number | null,
 export function folderTree(documents: SharedDocumentsState): DocumentTreeFolderOut[] {
   return byName(documents.folders.filter(folder => folder.deletedAt === null))
     .map(folder => ({ id: folder.id, parent_id: folder.parentId, name: folder.name }))
+}
+
+export type DocumentSort = 'name' | 'modified' | 'size'
+export const DOCUMENT_SORTS = ['name', 'modified', 'size'] as const satisfies readonly DocumentSort[]
+
+/** `search_order`: the latest change or the largest first, then by name, like the folder views. */
+function searchOrder(sort: DocumentSort, size: (item: Item) => number): (a: Item, b: Item) => number {
+  return (a, b) => {
+    if (sort === 'modified' && a.updatedAt !== b.updatedAt) return a.updatedAt < b.updatedAt ? 1 : -1
+    if (sort === 'size' && size(a) !== size(b)) return size(b) - size(a)
+    return compareText(nameKey(a.name), nameKey(b.name)) || a.id - b.id
+  }
+}
+
+/** `search`: active folders and files anywhere whose name contains `q`, ignoring case and accents; folders first. */
+export function searchDocuments(
+  documents: SharedDocumentsState, q: string, sort: DocumentSort, page: number, actor: ActorOut,
+): DocumentSearchPage {
+  const needle = foldText(q.trim())
+  const found = (item: Item) => item.deletedAt === null && needle !== '' && foldText(item.name).includes(needle)
+  const size = (item: Item) => isFolder(item) ? folderStats(documents, item, actor).size : currentVersion(documents, item).size
+  const order = searchOrder(sort, size)
+  const { items, ...info } = paginate<Item>([
+    ...documents.folders.filter(found).sort(order), ...documents.documents.filter(found).sort(order),
+  ], page, DOCUMENT_PAGE_SIZE)
+  return {
+    ...info,
+    folders: items.filter(isFolder).map(folder => ({ ...folderOut(documents, folder, actor), location: refs(folderPath(documents, folder.parentId)) })),
+    files: items.filter((item): item is DemoDocument => !isFolder(item))
+      .map(document => ({ ...documentOut(documents, document, actor), location: refs(folderPath(documents, document.folderId)) })),
+  }
 }
 
 export function uploadOut(upload: DemoDocumentUpload): DocumentUploadOut {

@@ -759,6 +759,107 @@ def test_text_and_csv_files_are_previewed_as_plain_text(enabled):
         assert (part.status_code, part.content) == (206, content[:5])
 
 
+def framing(response):
+    return (
+        response.headers["x-frame-options"],
+        response.headers["content-security-policy"].split("frame-ancestors ")[1].split(";")[0],
+    )
+
+
+def test_only_pdfs_shown_inline_may_be_framed_and_only_by_the_portal(enabled):
+    # The portal's viewer shows PDFs in a frame of its own: new tabs lose the session in some
+    # embedded browsers. Nothing else may be framed, and no other site may frame a PDF.
+    minutes = uploaded(enabled, "Acta.pdf", pdf())["current"]["id"]
+    notes = uploaded(enabled, "Notas.txt", b"Synthetic notes\n")["current"]["id"]
+    preview = enabled.get(f"/api/documents/versions/{minutes}/preview")
+    assert (preview.status_code, framing(preview)) == (200, ("SAMEORIGIN", "'self'"))
+    assert framing(enabled.get(f"/api/documents/versions/{minutes}/preview", headers={
+        "range": "bytes=0-3",
+    })) == ("SAMEORIGIN", "'self'")
+    assert framing(enabled.get(f"/api/admin/documents/versions/{minutes}/preview")) == (
+        "SAMEORIGIN", "'self'",
+    )
+    for path in (
+        f"/api/documents/versions/{minutes}/download",
+        f"/api/documents/versions/{notes}/preview", "/api/documents/browse", "/",
+    ):
+        assert framing(enabled.get(path)) == ("DENY", "'none'"), path
+    refused(enabled.get(f"/api/documents/versions/{uuid4()}/preview"), 404,
+            "document_version_not_found")
+    assert framing(enabled.get(f"/api/documents/versions/{uuid4()}/preview")) == (
+        "DENY", "'none'",
+    )
+
+
+def search(client, q, **params):
+    response = client.get("/api/documents/search", params={"q": q, **params})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def names_of(found):
+    return [item["name"] for item in found["folders"]], [item["name"] for item in found["files"]]
+
+
+def without_location(item):
+    return {key: value for key, value in item.items() if key != "location"}
+
+
+def test_search_finds_folders_and_files_anywhere_by_name(actors, enabled, monkeypatch):
+    a, b, _, _ = actors
+    minutes = folder(a, "Actas")
+    year = folder(a, "Año 2026", minutes["id"])
+    march = uploaded(a, "Acta de marzo.pdf", pdf(size=3000), folder_id=year["id"])
+    uploaded(b, "Notas del ACTA.txt", b"Synthetic notes\n")
+    uploaded(b, "Presupuesto anual.pdf", pdf("budget"), folder_id=minutes["id"])
+    hidden = folder(a, "Actas antiguas", minutes["id"])
+    uploaded(a, "Acta de 2019.pdf", pdf("old"), folder_id=hidden["id"])
+    assert remove(a, hidden, "folders").status_code == 204
+    # Ignoring case and accents, wherever they are; deleted items stay hidden. Folders come first.
+    found = search(b, " ÁCTA ")
+    assert names_of(found) == (["Actas"], ["Acta de marzo.pdf", "Notas del ACTA.txt"])
+    assert (found["total"], found["page"], found["pages"]) == (3, 1, 1)
+    # Each match is described as in its own folder, with what the person searching may do, and
+    # where it is.
+    assert without_location(found["folders"][0]) == browse(b)["folders"][0]
+    assert found["folders"][0]["location"] == []
+    assert without_location(found["files"][0]) == browse(b, year["id"])["files"][0]
+    assert found["files"][0]["can_manage"] is False
+    assert found["files"][0]["location"] == [
+        {"id": minutes["id"], "name": "Actas"}, {"id": year["id"], "name": "Año 2026"},
+    ]
+    assert found["files"][1]["location"] == []
+    assert names_of(search(b, "año")) == (["Año 2026"], [])
+    assert search(b, "factura") == {"total": 0, "page": 1, "pages": 1, "folders": [], "files": []}
+    assert search(b, "   ")["total"] == 0
+    # The latest change first, or the largest; then by name.
+    assert edit(a, march, name="Acta de marzo firmada").status_code == 200
+    files = ["Acta de marzo firmada.pdf", "Presupuesto anual.pdf", "Notas del ACTA.txt"]
+    assert names_of(search(a, "a", sort="modified")) == (["Año 2026", "Actas"], files)
+    assert names_of(search(a, "a", sort="size")) == (["Actas", "Año 2026"], files)
+    # Pages hold folders and files alike.
+    monkeypatch.setattr(community_documents, "PAGE_SIZE", 2)
+    pages = [search(a, "a", page=number) for number in (1, 2, 3, 4)]
+    assert [names_of(page) for page in pages] == [
+        (["Actas", "Año 2026"], []), ([], ["Acta de marzo firmada.pdf", "Notas del ACTA.txt"]),
+        ([], ["Presupuesto anual.pdf"]), ([], []),
+    ]
+    assert {(page["total"], page["pages"]) for page in pages} == {(5, 3)}
+    for params in (
+        {"q": ""}, {"q": "x" * 201}, {"q": "acta", "sort": "type"}, {"q": "acta", "page": 0}, {},
+    ):
+        refused(a.get("/api/documents/search", params=params), 422, "invalid_request")
+
+
+def test_search_needs_documents_turned_on_and_a_session(admin, config):
+    refused(admin.get("/api/documents/search", params={"q": "acta"}), 404, "documents_disabled")
+    set_flag(admin, "documents", True)
+    with visitor(config) as anonymous:
+        refused(anonymous.get("/api/documents/search", params={"q": "acta"}), 401,
+                "authentication_required")
+    assert search(admin, "acta")["total"] == 0
+
+
 def test_archives_keep_the_folder_structure(enabled, config):
     shared = folder(enabled, "Comunidad")
     inner = folder(enabled, "Planos", shared["id"])
