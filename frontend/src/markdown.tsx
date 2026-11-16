@@ -3,6 +3,7 @@ import Markdown, { type Components } from 'react-markdown'
 import { Link } from 'react-router'
 import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
+import { PreviewLink } from './file-preview'
 import { useI18n, type Translate } from './i18n'
 
 /** Addresses of the images members upload into texts: the only images shown as pictures. */
@@ -35,9 +36,10 @@ function MarkdownImage({ src, alt }: { src: string; alt: string }) {
   const [failed, setFailed] = useState(false)
   // A purged or missing image keeps its place and description, like a broken link would.
   if (failed) return <span className="markdown-image-missing">{t('common.markdown.imageUnavailable', { name: alt })}</span>
-  return <a className="markdown-image" href={src} target="_blank" rel="noopener noreferrer" title={t('common.markdown.openImage')}>
+  return <PreviewLink className="markdown-image" title={t('common.markdown.openImage')}
+    file={{ name: alt, kind: 'image', path: src.slice('/api'.length), download: src }}>
     <img src={src} alt={alt} loading="lazy" decoding="async" onError={() => setFailed(true)} />
-  </a>
+  </PreviewLink>
 }
 
 function MarkdownLink({ href, children, ...props }: ComponentPropsWithoutRef<'a'>) {

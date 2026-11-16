@@ -27,10 +27,13 @@ lasts until the page is reloaded; a reload starts again from the same scenario. 
 - **Chrome.** `DemoChrome.tsx` adds a persistent banner (`DemoBanner`), a welcome dialog once per
   page load (`DemoWelcome`: "Explore as a neighbor" / "Open administration"), the credentials on
   the `/login` and `/admin` sign-in screens, filled in (`DemoSignInNotice`), and serves plain links
-  to API files through the demo API (`DemoApiLinks`: navigations bypass the service worker). Texts
-  live in the `demo` i18n namespace (English and Spanish).
+  to API files through the demo API (`DemoApiLinks`: navigations bypass the service worker; clicks
+  the app handles itself, such as its file viewer, are left alone). The viewer shows PDFs from a
+  copy read through the demo API, since frames bypass the worker too. Texts live in the `demo` i18n
+  namespace (English and Spanish).
 - **Static host.** `vite.config.ts` writes `dist-demo/_headers` (the backend's CSP and security
-  headers plus `worker-src 'self'`; `no-cache` for the worker, immutable `/assets/*`) and a
+  headers plus `worker-src 'self'` and `frame-src 'self' blob:`; `no-cache` for the worker,
+  immutable `/assets/*`) and a
   `manifest.webmanifest` (the backend serves the production one), and titles the page "Juntia demo".
 
 ## Deployment (Cloudflare Workers Builds)
@@ -59,11 +62,12 @@ src/demo/
     validation.ts      Body / parseBody(): pydantic-like body contracts
     pagination.ts      paginate(): {items, page, pages, total}
     pdf.ts             demoPdf(), pdfResponse(), looksLikePdf(): synthetic PDFs and file answers
+    zip.ts             zipArchive(), readZip(), readZipMember(): stored ZIP archives, read back
     session.ts         sessions, guards (requireResident/requireAdmin/requireAnySession), actorOf()
   scenario/<domain>.ts initial data, deterministic and relative to today
   store/<domain>.ts    the data of this page load: <domain>Store() and reset<Domain>Store()
   store/core.ts        shared state: session, features, general settings, account, dwellings, neighbors
-  store/storage.ts     storage of the action PDFs, computed from the community store (no state of its own)
+  store/storage.ts     storage of PDFs, images and documents, from their stores (no state of its own)
   store/index.ts       resetDemo(): every store back to its scenario
   handlers/<domain>.ts the MSW handlers of each domain (an exported array)
   handlers/index.ts    all handlers, UNAVAILABLE_IN_DEMO and the /api catch-all (501, console error)
@@ -71,9 +75,10 @@ src/demo/
   testing.ts           Vitest helpers: demoRequest(), stubFetchWithDemo()
 ```
 
-Domains are `core` (this foundation), `finance`, `community`, `people` and `storage`. Each domain
-owns exactly its `scenario/`, `store/` and `handlers/` module plus its own test files;
-`handlers/index.ts` and `store/index.ts` import them.
+Domains are `core` (this foundation), `finance`, `community`, `people`, `storage` and `documents`
+(shared documents, whose modules are named `shared-documents*.ts`: `scenario/community-documents.ts`
+is the catalogue of the actions' PDFs). Each domain owns exactly its `scenario/`, `store/` and
+`handlers/` module plus its own test files; `handlers/index.ts` and `store/index.ts` import them.
 
 ## The cast (`cast.ts`)
 
@@ -105,12 +110,14 @@ Never change an id or a name: the domains build on them. Add people at the end i
    (never from `msw` directly: the MSW version stays a core detail), `../cast`, `../store/core` and
    the generated types of `../../api/schema.gen`. Wrap every resolver in
    `route(access, resolver, options)`:
-   - `access`: `'public'`, `'session'` (any reader: finance, neighbors, contacts, actions, events),
-     `'resident'` (own profile: 403 `resident_profile_required` for the administrator) or `'admin'`
-     (`/api/admin/*`). `route` also refuses writes without `X-Juntia-Request` (403
-     `invalid_origin`) and turns thrown `DemoApiError`s into the backend's error JSON.
-   - `options.feature: 'actions' | 'events'` answers 404 `actions_disabled` / `events_disabled`
-     while the feature is off; `options.status: 201 | 204` for creations and deletions.
+   - `access`: `'public'`, `'session'` (any reader: finance, neighbors, contacts, actions, events,
+     documents), `'resident'` (own profile: 403 `resident_profile_required` for the
+     administrator) or `'admin'` (`/api/admin/*`). `route` also refuses writes without
+     `X-Juntia-Request` (403 `invalid_origin`) and turns thrown `DemoApiError`s into the backend's
+     error JSON.
+   - `options.feature: 'actions' | 'events' | 'documents'` answers 404 `actions_disabled` /
+     `events_disabled` / `documents_disabled` while the feature is off; `options.status: 201 | 204`
+     for creations and deletions.
    - Validate bodies with `parseBody(await readJson(request), body => …)` (unknown fields refused,
      422 `invalid_request`; map `DemoValidationError.invalid` to field codes with
      `parseBody(…, { fields })` where the backend reports fields: events, contacts, tags) and
@@ -118,7 +125,8 @@ Never change an id or a name: the domains build on them. Add people at the end i
      `queryDay`.
    - Return the API types (`TransactionPage`, `ActionOut`…); paginate with
      `paginate(items, pageParam(url), size)` using the backend's page sizes (transactions and
-     contacts 50; actions, labels, comments, attachments and events 20).
+     contacts 50; actions, labels, comments, attachments, events and documents' histories and
+     deletions 20).
    - Mirror the backend's rules and error codes (read `src/juntia/*.py`): optimistic `version`
      checks (409 `*_stale`), ownership (403 `action_owner_required`), not-found codes, history
      entries. Every error code the UI can get must exist in `errors.codes` (it does for the
@@ -187,9 +195,19 @@ Every operation of `src/api/openapi.json` belongs to exactly one module (`{x}` i
   `POST /api/auth/reset-password`, `POST /api/auth/google/start`, `POST|DELETE /api/auth/google/link`,
   `PATCH /api/admin/settings/general`, `PATCH /api/admin/settings/features/{feature}`.
 - **storage** (`handlers/storage.ts`, SEC-03): `GET /api/admin/storage`,
-  `GET /api/admin/storage/withdrawn`, `POST /api/admin/storage/attachments/{attachment_id}/purge`,
+  `GET /api/admin/storage/withdrawn`, `GET /api/admin/storage/attachments/{attachment_id}/preview|download`,
+  `POST /api/admin/storage/attachments/{attachment_id}/purge`,
   `GET /api/admin/storage/images`, `GET /api/admin/storage/images/{image_id}/file`,
-  `POST /api/admin/storage/images/{image_id}/purge`.
+  `POST /api/admin/storage/images/{image_id}/purge`, `GET /api/admin/storage/document-versions`,
+  `POST /api/admin/storage/document-versions/{version_id}/purge`.
+- **documents** (`handlers/shared-documents.ts`): everything under `/api/documents/` (browse, the
+  search by name, the folder tree, folders and files with their history, uploads with their chunks
+  and completion, downloads, previews and archives), `GET /api/admin/documents/deleted`,
+  `POST /api/admin/documents/deletions/{deletion_id}/restore|purge`,
+  `GET /api/admin/documents/files/{document_id}` and its `/history`,
+  `GET /api/admin/documents/folders/{folder_id}/history`,
+  `GET /api/admin/documents/versions/{version_id}/download|preview`,
+  `GET|PATCH /api/admin/settings/documents`.
 
 Any other `/api` request reaches the catch-all: a 501 `not_implemented` and a console error
 starting with `[demo] Unhandled API request:`. Two guards keep it that way:
@@ -219,7 +237,9 @@ and withdrawn PDFs and every image use storage until the administrator purges th
 default settings apply: 250 MiB per resident (`ACTION_STORAGE_USER_QUOTA_MB`), 2048 MiB for the
 community (`ACTION_STORAGE_COMMUNITY_QUOTA_MB`; the administrator has no quota of their own) and a
 1024 MiB disk reserve (`MIN_FREE_DISK_MB`). The upload volume is synthetic: 64 GiB, about 41.3 GiB
-free, minus the PDFs and images stored now, so uploads and purges move it.
+free, minus the PDFs, images and shared documents stored now, so uploads and purges move it. Shared
+documents have budgets of their own (see [Shared documents](#shared-documents)); the summary reports
+them in its `documents` block, and their earlier versions are listed and purged on the same page.
 
 - Uploads of PDFs and images check the uploader's quota, then the community's (409
   `action_storage_user_quota` / `action_storage_community_quota`), after the other checks and never
@@ -230,16 +250,66 @@ free, minus the PDFs and images stored now, so uploads and purges move it.
   pixels a side, 40 megapixels) and served by the section they were uploaded to. The scenario has
   none.
 - The storage page lists the residents who store PDFs (largest first; deleted accounts by the
-  author name of their latest PDF) and the withdrawn PDFs still stored (`sort=largest|oldest`,
-  `user_id`, 20 per page). The scenario has three, by different authors: Daniel Mensah's quote
-  attached by mistake (CCTV), the administrator's draft quote (lift) and Grace Liu's outdated
-  subsidy summary (solar panels).
+  author name of their latest PDF) and the withdrawn PDFs still stored (the latest withdrawn first,
+  five per page, `q` searching their names without case or accents), which the administrator can
+  open (`/preview`, `/download`) also while Actions is off. The scenario has three, by different
+  authors: Daniel Mensah's quote attached by mistake (CCTV), the administrator's draft quote (lift)
+  and Grace Liu's outdated subsidy summary (solar panels).
 - A purge (`{version}`, administrator only) answers 409 `action_attachment_active` for active PDFs
   and 409 `action_stale` for another version, and the purged PDF unchanged when repeated. It sets
   `purged_at`, bumps the PDF's version, empties its bytes and records an `attachment_purged` entry
   by the Technical administrator (`filename`, `size` and `sha256` to null); the action's activity
   date moves, not its version. Downloads and previews then answer 410 `action_attachment_purged`.
-- The images list (`sort=newest|largest`, `user_id`, 20 per page) shows every stored image, and the
+- The images list (the newest first, five per page, `q` by name) shows every stored image, and the
   administrator's copy (`/file`) answers while Actions or Events is off. An image purge (no body)
   empties its bytes and sets `purged_at`; repeating it answers the purged image unchanged, and its
   addresses then answer 410 `image_purged`.
+
+## Shared documents
+
+`store/shared-documents.ts` keeps the folders, files, versions (with their bytes), deletions,
+history and uploads in progress, and mirrors `community_documents.py`;
+`store/shared-document-files.ts` mirrors `document_files.py` (accepted types, name rules, content
+checks). The scenario (`scenario/shared-documents.ts`) is a list of dated steps replayed through the
+same operations as the API, so the history matches the data: the house rules and their revised
+version, meeting minutes in year folders (one moved there), an insurance folder renamed by the
+administrator with a claims log in two versions, a renamed scan, a Word letter, the sample
+neighbor's garden folder and rota, and two deletions waiting for the administrator (Daniel Mensah's
+draft and Chloe Dubois's photos folder). Documents is on in the demo, and its settings are a new
+installation's defaults: the `creator` policy, 50 MiB per file, 1 GiB per video, 2 GiB per resident
+and 20 GiB for the community.
+
+- Rules as on the server: names unique per folder ignoring case and Unicode forms (409
+  `document_name_taken`), `document_name_invalid`, ten levels of folders, a thousand items per
+  folder, `document_move_into_itself`, `document_stale`, the management policy
+  (`document_permission_required`, `document_folder_not_owned`), and the history entries with their
+  details. Administrators appear as **Technical administrator**.
+- Uploads arrive in chunks of at most 4 MiB (`PUT …/content?offset=` with raw bytes; 413
+  `request_too_large` above), resume from `received`, expire a day after their last chunk, and each
+  person keeps four open. Completing checks the bytes like the backend (PDF, pictures, ISO-BMFF
+  videos, OOXML and OpenDocument with their macro checks, text) and numbers names already taken.
+  Files stay in the page's memory, and uploads and stored versions take their bytes from the
+  synthetic volume's free space.
+- The limits are not fixed: the administrator sets them with the policy, in Settings > Storage
+  (`GET|PATCH /api/admin/settings/documents`, in whole MiB): the largest file and the largest video
+  (1 MiB to 10 GiB, so a single file always fits in a ZIP download) and the quotas of each resident
+  author and of the community (1 MiB to 10 TiB; every stored version counts until it is purged). A
+  `PATCH` changes only the settings it sends and answers all of them; an empty body, `null`, an
+  unknown key or anything but a whole number in range answers 422 `invalid_request`. A change
+  applies at once to the `limits` of browsing, to the size check when an upload starts, to both
+  quota checks (when an upload starts and when it completes) and to the storage summary's
+  `quota_bytes` and `resident_quota_bytes`.
+- Downloads and previews answer single `Range` requests with 206, and earlier versions download as
+  `Name (version N).ext`. Text and CSV files preview as `text/plain`, for the portal's own viewer.
+  Archives are ZIPs with stored entries built in memory by `core/zip.ts`.
+- The administrator restores deletions (at the top level when their folder is gone, numbered when
+  the name is taken) or purges them, lists the earlier versions on the storage page (the latest
+  uploaded first, five per page, `q` by document name, with `previewable`), opens and purges them,
+  and sets the policy and the limits; these routes work while Documents is off.
+- Not simulated: the four concurrent archives (503 `document_archive_busy`), the disk reserve (507
+  `storage_low_space`) and missing or unreadable stored files. The demo writes no ZIP64, so an
+  archive over 4 GiB answers 422 `document_archive_too_large`, and office files with ZIP64, bzip2
+  or LZMA entries are refused as `document_type_mismatch`. A chunk over 4 MiB is refused after the
+  session and feature checks, not before them like the server's body limit. A limit written as a
+  number with a zero fraction (`50.0`) is accepted: JavaScript's JSON reads it as `50`, while the
+  server's strict integers refuse it.

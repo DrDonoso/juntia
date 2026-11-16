@@ -233,7 +233,7 @@ describe('dwellings', () => {
   test('with ownership coefficients off they are hidden, refused and kept', async () => {
     await signInAdmin()
     expect(await demoRequest('PATCH', '/api/admin/settings/features/coefficient', { body: { enabled: false } }))
-      .toMatchObject({ status: 200, body: { coefficient: false, actions: true, events: true, google_login: false } })
+      .toMatchObject({ status: 200, body: { coefficient: false, actions: true, events: true, documents: true, google_login: false } })
     const dwellings = (await demoRequest<DwellingOut[]>('GET', '/api/admin/dwellings')).body
     expect(dwellings.every(dwelling => dwelling.coefficient === null)).toBe(true)
     expect((await demoRequest<UserOut[]>('GET', '/api/admin/users')).body.every(user => user.coefficient === null)).toBe(true)
@@ -316,14 +316,18 @@ describe('general settings and features', () => {
     expect((await demoRequest('GET', '/api/settings/general')).body).toEqual({ community_name: 'Maple Court Residents' })
   })
 
-  test('the administrator turns actions and events off and on', async () => {
+  test('the administrator turns actions, events and documents off and on', async () => {
     await signInAdmin()
     expect(await demoRequest('PATCH', '/api/admin/settings/features/actions', { body: { enabled: false } }))
-      .toMatchObject({ status: 200, body: { coefficient: true, actions: false, events: true, google_login: false } })
+      .toMatchObject({ status: 200, body: { coefficient: true, actions: false, events: true, documents: true, google_login: false } })
     expect(await demoRequest('PATCH', '/api/admin/settings/features/events', { body: { enabled: false } }))
       .toMatchObject({ status: 200, body: { actions: false, events: false } })
-    expect((await demoRequest('GET', '/api/features')).body).toEqual({ coefficient: true, actions: false, events: false, google_login: false })
-    expect(coreStore().features).toEqual({ coefficient: true, actions: false, events: false })
+    expect(await demoRequest('PATCH', '/api/admin/settings/features/documents', { body: { enabled: false } }))
+      .toMatchObject({ status: 200, body: { documents: false } })
+    expect((await demoRequest('GET', '/api/features')).body).toEqual({
+      coefficient: true, actions: false, events: false, documents: false, google_login: false,
+    })
+    expect(coreStore().features).toEqual({ coefficient: true, actions: false, events: false, documents: false })
     expect(await demoRequest('PATCH', '/api/admin/settings/features/events', { body: { enabled: true } }))
       .toMatchObject({ status: 200, body: { events: true } })
   })
@@ -340,6 +344,6 @@ describe('general settings and features', () => {
       expect(await demoRequest('PATCH', `/api/admin/settings/features/${feature}`, { body }), `${feature} ${JSON.stringify(body)}`)
         .toMatchObject({ status: 422, body: { code: 'invalid_request' } })
     }
-    expect(coreStore().features).toEqual({ coefficient: true, actions: true, events: true })
+    expect(coreStore().features).toEqual({ coefficient: true, actions: true, events: true, documents: true })
   })
 })

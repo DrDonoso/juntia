@@ -35,6 +35,9 @@ class Texts:
     single_use: str
     unexpected: str
     password_notice: str
+    # The name of a ZIP of documents from several folders, and the mark of an earlier version.
+    documents: str
+    document_version: str
 
 
 TEXTS: dict[Language, Texts] = {
@@ -71,6 +74,8 @@ TEXTS: dict[Language, Texts] = {
             "If you were not expecting this message, ignore it or contact the administrator."
         ),
         password_notice="We will never ask you to send your password by email.",
+        documents="Documents",
+        document_version=" (version {number})",
     ),
     "es": Texts(
         administrator="Administrador técnico",
@@ -102,6 +107,8 @@ TEXTS: dict[Language, Texts] = {
         single_use="El enlace es de un solo uso y caduca en {lifetime}.",
         unexpected="Si no esperabas este mensaje, ignóralo o contacta con la administración.",
         password_notice="Nunca te pediremos que envíes tu contraseña por correo.",
+        documents="Documentos",
+        document_version=" (versión {number})",
     ),
 }
 

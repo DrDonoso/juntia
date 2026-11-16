@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ApiError, api, cache, downloadFile, errorMessage } from './api/client'
 import type { ActionActorOut, ActionLabelOut, ActionLabelPage, ActionOut, ActionSummaryOut, UserAuthOut } from './api/schema.gen'
 import { TagBadge, normalizeTagName, tagColor } from './contact-tags'
+import { PreviewLink } from './file-preview'
 import { formatNumber, t, useI18n } from './i18n'
 import { Icon } from './icons'
 import { Notice, authorName, connectionTime, useAction, useFeatures } from './shared'
@@ -120,8 +121,9 @@ export function PDFControls({ itemId, id, filename, purgedAt, children }: {
   if (purgedAt) return <p className="muted action-pdf-purged">{rich('actions.pdf.purged', { time: () => <ActionTime value={purgedAt} /> })}</p>
   return <div className="action-pdf-controls">
     <div className="inline">
-      <a className="button secondary icon-button" href={`/api${endpoint}/preview`} target="_blank" rel="noopener noreferrer"
-        aria-label={t('actions.pdf.view', { filename })} title={t('actions.pdf.viewTitle')}><Icon name="eye" /></a>
+      <PreviewLink className="button secondary icon-button" file={{
+        name: filename, kind: 'pdf', path: `${endpoint}/preview`, download: `/api${endpoint}/download`,
+      }} aria-label={t('actions.pdf.view', { filename })} title={t('actions.pdf.viewTitle')}><Icon name="eye" /></PreviewLink>
       <button type="button" className="secondary icon-button" disabled={operation.busy} aria-label={t('actions.pdf.download', { filename })}
         title={t('actions.pdf.downloadTitle')} onClick={() => void operation.run(async () => {
           try {

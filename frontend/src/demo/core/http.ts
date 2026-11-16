@@ -27,16 +27,16 @@ export function demoUnavailable(): Response {
 
 /**
  * Who may call a route, like the backend's dependencies: `public` (anyone), `session` (a neighbor
- * or the administrator: finance, neighbors, contacts, actions, events), `resident` (a neighbor's
- * own data: the profile) and `admin` (`/api/admin/*`).
+ * or the administrator: finance, neighbors, contacts, actions, events, documents), `resident` (a
+ * neighbor's own data: the profile) and `admin` (`/api/admin/*`).
  */
 export type Access = 'public' | 'session' | 'resident' | 'admin'
 
 export interface RouteOptions {
   /** Success status: 201 for creations, 204 answers without a body. */
   status?: number
-  /** Feature the route belongs to: when it is off the backend answers 404 `actions_disabled` / `events_disabled`. */
-  feature?: 'actions' | 'events'
+  /** Feature the route belongs to: when it is off the backend answers 404 `actions_disabled` / `events_disabled` / `documents_disabled`. */
+  feature?: 'actions' | 'events' | 'documents'
 }
 
 export interface RouteContext {

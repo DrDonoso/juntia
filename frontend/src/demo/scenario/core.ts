@@ -49,7 +49,7 @@ export function coreScenario(): CoreState {
   const residents = RESIDENTS.map(resident)
   return {
     session: { residentId: SAMPLE_NEIGHBOR_ID, residentExpiresAt: hoursFromNow(DEMO_SESSION_HOURS), adminExpiresAt: null },
-    features: { coefficient: true, actions: true, events: true },
+    features: { coefficient: true, actions: true, events: true, documents: true },
     general: { community_name: COMMUNITY.name },
     account: { iban: COMMUNITY.account.iban, name: COMMUNITY.account.name },
     dwellings,

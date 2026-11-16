@@ -165,17 +165,23 @@ times that do not exist or happen twice at a daylight-saving change are rejected
 | --- | --- | --- |
 | `ACTION_STORAGE_USER_QUOTA_MB` | `250` | Storage each resident may use for the PDFs they attach to actions and the images they paste into descriptions and comments. |
 | `ACTION_STORAGE_COMMUNITY_QUOTA_MB` | `2048` | Storage for all action PDFs and pasted images together, the technical administrator's included (the administrator has no budget of their own). |
-| `MIN_FREE_DISK_MB` | `1024` | Free space to keep on the uploads volume. Uploads of PDFs and images and statement imports that would leave less are refused. |
+| `MIN_FREE_DISK_MB` | `1024` | Free space to keep on the uploads volume. Uploads of PDFs, images and shared documents and statement imports that would leave less are refused. |
 
 All three are whole numbers of MiB (1 MiB = 1,048,576 bytes) between 1 and 1,073,741,824; any other
 value stops the startup. Every stored action PDF counts, active or withdrawn, and so does every
 pasted image, also after it is removed from its text, until the administrator deletes it
-permanently (purges it) in **Settings > Storage**. A refused upload writes nothing. Details, error
+permanently (purges it) in **Housekeeping > Free up space**. A refused upload writes nothing. Details, error
 codes and the purge are in the [deployment guide](deployment.md#storage-quotas-and-purging) and the
 [security model](security-model.md#storage-quotas-and-retention).
 
+Shared documents have their own limits, which are **not** environment variables: the largest file
+and video and the documents quotas per neighbor and for the community are set in **Settings >
+Storage > Shared documents limits** (see [settings that are not environment
+variables](#settings-that-are-not-environment-variables)). Their uploads also keep the free-disk
+reserve.
+
 Lowering a quota below the current usage is allowed: new uploads are then refused until enough
-withdrawn PDFs or images are purged.
+withdrawn PDFs, images or documents are purged.
 
 ## Email (SMTP)
 
@@ -270,8 +276,14 @@ tunnel or shared network.
 These are stored in the database, survive restarts and backups, and are changed by the technical
 administrator without restarting anything:
 
-- **Features** (`/admin/features`): ownership coefficients, Actions and Events. Older
-  `FEATUREFLAG_*` environment variables are no longer read and can be removed from `.env`.
+- **Features** (`/admin/features`): ownership coefficients, Actions, Events and Documents, and who
+  can change shared documents. Older `FEATUREFLAG_*` environment variables are no longer read and
+  can be removed from `.env`.
+- **Storage** (`/admin/storage`), **Shared documents limits**: the largest file (50 MiB by
+  default) and video (1 GiB) that can be uploaded to Documents, and the documents quotas per
+  neighbor (2 GiB) and for the community (20 GiB). Each has a slider and a box for an exact size in
+  whole MiB: files and videos from 1 MiB to 10 GiB, quotas from 1 MiB to 10 TiB. Changes apply at
+  once to new uploads; files already stored are kept.
 - **General** (`/admin/general`): the community name.
 - The bank account's display name, in **Finances > Import**.
 - Dwellings, users, the presidency, categories, tags, rules and labels.

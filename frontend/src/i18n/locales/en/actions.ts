@@ -28,8 +28,8 @@ export const actions = {
     checkCurrent: 'Check current status',
   },
   pdf: {
-    view: 'View {filename} (new tab)',
-    viewTitle: 'View PDF (new tab)',
+    view: 'View {filename}',
+    viewTitle: 'View PDF',
     download: 'Download {filename}',
     downloadTitle: 'Download PDF',
     purged: 'Permanently deleted: <time></time>',

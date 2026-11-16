@@ -15,6 +15,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from . import queries
 from .auth import administrator, reader_session
+from .community_documents import CHUNK_BYTES
 from .community_images import MAX_IMAGE_BYTES
 from .config import Settings, normalize_origin
 from .errors import AppError
@@ -32,6 +33,29 @@ MAX_ACTIVE_LARGE_BODIES = 4
 MAX_ACTIVE_CLIENT_MUTATIONS = 4
 UPLOAD_PATH = re.compile(r"/api/(?:admin/imports/preview|actions/items/[^/]+/attachments)")
 IMAGE_UPLOAD_PATH = re.compile(r"/api/(?:actions|events)/images")
+# Shared documents arrive in raw chunks, whatever the size of the whole file.
+DOCUMENT_CHUNK_PATH = re.compile(r"/api/documents/uploads/[^/]+/content")
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; font-src 'self'; connect-src 'self'; "
+    "frame-ancestors {ancestors}; base-uri 'none'; form-action 'self'; object-src 'none'"
+)
+DENY_FRAMING = (b"DENY", CONTENT_SECURITY_POLICY.format(ancestors="'none'").encode())
+SAME_ORIGIN_FRAMING = (b"SAMEORIGIN", CONTENT_SECURITY_POLICY.format(ancestors="'self'").encode())
+
+
+def framing(headers: list[tuple[bytes, bytes]]) -> tuple[bytes, bytes]:
+    """X-Frame-Options and Content-Security-Policy of a response.
+
+    Nothing may be shown inside a frame, except the PDFs served inline: the portal shows them in
+    its own viewer, a frame of the same origin, so they also open where new tabs lose the session.
+    """
+    values = {name.lower(): value for name, value in headers}
+    media_type = values.get(b"content-type", b"").split(b";", 1)[0].strip().lower()
+    disposition = values.get(b"content-disposition", b"").lstrip().lower()
+    if media_type == b"application/pdf" and disposition.startswith(b"inline"):
+        return SAME_ORIGIN_FRAMING
+    return DENY_FRAMING
 
 
 def body_limit(path: str, method: str) -> int:
@@ -42,6 +66,8 @@ def body_limit(path: str, method: str) -> int:
         or re.fullmatch(r"/api/admin/imports/[^/]+/confirm", path)
     ):
         return MAX_BODY_BYTES
+    if method == "PUT" and DOCUMENT_CHUNK_PATH.fullmatch(path):
+        return CHUNK_BYTES
     if method == "PUT" and path == "/api/admin/dwellings/layout":
         return LAYOUT_BODY_BYTES
     if path == "/api/auth/google/start":
@@ -56,7 +82,8 @@ async def authorize_body(scope: Scope) -> None:
     admin = path.startswith("/api/admin/") and not path.startswith("/api/admin/auth/")
     actions = path == "/api/actions" or path.startswith("/api/actions/")
     events = path == "/api/events" or path.startswith("/api/events/")
-    if not admin and not actions and not events:
+    documents = path == "/api/documents" or path.startswith("/api/documents/")
+    if not admin and not actions and not events and not documents:
         return
     request = Request(scope)
     async with request.app.state.sessions() as db:
@@ -69,6 +96,8 @@ async def authorize_body(scope: Scope) -> None:
                 raise AppError("actions_disabled", 404)
             if events and not flags.events:
                 raise AppError("events_disabled", 404)
+            if documents and not flags.documents:
+                raise AppError("documents_disabled", 404)
 
 
 class SecurityMiddleware:
@@ -89,20 +118,17 @@ class SecurityMiddleware:
 
         async def secure_send(message: Message) -> None:
             if message["type"] == "http.response.start":
+                headers = message.get("headers", [])
+                frame_options, policy = framing(headers)
                 message["headers"] = [
-                    *message.get("headers", []),
+                    *headers,
                     (b"x-request-id", request_id.encode()),
                     (b"x-content-type-options", b"nosniff"),
-                    (b"x-frame-options", b"DENY"),
+                    (b"x-frame-options", frame_options),
                     (b"referrer-policy", b"no-referrer"),
                     (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
                     (b"cache-control", b"no-store"),
-                    (
-                        b"content-security-policy",
-                        b"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-                        b"img-src 'self' data:; font-src 'self'; connect-src 'self'; "
-                        b"frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'",
-                    ),
+                    (b"content-security-policy", policy),
                 ]
                 if config.auth_cookie_secure:
                     message["headers"].append((b"strict-transport-security", b"max-age=31536000"))

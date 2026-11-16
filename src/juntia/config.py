@@ -94,8 +94,9 @@ class Settings(LanguageSettings):
     # administrator, who has no own budget).
     action_storage_user_quota_mb: int = 250
     action_storage_community_quota_mb: int = 2048
-    # Free space kept on the upload volume (1 GiB): action PDFs, images and statement imports that
-    # would leave less free space are refused.
+    # Free space kept on the upload volume (1 GiB): action PDFs, images, shared documents and
+    # statement imports that would leave less free space are refused. The limits of shared
+    # documents are not environment settings: the administrator sets them in Storage.
     min_free_disk_mb: int = 1024
     preview_hours: int = 24
     openai_api_key: SecretStr = SecretStr("")

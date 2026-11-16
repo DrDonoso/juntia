@@ -22,6 +22,7 @@ deployment relies on are explained in the [security model](security-model.md).
 - [Backup and restore](#backup-and-restore)
 - [Migration notes](#migration-notes)
 - [Storage quotas and purging](#storage-quotas-and-purging)
+- [Shared documents](#shared-documents)
 - [Troubleshooting](#troubleshooting)
 
 ## Requirements
@@ -104,7 +105,8 @@ Put an HTTPS reverse proxy in front of Juntia and proxy every path (the web app,
 - **pass the `Origin` and `X-Juntia-Request` headers unchanged**: every change is rejected without
   them;
 - **accept request bodies of at least 21 MiB.** PDFs may be 20 MiB, sent in a multipart envelope of
-  up to 20 MiB plus 64 KiB. nginx allows only 1 MiB by default;
+  up to 20 MiB plus 64 KiB. nginx allows only 1 MiB by default. Shared documents, videos included,
+  travel in chunks of at most 4 MiB, so they need no larger limit;
 - **not cache responses.** Juntia sends `Cache-Control: no-store`; do not override it with a CDN or
   proxy cache rule;
 - **not log query strings or sensitive headers.** URLs can contain search terms and the Google
@@ -226,13 +228,14 @@ volumes are not involved.
 Juntia bounds what it receives before doing any work:
 
 - **Body sizes per operation:** 16 KiB for sign-in and account-access requests, 32 KiB to start
-  Google sign-in, 512 KiB for ordinary JSON, 12 MiB for the dwelling layout, 10 MiB plus 64 KiB for
-  the images pasted into actions, comments and events, and 20 MiB plus 64 KiB for PDF uploads and
-  import confirmations. Each image is limited to exactly 10 MiB and each PDF to exactly 20 MiB.
+  Google sign-in, 512 KiB for ordinary JSON, 4 MiB for each chunk of a shared document, 12 MiB for
+  the dwelling layout, 10 MiB plus 64 KiB for the images pasted into actions, comments and events,
+  and 20 MiB plus 64 KiB for PDF uploads and import confirmations. Each image is limited to exactly
+  10 MiB and each PDF to exactly 20 MiB.
   Declared lengths are checked first and bytes are counted while receiving, also without
   `Content-Length`.
-- **Early authorization:** changes to the administration, actions and events check the session
-  (and the Actions or Events switch) before receiving the body.
+- **Early authorization:** changes to the administration, actions, events and documents check the
+  session (and the Actions, Events or Documents switch) before receiving the body.
 - **Temporary storage:** bodies above 64 KiB are spooled to a temporary file inside the container
   and replayed in 64 KiB chunks. Receiving a body must finish within 30 seconds.
 - **Concurrency:** the application admits at most 16 concurrent changes, 4 per client address and 4
@@ -313,10 +316,12 @@ the volumes as part of an update or a rollback.
 
 Back up **both** volumes together: the PostgreSQL database and the uploads volume. The uploads hold
 the original statement PDFs (top level), every community action PDF, active or withdrawn (in
-`actions/`), and every image pasted into a description or comment (in `images/`). Backups contain
-personal data: residents' names, emails, phone numbers and password hashes, shared contacts
-(deleted ones included), the images members pasted, and the complete history of actions, events and
-contacts. Keep them encrypted, outside the web root and outside version control.
+`actions/`), every image pasted into a description or comment (in `images/`), and every version of
+every shared document, deleted ones included, with the unfinished uploads (in `documents/`).
+Backups contain personal data: residents' names, emails, phone numbers and password hashes, shared
+contacts (deleted ones included), the images members pasted, the documents they shared, and the
+complete history of actions, events, contacts and documents. Keep them encrypted, outside the web
+root and outside version control.
 
 ### Backup
 
@@ -335,8 +340,8 @@ Stopping only `api` gives a consistent copy while the database keeps running. Re
 and keep a protected copy of `.env` separately. If any command fails, start `api` again
 deliberately and treat the backup as incomplete.
 
-Purged PDFs and images disappear from the uploads volume, but backups taken before the purge still
-contain them until those backups expire.
+Purged PDFs, images and documents disappear from the uploads volume, but backups taken before the
+purge still contain them until those backups expire.
 
 ### Restore
 
@@ -388,6 +393,7 @@ data. Before downgrading, handle the data they protect, or simply restore a back
 | `0019` | English default for the community name column (existing names are kept) | Restores the previous default. |
 | `0020` | Transaction keys of the current statement reader (stored transactions are re-keyed) | Refused while transactions exist: restore the backup taken before upgrading. |
 | `0021` | Images pasted into the Markdown of actions, comments and events | Refused while images exist, purged ones included. |
+| `0022` | Shared documents (switch off by default) | Refused while folders, documents, uploads or their history exist, purged ones included, or while Documents is on. |
 
 ## Storage quotas and purging
 
@@ -420,10 +426,13 @@ Statement imports are subject to the disk reserve only; deleting a statement del
 
 **Monitoring.** **Settings > Storage** (`/admin/storage`) shows the community total against its
 quota, the technical administrator's PDFs and images, the server disk's free space against the
-reserve, and each resident against the personal quota (accounts deleted since keep their totals).
-Its **Withdrawn PDFs** list shows the withdrawn PDFs that still use space, largest or oldest
-withdrawal first, optionally for one uploader, and its **Images in texts** list shows every stored
-image with a thumbnail, newest or largest first, optionally for one uploader.
+reserve, and each resident against the personal quota and the documents quota (accounts deleted
+since keep their totals), in a table that sorts by any column. **Housekeeping > Free up space**
+(`/admin/cleanup`) lists what can be purged: its **Withdrawn PDFs** list shows the withdrawn PDFs
+that still use space, the latest withdrawn first, 5 per page, each with its uploader, an eye to view
+it and a download button, also while Actions is turned off; its **Images in texts** list shows every
+stored image with a thumbnail, the newest first. Both lists find files by name, ignoring capitals
+and accents.
 
 **Purging** a withdrawn PDF (**Delete permanently** in that list) deletes its file for good and
 frees its bytes at once. Its record and its history stay: the action's history gains an entry,
@@ -448,6 +457,82 @@ it. Its file is deleted for good and its bytes are freed; its record stays, so e
 comment or history entry that shows it displays "Image not available" (`410 image_purged`).
 Purging again is harmless, and if the file cannot be deleted nothing changes
 (`503 image_storage_error`). Images have no history entry of their own.
+
+## Shared documents
+
+**Documents** (`/documents`) is off by default: turn it on in **Settings > Features**, where you
+also choose who can rename, move, replace and delete documents (whoever created them, only the
+technical administrator, or every neighbor). It has its own limits and quotas, separate from those
+of actions. They are not environment variables: change them in **Settings > Storage > Shared
+documents limits**, with a slider or an exact size in whole MiB for each, and they apply at once.
+
+- **Types.** PDF; JPG, PNG, GIF, WebP and HEIC/HEIF pictures; Word, Excel and PowerPoint (DOCX,
+  XLSX, PPTX) and OpenDocument (ODT, ODS, ODP) files; plain text and CSV; and MP4, M4V and MOV
+  videos, the formats phones record. The extension decides the type and the server checks that the
+  content matches it: Office and OpenDocument files with macros, scripts, ActiveX controls or
+  embedded objects are refused, and so is any file whose content is not of its type. See the
+  [security model](security-model.md#shared-documents) for what these checks do and do not cover.
+- **Sizes.** Up to 50 MiB per file and 1 GiB per video by default, adjustable from 1 MiB to 10 GiB
+  (the size of a ZIP download). They apply to uploads started afterwards. Videos are stored as they
+  are, without converting them.
+- **Uploads in chunks.** The browser sends each file in chunks of 256 KiB to 4 MiB, sized to take a
+  few seconds each on the current connection, and the server assembles it in `documents/` on the
+  uploads volume. An interrupted upload continues where it stopped when it is retried within a day
+  of its last chunk. Each person keeps at most 4 unfinished uploads (starting a fifth discards the
+  least recently active one); expired ones are discarded when uploads start and at startup, which
+  also removes partial files that no upload refers to. The type is checked once the file is
+  complete, so a large video may show "Checking the file…" for a moment.
+- **Quotas.** Every stored version counts, current, earlier or deleted, until the administrator
+  purges it: towards the documents quota of whoever uploaded that version (2 GiB by default) and
+  towards the community documents quota (20 GiB), which also counts what the technical
+  administrator uploads; both are adjustable from 1 MiB to 10 TiB. Both are checked when an upload
+  starts and again when it completes, with the values saved at that moment. Lowering a quota below
+  the current usage is allowed: the page warns about it, and uploads are refused until enough is
+  purged. Unfinished uploads count towards neither, but each chunk must leave `MIN_FREE_DISK_MB`
+  free on the uploads volume.
+- **Folders.** Up to 10 levels of folders and 1000 items (files and folders) in each folder. Names
+  have up to 200 characters without `/ \ : * ? " < > |`, are unique in their folder regardless of
+  case, and are not names Windows reserves (such as `CON` or `NUL`), so that downloaded ZIP files
+  extract everywhere.
+- **Downloads.** Files, whole folders and selections of up to 100 items download as ZIP files of up
+  to 5000 files and 10 GiB, built while they are sent, without compression (most documents and
+  videos are already compressed). At most 4 ZIP downloads run at the same time; more answer
+  `503 document_archive_busy`.
+
+| Error | Status | Meaning |
+| --- | --- | --- |
+| `document_type_unsupported` | 415 | The extension is not one of the accepted types. |
+| `document_type_mismatch` | 415 | The content does not match the extension. The upload is discarded. |
+| `document_macros_unsupported` | 415 | The Office or OpenDocument file contains macros, scripts, ActiveX controls or embedded objects. The upload is discarded. |
+| `document_too_large` | 413 | The file exceeds the largest file or, for videos, the largest video set in Storage. |
+| `storage_low_space` | 507 | The free-disk reserve would be crossed. |
+| `document_storage_user_quota` | 409 | The uploader's documents quota would be exceeded. |
+| `document_storage_community_quota` | 409 | The community documents quota would be exceeded. |
+| `document_folder_full`, `document_depth_limit` | 409 | The folder already holds 1000 items, or the folder would be more than 10 levels deep. |
+| `document_archive_items`, `document_archive_too_large` | 422 | The ZIP download would exceed 100 selected items, 5000 files or 10 GiB. |
+
+**Deleting and purging.** A deleted file or folder disappears for residents at once, with
+everything inside it, but keeps its files, its bytes and its history. **Deleted documents**
+(`/admin/deleted-documents`) lists each deletion with who made it and where it was. The
+administrator can:
+
+- **restore** it, with everything deleted together with it, where it was, or at the top level when
+  that folder no longer exists; a number is added to its name when the name is in use there;
+- **delete it permanently** (purge): every version of every file in it is deleted from the uploads
+  volume and its bytes are freed at once. Names and history stay, so the history still shows what
+  existed and who deleted it, but it can no longer be restored or downloaded (`410
+  document_version_purged`). Purging again is harmless and also removes a copy that a restored
+  uploads backup brought back. If a file cannot be deleted, nothing changes (`503
+  document_storage_error`).
+
+Replacing a file with a new version keeps the earlier versions, downloadable from **Info**.
+**Settings > Storage** shows the documents quotas, each neighbor's usage and unfinished uploads.
+**Housekeeping > Free up space** has an **Earlier versions of documents** list, the latest uploaded
+first, 5 per page and searchable by name, where the administrator can preview or download each
+earlier version and purge them one by one, also while Documents is turned off; the current version
+of a file is only purged with the file. Text and CSV files are previewed in Juntia's own viewer,
+which reads their first MiB as plain text (UTF-8, UTF-16 with a byte order mark, or Windows-1252).
+Migration `0022` refuses to downgrade while documents exist, purged ones included.
 
 ## Troubleshooting
 

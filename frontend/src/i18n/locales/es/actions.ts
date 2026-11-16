@@ -28,8 +28,8 @@ export const actions: Messages<typeof source> = {
     checkCurrent: 'Consultar estado actual',
   },
   pdf: {
-    view: 'Visualizar {filename} (nueva pestaña)',
-    viewTitle: 'Visualizar PDF (nueva pestaña)',
+    view: 'Visualizar {filename}',
+    viewTitle: 'Visualizar PDF',
     download: 'Descargar {filename}',
     downloadTitle: 'Descargar PDF',
     purged: 'Eliminado definitivamente: <time></time>',

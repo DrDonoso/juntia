@@ -64,7 +64,7 @@ function checkEventGeneration(generation: number | null) {
   if (generation !== null && generation !== eventGeneration) throw new ApiError('event_features_changed', 409)
 }
 
-async function request(path: string, method: string, body?: unknown, signal?: AbortSignal) {
+async function request(path: string, method: string, body?: unknown, signal?: AbortSignal, headers: Record<string, string> = {}) {
   const generation = identityGeneration
   // A feature change must not turn an acknowledged write into an apparent failed save.
   const eventRevision = method === 'GET' && /^\/events(?:\/|\?|$)/.test(path) ? eventGeneration : null
@@ -73,16 +73,18 @@ async function request(path: string, method: string, body?: unknown, signal?: Ab
       && path !== '/settings/general' && path !== '/version' && path !== '/features'
   const identityBound = privateRequest || path.endsWith('/auth/session')
   const multipart = body instanceof FormData
+  // Raw bytes, such as the chunks of a document upload.
+  const binary = body instanceof Blob || body instanceof ArrayBuffer || ArrayBuffer.isView(body)
   const options: RequestInit = {
     method, credentials: 'same-origin', ...(signal ? { signal } : {}),
-    headers: method === 'GET' ? {} : {
+    headers: method === 'GET' ? headers : {
       'X-Juntia-Request': '1',
-      ...(multipart ? {} : { 'Content-Type': 'application/json' }),
+      ...(multipart ? {} : { 'Content-Type': binary ? 'application/octet-stream' : 'application/json' }),
     },
   }
   if (body !== undefined) {
     if (method === 'GET') throw new Error('A GET request cannot send a body.')
-    options.body = multipart ? body : JSON.stringify(body)
+    options.body = multipart || binary ? body as BodyInit : JSON.stringify(body)
   }
   const response = await fetch(`/api${path}`, options)
   checkIdentity(generation, identityBound)
@@ -113,6 +115,11 @@ async function request(path: string, method: string, body?: unknown, signal?: Ab
       cache.setQueryData<FeatureFlagsOut>(['features'], previous => previous ? { ...previous, events: false } : previous)
       await refreshEventData(false)
     }
+    if (code === 'documents_disabled') {
+      cache.setQueryData<FeatureFlagsOut>(['features'], previous => previous ? { ...previous, documents: false } : previous)
+      await cache.cancelQueries({ queryKey: ['documents'] })
+      cache.removeQueries({ queryKey: ['documents'] })
+    }
     const fields = payload && typeof payload === 'object' && 'fields' in payload
       && payload.fields !== null && typeof payload.fields === 'object' && !Array.isArray(payload.fields)
       ? Object.fromEntries(Object.entries(payload.fields).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
@@ -129,6 +136,26 @@ export async function api(path: string, method = 'GET', body?: unknown, signal?:
   checkIdentity(generation, identityBound)
   checkEventGeneration(eventRevision)
   return result
+}
+
+/** The first `limit` bytes of a file, or all of it when it is shorter: servers that ignore the range send it whole. */
+export async function readBytes(path: string, limit: number, signal?: AbortSignal): Promise<Uint8Array> {
+  const { response, generation, identityBound, eventRevision } = await request(path, 'GET', undefined, signal, {
+    Range: `bytes=0-${limit - 1}`,
+  })
+  const bytes = new Uint8Array(await response.arrayBuffer())
+  checkIdentity(generation, identityBound)
+  checkEventGeneration(eventRevision)
+  return bytes.subarray(0, limit)
+}
+
+/** A whole file, with the media type the server gave it. */
+export async function readFile(path: string, signal?: AbortSignal): Promise<Blob> {
+  const { response, generation, identityBound, eventRevision } = await request(path, 'GET', undefined, signal)
+  const content = await response.blob()
+  checkIdentity(generation, identityBound)
+  checkEventGeneration(eventRevision)
+  return content
 }
 
 export async function downloadFile(path: string, filename: string): Promise<void> {

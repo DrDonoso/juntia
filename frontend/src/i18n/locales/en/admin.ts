@@ -32,6 +32,10 @@ export const admin = {
       label: 'Events',
       description: 'Enables the shared calendar, its history and the export to personal calendars. When turned off, the section is hidden and its API is blocked without deleting events or links.',
     },
+    documents: {
+      label: 'Documents',
+      description: 'Enables the shared documents: folders, files, videos, versions, history and ZIP downloads. When turned off, the section is hidden and its API is blocked without deleting files or folders.',
+    },
   },
   account: {
     title: 'Linked account',

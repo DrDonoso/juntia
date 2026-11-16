@@ -108,6 +108,7 @@ test('opens signed in as the sample neighbor, with the banner and a welcome once
   const response = await page.goto('/')
   // The static host's security headers (vite preview locally, dist-demo/_headers on Cloudflare).
   expect(response?.headers()['content-security-policy']).toContain("worker-src 'self'")
+  expect(response?.headers()['content-security-policy']).toContain("frame-src 'self' blob:")
   expect(response?.headers()['x-frame-options']).toBe('DENY')
   await expect(page.locator('html')).toHaveAttribute('lang', 'en')
   await expect(page).toHaveTitle('Maple Court')

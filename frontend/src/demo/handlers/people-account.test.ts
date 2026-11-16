@@ -162,12 +162,16 @@ describe('links sent by email', () => {
 describe('Google sign-in', () => {
   test('starting a Google sign-in is not available in the demo', async () => {
     await signOut()
-    for (const body of [{}, { return_path: '/neighbors' }, { return_path: '/actions/12?view=comments' }, { invitation_token: TOKEN, return_path: '/' }]) {
+    for (const body of [
+      {}, { return_path: '/neighbors' }, { return_path: '/actions/12?view=comments' }, { invitation_token: TOKEN, return_path: '/' },
+      { return_path: '/documents' }, { return_path: '/documents/folders/12' },
+    ]) {
       expect(await demoRequest('POST', '/api/auth/google/start', { body }), JSON.stringify(body)).toMatchObject({ status: 403, body: { code: 'demo_unavailable' } })
     }
     for (const body of [
       { return_path: 'https://evil.example.com/' }, { return_path: '//evil.example.com' }, { return_path: '/admin' },
       { return_path: '/events/1#top' }, { return_path: '/\\evil' }, { invitation_token: 'abc' }, { remember: true },
+      { return_path: '/documents/folders/0' }, { return_path: '/documents/files/1' },
     ]) {
       expect(await demoRequest('POST', '/api/auth/google/start', { body }), JSON.stringify(body)).toMatchObject({ status: 422, body: { code: 'invalid_request' } })
     }

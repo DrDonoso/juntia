@@ -1,11 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import type { ActionAttachmentOut, ActionHistoryPage, ActionOut, StorageOut, StoredAttachmentPage } from '../../api/schema.gen'
+import type {
+  ActionAttachmentOut, ActionHistoryPage, ActionOut, ActorOut, DocumentHistoryPage, StorageOut, StoredAttachmentPage, StoredDocumentVersionOut,
+  StoredDocumentVersionPage,
+} from '../../api/schema.gen'
 import { resetDemo } from '../store'
 import { communityStore } from '../store/community'
 import type { DemoActionAttachment } from '../store/community-model'
 import { coreStore } from '../store/core'
+import {
+  deleteDocument, publishUpload, receiveChunk, sharedDocumentsStore, startUpload, type DemoDocument, type DemoDocumentVersion,
+} from '../store/shared-documents'
 import { COMMUNITY_QUOTA_BYTES, DISK_RESERVE_BYTES, DISK_TOTAL_BYTES, MIB, USER_QUOTA_BYTES } from '../store/storage'
-import { demoRequest } from '../testing'
+import { demoFetch, demoRequest, demoUrl } from '../testing'
 
 // Thursday 29 October 2026, midday (local time), like the other demo tests.
 const NOW = new Date(2026, 9, 29, 12)
@@ -29,9 +35,10 @@ function withdrawnPdf(author: string): DemoActionAttachment {
 }
 
 describe('access', () => {
-  test('only the administrator sees and purges storage, even with Actions off', async () => {
+  test('only the administrator sees, opens and purges stored PDFs, even with Actions off', async () => {
     const { id } = withdrawnPdf('Daniel Mensah')
-    for (const path of ['/api/admin/storage', '/api/admin/storage/withdrawn']) {
+    const files = [`/api/admin/storage/attachments/${id}/preview`, `/api/admin/storage/attachments/${id}/download`]
+    for (const path of ['/api/admin/storage', '/api/admin/storage/withdrawn', ...files]) {
       expect(await get(path), path).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
     }
     expect(await purge(id, { version: 2 })).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
@@ -41,7 +48,14 @@ describe('access', () => {
     coreStore().features.actions = false
     expect((await get('/api/admin/storage')).status).toBe(200)
     expect((await withdrawn()).total).toBe(3)
+    for (const [path, kind] of [[files[0], 'inline'], [files[1], 'attachment']]) {
+      const response = await demoFetch(new Request(demoUrl(path)))
+      expect([response.status, response.headers.get('Content-Type')], path).toEqual([200, 'application/pdf'])
+      expect(response.headers.get('Content-Disposition'), path).toMatch(new RegExp(`^${kind}; filename`))
+    }
+    expect(await get(`/api/admin/storage/attachments/${crypto.randomUUID()}/preview`)).toMatchObject({ status: 404, body: { code: 'action_attachment_not_found' } })
     expect(await purge(id, { version: 2 })).toMatchObject({ status: 200, body: { id, purged_at: NOW.toISOString() } })
+    for (const path of files) expect(await get(path), path).toMatchObject({ status: 410, body: { code: 'action_attachment_purged' } })
   })
 })
 
@@ -107,11 +121,12 @@ describe('usage', () => {
 })
 
 describe('withdrawn PDFs', () => {
-  test('lists the withdrawn PDFs still stored, largest first, with their action', async () => {
+  test('lists the withdrawn PDFs still stored, the latest withdrawn first, with their action', async () => {
     await adminLogin()
     const page = await withdrawn()
     expect(page).toMatchObject({ page: 1, pages: 1, total: 3 })
-    expect(page.items.map(item => item.size)).toEqual(page.items.map(item => item.size).sort((a, b) => b - a))
+    expect(page.items.map(item => item.author.name)).toEqual(['Grace Liu', 'Technical administrator', 'Daniel Mensah'])
+    expect(page.items.map(item => item.withdrawn_at)).toEqual(page.items.map(item => item.withdrawn_at).sort().reverse())
     const draft = page.items.find(item => item.author.kind === 'administrator')
     expect(draft).toMatchObject({
       filename: 'Quote - Apex Lifts (draft).pdf', author: ADMIN, version: 2, purged_at: null, withdrawn_at: expect.any(String),
@@ -119,30 +134,24 @@ describe('withdrawn PDFs', () => {
     })
     const lift = communityStore().actions.find(action => action.title.startsWith('Lift modernisation'))
     expect(draft?.action_id).toBe(lift?.id)
-    expect(page.items.map(item => item.author.name).sort()).toEqual(['Daniel Mensah', 'Grace Liu', 'Technical administrator'])
-  })
-
-  test('sorts by the oldest withdrawal, filters by resident and checks its parameters', async () => {
-    await adminLogin()
-    const oldest = await withdrawn('?sort=oldest')
-    expect(oldest.items.map(item => item.author.name)).toEqual(['Daniel Mensah', 'Technical administrator', 'Grace Liu'])
-    expect(oldest.items.map(item => item.withdrawn_at)).toEqual(oldest.items.map(item => item.withdrawn_at).sort())
-    expect((await withdrawn('?user_id=8')).items).toEqual([expect.objectContaining({ filename: 'Quote - Fortis Security (single camera).pdf' })])
-    expect((await withdrawn('?user_id=6&sort=oldest')).items).toEqual([])
     expect(await withdrawn('?page=2')).toMatchObject({ items: [], page: 2, pages: 1, total: 3 })
-    for (const query of ['?sort=newest', '?user_id=0', '?user_id=me', '?page=0', '?page=1000001']) {
+    // By the name people see, ignoring case and accents.
+    expect((await withdrawn('?q=SÓLAR')).items.map(item => item.filename)).toEqual(['Solar subsidies - summary.pdf'])
+    for (const query of ['?page=0', '?page=1000001', `?q=${'x'.repeat(201)}`]) {
       expect(await get(`/api/admin/storage/withdrawn${query}`), query).toMatchObject({ status: 422, body: { code: 'invalid_request' } })
     }
   })
 
-  test('pages by 20', async () => {
+  test('pages by 5', async () => {
     await adminLogin()
     const { attachments } = communityStore()
     for (const attachment of attachments) attachment.withdrawnAt ??= NOW.toISOString()
-    const first = await withdrawn('?sort=oldest'), second = await withdrawn('?sort=oldest&page=2')
-    expect(first).toMatchObject({ page: 1, pages: Math.ceil(attachments.length / 20), total: attachments.length })
-    expect(first.items).toHaveLength(20)
-    const ids = [...first.items, ...second.items].map(item => item.id)
+    const first = await withdrawn()
+    const pages = Math.ceil(attachments.length / 5)
+    expect(first).toMatchObject({ page: 1, pages, total: attachments.length })
+    expect(first.items).toHaveLength(5)
+    const ids: string[] = []
+    for (let page = 1; page <= pages; page++) ids.push(...(await withdrawn(`?page=${page}`)).items.map(item => item.id))
     expect(new Set(ids).size).toBe(attachments.length)
   })
 })
@@ -210,5 +219,128 @@ describe('purging a withdrawn PDF', () => {
       expect(await purge(target, body), JSON.stringify([target, body])).toMatchObject({ status: 422, body: { code: 'invalid_request' } })
     }
     expect(await purge(id.toUpperCase(), { version: 2 })).toMatchObject({ status: 200, body: { id } })
+  })
+})
+
+describe('shared documents', () => {
+  const OLIVIA: ActorOut = { kind: 'resident', name: 'Olivia Bennett', user_id: 6 }
+  const versions = async (query = '') => (await get<StoredDocumentVersionPage>(`/api/admin/storage/document-versions${query}`)).body
+  const purgeVersion = (id: string) => demoRequest<StoredDocumentVersionOut>('POST', `/api/admin/storage/document-versions/${id}/purge`)
+  const size = (rows: readonly DemoDocumentVersion[]) => rows.reduce((sum, row) => sum + row.size, 0)
+
+  /** A file of `bytes` stored by `actor` through the upload operations, or a new version of `document`. */
+  function store(actor: ActorOut, name: string, bytes: Uint8Array<ArrayBuffer>, document?: DemoDocument): DemoDocument {
+    const documents = sharedDocumentsStore(), uploadId = crypto.randomUUID(), at = NOW.toISOString()
+    startUpload(documents, actor, { uploadId, name, size: bytes.length, folderId: null, documentId: document?.id ?? null }, at)
+    receiveChunk(documents, actor, uploadId, 0, bytes, at)
+    return publishUpload(documents, actor, uploadId, at)
+  }
+
+  function version(name: string, number: number): DemoDocumentVersion {
+    const { documents, versions: all } = sharedDocumentsStore()
+    const document = documents.find(item => item.name === name)
+    const found = all.find(item => item.documentId === document?.id && item.number === number)
+    if (!found) throw new Error(`No version ${number} of ${name}`)
+    return found
+  }
+
+  test("the summary counts every stored version by state and by uploader, with the administrator's quotas", async () => {
+    await adminLogin()
+    const before = await summary()
+    const documents = sharedDocumentsStore()
+    const stored = documents.versions.filter(item => item.purgedAt === null)
+    expect(before.documents).toMatchObject({
+      quota_bytes: 20480 * MIB, resident_quota_bytes: 2048 * MIB, stored_bytes: size(stored),
+      files: 10, previous_versions: 2, deleted_files: 2, upload_bytes: 0, uploads: 0,
+      administrator_bytes: size(stored.filter(item => item.author.kind === 'administrator')),
+    })
+    expect(await demoRequest('PATCH', '/api/admin/settings/documents', { body: { user_quota_mb: 100, community_quota_mb: 1000 } })).toMatchObject({ status: 200 })
+    expect((await summary()).documents).toMatchObject({ quota_bytes: 1000 * MIB, resident_quota_bytes: 100 * MIB })
+    const { current_bytes, previous_bytes, deleted_bytes } = before.documents
+    expect(current_bytes + previous_bytes + deleted_bytes).toBe(before.documents.stored_bytes)
+    expect(previous_bytes).toBe(version('House rules.pdf', 1).size + version('Claims log.csv', 1).size)
+    expect(before.documents.residents.map(row => row.stored_bytes)).toEqual(before.documents.residents.map(row => row.stored_bytes).sort((a, b) => b - a))
+    for (const row of before.documents.residents) {
+      const own = stored.filter(item => item.author.user_id === row.user_id)
+      expect(row).toMatchObject({ account_deleted: false, stored_bytes: size(own), versions: own.length })
+    }
+    expect(before.documents.residents.find(row => row.user_id === 9)).toMatchObject({ name: 'Emily Clarke', versions: 2 })
+
+    // Uploads in progress count, and the volume's free space follows them.
+    const uploadId = crypto.randomUUID()
+    startUpload(documents, OLIVIA, { uploadId, name: 'Plan.pdf', size: 900, folderId: null, documentId: null }, NOW.toISOString())
+    receiveChunk(documents, OLIVIA, uploadId, 0, new Uint8Array(300), NOW.toISOString())
+    // Deleted accounts keep their stored versions, named by the latest one.
+    expect(await demoRequest('DELETE', '/api/admin/users/8', { body: { email: 'daniel.mensah@example.com', version: 1 } })).toMatchObject({ status: 204 })
+    const after = await summary()
+    expect(after.documents).toMatchObject({ upload_bytes: 300, uploads: 1, stored_bytes: before.documents.stored_bytes })
+    expect(after.disk.free_bytes).toBe(before.disk.free_bytes! - 300)
+    expect(after.documents.residents.find(row => row.user_id === 8)).toMatchObject({ name: 'Daniel Mensah', account_deleted: true, versions: 1 })
+  })
+
+  test('lists the earlier versions still stored, the latest uploaded first', async () => {
+    const big = store(OLIVIA, 'Survey results.csv', new Uint8Array(5000).fill(0x41))
+    store(OLIVIA, 'Survey results.csv', new TextEncoder().encode('fixed\n'), big)
+    await adminLogin()
+    const latest = await versions()
+    expect(latest).toMatchObject({ total: 3, page: 1, pages: 1 })
+    expect(latest.items.map(item => [item.document_name, item.number, item.location, item.previewable])).toEqual([
+      ['Survey results.csv', 1, [], true], ['Claims log.csv', 1, ['Insurance'], true], ['House rules.pdf', 1, ['Community rules'], true],
+    ])
+    expect(latest.items[2]).toMatchObject({ author: ADMIN, extension: 'pdf', media_type: 'application/pdf', purged_at: null })
+    expect((await versions('?q=CLAIMS')).items.map(item => item.document_name)).toEqual(['Claims log.csv'])
+    expect(await versions('?page=2')).toMatchObject({ items: [], page: 2, pages: 1, total: 3 })
+    expect(await get('/api/admin/storage/document-versions?page=0')).toMatchObject({ status: 422, body: { code: 'invalid_request' } })
+  })
+
+  test("purging an earlier version frees its bytes and keeps the document's history", async () => {
+    await adminLogin()
+    const earlier = version('House rules.pdf', 1)
+    const before = await summary()
+    const purged = await purgeVersion(earlier.id)
+    expect(purged).toMatchObject({
+      status: 200, body: {
+        id: earlier.id, number: 1, document_name: 'House rules.pdf', location: ['Community rules'], size: earlier.size, sha256: earlier.sha256,
+        purged_at: NOW.toISOString(),
+      },
+    })
+    expect((await purgeVersion(earlier.id)).body).toEqual(purged.body)
+    expect(earlier.bytes).toHaveLength(0)
+    const after = await summary()
+    expect(after.documents.previous_bytes).toBe(before.documents.previous_bytes - earlier.size)
+    expect(after.disk.free_bytes).toBe(before.disk.free_bytes! + earlier.size)
+    expect((await versions()).items.map(item => item.id)).not.toContain(earlier.id)
+    const [event] = (await get<DocumentHistoryPage>(`/api/admin/documents/files/${earlier.documentId}/history`)).body.items
+    expect(event).toMatchObject({ kind: 'version_purged', author: ADMIN, name: 'House rules.pdf', number: 1, size: earlier.size })
+    const download = await demoFetch(new Request(demoUrl(`/api/documents/versions/${earlier.id}/download`)))
+    expect([download.status, (await download.json() as { code: string }).code]).toEqual([410, 'document_version_purged'])
+
+    expect(await purgeVersion(version('House rules.pdf', 2).id)).toMatchObject({ status: 409, body: { code: 'document_version_current' } })
+    // A deleted document's versions are purged together, from Deleted documents.
+    const draft = store(OLIVIA, 'Draft.txt', new TextEncoder().encode('one\n'))
+    store(OLIVIA, 'Draft.txt', new TextEncoder().encode('two\n'), draft)
+    deleteDocument(sharedDocumentsStore(), OLIVIA, draft.id, draft.version, NOW.toISOString())
+    expect(await purgeVersion(version('Draft.txt', 1).id)).toMatchObject({ status: 409, body: { code: 'document_deleted' } })
+    expect(await purgeVersion(crypto.randomUUID())).toMatchObject({ status: 404, body: { code: 'document_version_not_found' } })
+    expect(await purgeVersion('not-a-uuid')).toMatchObject({ status: 422, body: { code: 'invalid_request' } })
+  })
+
+  test('only the administrator sees, opens and purges them, also while Documents is off', async () => {
+    const { id } = version('Claims log.csv', 1)
+    const rules = version('House rules.pdf', 1)
+    expect(await get('/api/admin/storage/document-versions')).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
+    expect(await get(`/api/admin/documents/versions/${rules.id}/preview`)).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
+    expect(await purgeVersion(id)).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
+    await adminLogin()
+    coreStore().features.documents = false
+    expect((await versions()).total).toBe(2)
+    const preview = await demoFetch(new Request(demoUrl(`/api/admin/documents/versions/${rules.id}/preview`)))
+    expect([preview.status, preview.headers.get('Content-Type')]).toEqual([200, 'application/pdf'])
+    expect(preview.headers.get('Content-Disposition')).toMatch(/^inline; filename/)
+    const text = await demoFetch(new Request(demoUrl(`/api/admin/documents/versions/${id}/preview`)))
+    expect([text.status, text.headers.get('Content-Type')]).toEqual([200, 'text/plain'])
+    expect(await demoRequest('POST', `/api/admin/storage/document-versions/${id}/purge`, { mutationHeader: false }))
+      .toMatchObject({ status: 403, body: { code: 'invalid_origin' } })
+    expect(await purgeVersion(id)).toMatchObject({ status: 200, body: { id, purged_at: NOW.toISOString(), author: { name: 'Emily Clarke' } } })
   })
 })

@@ -54,8 +54,8 @@ const currentPassword = (body: Body) => body.text('current_password', { min: 1, 
 
 /** Reader pages a Google sign-in may return to (backend `reader_route`). */
 function readerRoute(path: string): boolean {
-  return ['/', '/transactions', '/neighbors', '/profile', '/actions', '/contacts', '/events'].includes(path)
-    || /^\/(?:actions|events)\/[1-9][0-9]{0,9}$/.test(path)
+  return ['/', '/transactions', '/neighbors', '/profile', '/actions', '/contacts', '/events', '/documents'].includes(path)
+    || /^\/(?:actions|events|documents\/folders)\/[1-9][0-9]{0,9}$/.test(path)
 }
 
 /** `GoogleStartIn.return_path`: an internal reader route, without fragment. */

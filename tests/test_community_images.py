@@ -328,12 +328,9 @@ def test_the_administrator_lists_views_and_purges_images(actors, admin, config, 
     assert page["items"][1]["author"] == {
         "kind": "resident", "user_id": second["id"], "name": second["name"],
     }
-    largest = admin.get("/api/admin/storage/images?sort=largest").json()["items"]
-    assert [row["size"] for row in largest] == [9_000, 4_000, 1_000]
-    filtered = admin.get(f"/api/admin/storage/images?user_id={first['id']}").json()
-    assert [row["id"] for row in filtered["items"]] == [small["id"]]
-    for query in ("sort=oldest", "user_id=0", "page=0"):
-        assert admin.get("/api/admin/storage/images?" + query).status_code == 422
+    found = admin.get("/api/admin/storage/images", params={"q": "LARGE"}).json()
+    assert ([row["id"] for row in found["items"]], found["total"]) == ([large["id"]], 1)
+    assert admin.get("/api/admin/storage/images?page=0").status_code == 422
     summary = admin.get("/api/admin/storage").json()
     assert (summary["community"]["image_bytes"], summary["community"]["image_files"]) == (
         14_000, 3,

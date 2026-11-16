@@ -5,11 +5,11 @@ const password = 'synthetic images resident password'
 test.use({ actionTimeout: 15_000 })
 
 async function adminLogin(page: Page) {
-  await page.goto('/admin/storage')
+  await page.goto('/admin/cleanup')
   await page.getByLabel('Username', { exact: true }).fill('browser-test')
   await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-test-password')
   await page.getByRole('button', { name: 'Sign in to administration' }).click()
-  await expect(page.getByRole('heading', { name: 'Storage', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Free up space', exact: true })).toBeVisible()
 }
 
 async function activateResident(admin: APIRequestContext, resident: APIRequestContext, origin: string, dwellingId: number, email: string, name: string) {
@@ -130,7 +130,7 @@ test('pasted images are reduced, uploaded and shown in actions, comments and eve
     await expectLoaded(comments.getByRole('img', { name: 'after the rain' }), 400)
     expect((await new AxeBuilder({ page: resident }).analyze()).violations).toEqual([])
 
-    // The administrator sees both images in Storage and deletes the comment's for good.
+    // The administrator sees both images in Free up space and deletes the comment's for good.
     await page.reload()
     const images = page.getByRole('region', { name: 'Images in texts' })
     const listed = images.getByRole('list', { name: 'Images in texts' }).getByRole('listitem')

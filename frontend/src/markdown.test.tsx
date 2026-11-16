@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { setLanguage } from './i18n'
 import { MarkdownText, isOwnImage } from './markdown'
 
@@ -73,6 +73,26 @@ test('uploaded images are shown and open at full size; other images are never lo
   fireEvent.error(images[0])
   expect(within(root).getByText('Image not available: Roof leak')).toBeVisible()
   expect(within(root).getAllByRole('img')).toHaveLength(1)
+})
+
+test('an uploaded image opens at full size in the portal’s viewer', async () => {
+  const { showModal, close } = HTMLDialogElement.prototype
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', '') }
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute('open') }
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array([0x89]), { status: 206 })))
+  try {
+    const root = show(`![Roof leak](${IMAGE})`)
+    const link = within(root).getByRole('link', { name: 'Roof leak' })
+    expect(link).toHaveAttribute('title', 'See the image at full size')
+    fireEvent.click(link)
+    const viewer = within(screen.getByRole('dialog', { name: 'Roof leak' }))
+    expect(await viewer.findByRole('img', { name: 'Roof leak' })).toHaveAttribute('src', IMAGE)
+    expect(viewer.getByRole('link', { name: 'Download' })).toHaveAttribute('href', IMAGE)
+  } finally {
+    cleanup()
+    Object.assign(HTMLDialogElement.prototype, { showModal, close })
+    vi.unstubAllGlobals()
+  }
 })
 
 test('headings stay below the page headings and tables and tasks are accessible', () => {

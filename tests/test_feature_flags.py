@@ -40,6 +40,7 @@ def test_flags_default_to_enabled_and_environment_is_no_longer_used(
 ):
     assert admin.get("/api/features").json() == {
         "coefficient": True, "actions": True, "google_login": False, "events": False,
+        "documents": False,
     }
     set_flag(admin, "actions", False)
     monkeypatch.setenv("FEATUREFLAG_COEFICIENTE", "false")
@@ -54,6 +55,7 @@ def test_flags_default_to_enabled_and_environment_is_no_longer_used(
     with visitor(restarted_config) as restarted:
         assert restarted.get("/api/features").json() == {
             "coefficient": True, "actions": False, "google_login": False, "events": False,
+            "documents": False,
         }
 
 
@@ -65,11 +67,13 @@ def test_flags_change_for_running_apps_and_persist_without_invalidating_imports(
         assert other_worker.get("/api/features").json()["coefficient"] is False
         assert set_flag(admin, "actions", False) == {
             "coefficient": False, "actions": False, "google_login": False, "events": False,
+            "documents": False,
         }
         assert other_worker.get("/api/features").json() == admin.get("/api/features").json()
     with visitor(config) as restarted:
         assert restarted.get("/api/features").json() == {
             "coefficient": False, "actions": False, "google_login": False, "events": False,
+            "documents": False,
         }
     assert admin.get("/api/auth/session").json()["authenticated"] is True
     assert commit(admin, staged).status_code == 200
@@ -82,12 +86,12 @@ def test_only_administrators_can_change_flags(admin, config, mailbox):
         response = reader.get("/api/features")
         assert response.status_code == 200
         assert response.headers["cache-control"] == "no-store"
-        for feature in ("coefficient", "actions", "events"):
+        for feature in ("coefficient", "actions", "events", "documents"):
             assert reader.patch(
                 f"/api/admin/settings/features/{feature}", json={"enabled": False},
             ).status_code == 401
         assert login(reader).status_code == 200
-        for feature in ("coefficient", "actions", "events"):
+        for feature in ("coefficient", "actions", "events", "documents"):
             assert reader.patch(
                 f"/api/admin/settings/features/{feature}", json={"enabled": False},
             ).status_code == 401
@@ -97,6 +101,7 @@ def test_only_administrators_can_change_flags(admin, config, mailbox):
         ).status_code == 403
     assert admin.get("/api/features").json() == {
         "coefficient": True, "actions": True, "google_login": False, "events": False,
+        "documents": False,
     }
 
 
@@ -136,6 +141,7 @@ def test_independent_concurrent_flag_updates_do_not_overwrite_each_other(admin, 
             assert actions.result().status_code == 200
     assert admin.get("/api/features").json() == {
         "coefficient": False, "actions": False, "google_login": False, "events": False,
+        "documents": False,
     }
 
 
@@ -154,6 +160,7 @@ def test_disabled_coefficients_are_hidden_without_erasing_existing_values(admin,
     with visitor(config) as operator, visitor(config) as resident:
         assert operator.get("/api/features").json() == {
             "coefficient": False, "google_login": False, "actions": True, "events": False,
+            "documents": False,
         }
         admin_login(operator, config)
         assert operator.get("/api/admin/dwellings").json()[0]["coefficient"] is None
@@ -204,6 +211,7 @@ def test_disabled_coefficients_are_hidden_without_erasing_existing_values(admin,
     set_flag(admin, "coefficient", True)
     assert admin.get("/api/features").json() == {
         "coefficient": True, "google_login": False, "actions": True, "events": False,
+        "documents": False,
     }
     assert current_user(admin, user["id"])["coefficient"] == "12.50"
     assert admin.post("/api/admin/dwellings", json={"label": "Requires coefficient"}).status_code == 422
@@ -258,6 +266,7 @@ def test_runtime_flags_downgrade_refuses_to_discard_disabled_configuration(admin
     migrate(config, "upgrade", "head")
     assert admin.get("/api/features").json() == {
         "coefficient": True, "actions": True, "google_login": False, "events": False,
+        "documents": False,
     }
 
 

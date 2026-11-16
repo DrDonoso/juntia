@@ -250,7 +250,7 @@ function communityName(body: Body): string {
   return name && !hasControlCharacters(name) ? name : body.fail('community_name', 'value_error') ?? ''
 }
 
-const FEATURES = ['coefficient', 'actions', 'events'] as const
+const FEATURES = ['coefficient', 'actions', 'events', 'documents'] as const
 
 const structureHandlers: HttpHandler[] = [
   http.get('/api/neighbors', route('session', () => neighborDirectory())),

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { FeaturesPage } from './admin'
@@ -13,7 +13,7 @@ import { DwellingsPage } from './users'
 vi.mock('./dwelling-layout-editor', () => ({ DwellingLayoutEditor: () => null }))
 
 const defaults = cache.getDefaultOptions()
-const enabled: FeatureFlagsOut = { coefficient: true, actions: true, events: false, google_login: false }
+const enabled: FeatureFlagsOut = { coefficient: true, actions: true, events: false, documents: false, google_login: false }
 
 beforeEach(() => {
   cache.setDefaultOptions({ queries: { retry: false, staleTime: Infinity } })
@@ -140,6 +140,32 @@ test('an older feature read cannot overwrite a successful switch update', async 
   await waitFor(() => expect(screen.getByRole('switch', { name: 'Actions' })).toHaveAttribute('aria-checked', 'false'))
   await act(async () => { finish(reply(enabled)); await fetching })
   expect(cache.getQueryData(['features'])).toEqual({ ...enabled, actions: false })
+})
+
+test('with Documents on, the administrator chooses who can change shared documents', async () => {
+  cache.setQueryData(['features'], { ...enabled, documents: true })
+  let settings = { manage_policy: 'creator', max_file_mb: 50, max_video_mb: 1024, user_quota_mb: 2048, community_quota_mb: 20480 }
+  const fetcher = vi.fn(async (input: string, options: RequestInit = {}) => {
+    if (input === '/api/admin/settings/documents' && options.method === 'PATCH') {
+      settings = { ...settings, ...JSON.parse(String(options.body)) }
+      return reply(settings)
+    }
+    if (input === '/api/admin/settings/documents') return reply(settings)
+    throw new Error(`Unexpected request: ${input}`)
+  })
+  vi.stubGlobal('fetch', fetcher)
+  renderFeatures()
+  expect(screen.getByRole('switch', { name: 'Documents' })).toHaveAttribute('aria-checked', 'true')
+  const group = await screen.findByRole('group', { name: 'Who can change documents' })
+  expect(within(group).getByRole('radio', { name: /^Whoever created them/ })).toBeChecked()
+  // File sizes and quotas live in Storage.
+  expect(screen.getByRole('link', { name: 'Storage' })).toHaveAttribute('href', '/admin/storage#document-limits')
+  fireEvent.click(within(group).getByRole('radio', { name: /^Every neighbor/ }))
+  expect(await screen.findByText('Documents can now be changed by: Every neighbor.')).toBeVisible()
+  expect(within(group).getByRole('radio', { name: /^Every neighbor/ })).toBeChecked()
+  expect(fetcher).toHaveBeenCalledWith('/api/admin/settings/documents', expect.objectContaining({
+    method: 'PATCH', body: '{"manage_policy":"everyone"}',
+  }))
 })
 
 test('the features page follows a language switch and confirms changes in that language', async () => {

@@ -51,6 +51,13 @@ export const common = {
     label: '{name}: Community president',
     title: 'Community president',
   },
+  // Label of the (i) buttons that explain a setting in a tooltip.
+  moreInfo: 'More about {name}',
+  // Sizes in whole MiB with a slider and a box (size-field.tsx).
+  sizeField: {
+    hint: 'In whole MiB, from {min} to {max}.',
+    invalid: 'Enter a whole number of MiB from {min} to {max}.',
+  },
   // The Markdown editor of descriptions and comments (markdown-field.tsx) and its rendering (markdown.tsx).
   markdown: {
     write: 'Write',
@@ -68,13 +75,24 @@ export const common = {
     failed: '{name} could not be added: {error}',
     tooLong: 'There is no room left in the text for more images.',
     image: 'Image',
-    openImage: 'Open the image at full size in a new tab',
+    openImage: 'See the image at full size',
     imageUnavailable: 'Image not available: {name}',
     table: 'Table',
     taskDone: 'Completed task',
     taskPending: 'Pending task',
     footnotes: 'Footnotes',
     backToReference: 'Back to reference {number}',
+  },
+  // The portal's file viewer (file-preview.tsx): PDFs, pictures, videos, and text and CSV files.
+  viewer: {
+    loading: 'Loading the file…',
+    download: 'Download',
+    partial: 'Only the first {size} of the file are shown. Download it to see all of it.',
+    rows: 'Only the first {count} rows are shown.',
+    empty: 'The file is empty.',
+    column: 'Column {number}',
+    image: 'This browser cannot show this picture. Download it to see it.',
+    video: 'This browser cannot play this video. Download it to watch it.',
   },
   filters: {
     label: 'Transaction filters',

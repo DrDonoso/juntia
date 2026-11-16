@@ -19,7 +19,7 @@ test('disabled coefficient feature removes every control and requirement', async
   await expect(toggle).toHaveAttribute('aria-checked', 'true')
   await toggle.click()
   await expect(toggle).toHaveAttribute('aria-checked', 'false')
-  expect(await (await page.request.get('/api/features')).json()).toEqual({ coefficient: false, google_login: false, actions: true, events: false })
+  expect(await (await page.request.get('/api/features')).json()).toEqual({ coefficient: false, google_login: false, actions: true, events: false, documents: false })
   await page.getByRole('link', { name: 'Dwellings', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Dwellings', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Create dwelling', exact: true }).click()

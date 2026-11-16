@@ -361,7 +361,11 @@ def test_storage_administration_requires_an_administrator_and_same_origin(actors
     endpoint = f"/api/admin/storage/attachments/{attachment['id']}/purge"
     with visitor(config) as anonymous:
         for client in (anonymous, a):
-            for route in ("/api/admin/storage", "/api/admin/storage/withdrawn"):
+            for route in (
+                "/api/admin/storage", "/api/admin/storage/withdrawn",
+                f"/api/admin/storage/attachments/{attachment['id']}/preview",
+                f"/api/admin/storage/attachments/{attachment['id']}/download",
+            ):
                 refused(client.get(route), 401, "authentication_required")
             refused(purge(client, attachment["id"], 2), 401, "authentication_required")
     for headers in ({"origin": "https://untrusted.example"}, {"x-juntia-request": "0"}):
@@ -426,15 +430,28 @@ def test_purge_deletes_the_file_and_keeps_the_record_and_its_history(actors, adm
     refused(upload(a, value, content, upload_id=attachment["id"]), 409, "action_upload_conflict")
 
 
-def test_purge_works_while_actions_are_hidden(admin, config):
+def test_purge_and_previews_work_while_actions_are_hidden(admin, config):
     value = create_item(admin)
-    attachment = created(upload(admin, value))
+    content = quote_pdf()
+    attachment = created(upload(admin, value, content, "Quote.pdf"))
     withdraw(admin, value, attachment)
     assert admin.patch("/api/admin/settings/features/actions", json={
         "enabled": False,
     }).status_code == 200
     assert admin.get("/api/admin/storage/withdrawn").json()["total"] == 1
+    stored = f"/api/admin/storage/attachments/{attachment['id']}"
+    refused(admin.get(item_path(value) + f"/attachments/{attachment['id']}/preview"), 404,
+            "actions_disabled")
+    for action, disposition in (("preview", "inline"), ("download", "attachment")):
+        response = admin.get(f"{stored}/{action}")
+        assert (response.status_code, response.content) == (200, content)
+        assert response.headers["content-type"] == "application/pdf"
+        assert response.headers["content-disposition"] == f'{disposition}; filename="Quote.pdf"'
+    refused(admin.get(f"/api/admin/storage/attachments/{uuid4()}/preview"), 404,
+            "action_attachment_not_found")
     assert purge(admin, attachment["id"], 2).json()["purged_at"]
+    for action in ("preview", "download"):
+        refused(admin.get(f"{stored}/{action}"), 410, "action_attachment_purged")
     assert admin.get("/api/admin/storage").json()["community"]["stored_bytes"] == 0
     assert stored_files(config) == []
 
@@ -540,6 +557,12 @@ def test_storage_summary_reports_usage_quotas_and_free_space(
         ],
         "resident_quota_bytes": resident_quota,
         "disk": {"total_bytes": 41 * GIB, "free_bytes": 40 * GIB, "reserve_bytes": 1024 * MIB},
+        "documents": {
+            "quota_bytes": 20480 * MIB, "resident_quota_bytes": 2048 * MIB, "stored_bytes": 0,
+            "current_bytes": 0, "previous_bytes": 0, "deleted_bytes": 0, "files": 0,
+            "previous_versions": 0, "deleted_files": 0, "administrator_bytes": 0,
+            "upload_bytes": 0, "uploads": 0, "residents": [],
+        },
     }
     assert purge(admin, retired["id"], 2).status_code == 200
     current = current_user(admin, second["id"])
@@ -566,41 +589,62 @@ def test_storage_summary_reports_usage_quotas_and_free_space(
     assert summary["disk"] == {"total_bytes": None, "free_bytes": None, "reserve_bytes": 1024 * MIB}
 
 
-def test_withdrawn_pdfs_are_listed_for_purging(actors, admin, config):
-    a, b, first, second = actors
+def test_withdrawn_pdfs_are_listed_for_purging_latest_withdrawn_first(actors, admin, config):
+    a, b, _, _ = actors
     shared = create_item(admin, title="Roof repair")
     garden = create_item(a, title="Garden lights")
     for index in range(MAX_ACTIVE_PDFS):
-        withdraw(admin, shared, created(upload(admin, shared, sized_pdf(10_000 + index * 1_000))))
-    largest = created(upload(a, garden, sized_pdf(50_000)))
+        retired = created(upload(admin, shared, sized_pdf(10_000 + index * 1_000)))
+        if index == 0:
+            retired = admin.patch(item_path(shared) + f"/attachments/{retired['id']}", json={
+                "version": retired["version"], "filename": "Factura antigua.pdf",
+            }).json()
+        withdraw(admin, shared, retired)
+        execute(
+            config, "UPDATE action_attachments SET withdrawn_at = :at WHERE id = :id",
+            at=datetime(2026, 10, 2, index, tzinfo=timezone.utc), id=retired["id"],
+        )
+    # The largest, withdrawn before all the others, comes last.
+    largest = created(upload(a, garden, sized_pdf(50_000), "Presupuesto jardín.pdf"))
     withdraw(a, garden, largest)
+    execute(
+        config, "UPDATE action_attachments SET withdrawn_at = :at WHERE id = :id",
+        at=datetime(2026, 10, 1, tzinfo=timezone.utc), id=largest["id"],
+    )
     created(upload(a, garden, sized_pdf(60_000)))
     purged = created(upload(b, garden, sized_pdf(70_000)))
     withdraw(b, garden, purged)
     assert purge(admin, purged["id"], 2).status_code == 200
-    first_page = admin.get("/api/admin/storage/withdrawn").json()
-    second_page = admin.get("/api/admin/storage/withdrawn?page=2").json()
-    assert (first_page["total"], first_page["page"], first_page["pages"]) == (21, 1, 2)
-    assert len(first_page["items"]) == 20
-    rows = first_page["items"] + second_page["items"]
-    assert [row["size"] for row in rows] == [50_000, *range(29_000, 9_000, -1_000)]
-    top = rows[0]
-    assert (top["id"], top["action_id"], top["action_title"]) == (
+    # Five per page.
+    pages = [
+        admin.get("/api/admin/storage/withdrawn", params={"page": number}).json()
+        for number in range(1, 6)
+    ]
+    assert [(page["total"], page["page"], page["pages"], len(page["items"])) for page in pages] == [
+        (21, 1, 5, 5), (21, 2, 5, 5), (21, 3, 5, 5), (21, 4, 5, 5), (21, 5, 5, 1),
+    ]
+    rows = [row for page in pages for row in page["items"]]
+    assert [row["size"] for row in rows] == [*range(29_000, 9_000, -1_000), 50_000]
+    assert all(row["action_title"] == "Roof repair" for row in pages[0]["items"])
+    last = rows[-1]
+    assert (last["id"], last["action_id"], last["action_title"]) == (
         largest["id"], garden["id"], "Garden lights",
     )
-    assert top["author"] == largest["author"]
-    assert (top["version"], top["purged_at"]) == (2, None)
-    assert top["withdrawn_at"]
-    oldest = admin.get("/api/admin/storage/withdrawn?sort=oldest").json()["items"]
-    assert [row["size"] for row in oldest] == list(range(10_000, 30_000, 1_000))
-    assert all(row["action_title"] == "Roof repair" for row in oldest)
-    mine = admin.get(f"/api/admin/storage/withdrawn?user_id={first['id']}").json()
-    assert [row["id"] for row in mine["items"]] == [largest["id"]]
-    assert admin.get(f"/api/admin/storage/withdrawn?user_id={second['id']}").json() == {
-        "items": [], "total": 0, "page": 1, "pages": 1,
-    }
-    for query in ("sort=newest", "user_id=0", "page=0", "user_id=abc"):
-        assert admin.get("/api/admin/storage/withdrawn?" + query).status_code == 422
+    assert last["author"] == largest["author"]
+    assert (last["version"], last["purged_at"]) == (2, None)
+    assert last["withdrawn_at"].startswith("2026-10-01T00:00:00")
+
+    # The search looks at the name people see, ignoring case and accents.
+    def found(query):
+        return admin.get("/api/admin/storage/withdrawn", params={"q": query}).json()
+
+    for query in ("JARDIN", " jardín "):
+        assert [row["id"] for row in found(query)["items"]] == [largest["id"]]
+    assert [row["filename"] for row in found("factura")["items"]] == ["Factura antigua.pdf"]
+    assert (found("quote")["total"], found("quote")["pages"]) == (19, 4)
+    assert found("")["total"] == 21
+    for query in ({"page": "0"}, {"q": "x" * 201}):
+        assert admin.get("/api/admin/storage/withdrawn", params=query).status_code == 422
 
 
 def test_purge_migration_round_trip_and_guarded_downgrade(admin, config):

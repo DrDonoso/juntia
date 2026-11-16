@@ -4,6 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
@@ -24,8 +25,9 @@ class Contract(BaseModel):
 def reader_route(path: str) -> bool:
     return path in {
         "/", "/transactions", "/neighbors", "/profile", "/actions", "/contacts", "/events",
+        "/documents",
     } or bool(
-        re.fullmatch(r"/(?:actions|events)/[1-9][0-9]{0,9}", path)
+        re.fullmatch(r"/(?:actions|events|documents/folders)/[1-9][0-9]{0,9}", path)
     )
 
 
@@ -303,6 +305,7 @@ class FeatureFlags(Contract):
     coefficient: bool
     actions: bool
     events: bool
+    documents: bool
 
 
 class FeatureFlagsOut(FeatureFlags):
@@ -675,12 +678,42 @@ class DiskSpaceOut(Contract):
     reserve_bytes: int
 
 
+class DocumentResidentStorageOut(Contract):
+    user_id: int
+    name: str
+    account_deleted: bool
+    # Every stored version this resident uploaded, current, earlier or deleted.
+    stored_bytes: int
+    versions: int
+
+
+class DocumentStorageOut(Contract):
+    """Shared documents, which have their own byte budgets."""
+
+    quota_bytes: int
+    resident_quota_bytes: int
+    # stored = current + previous + deleted: every version until the administrator purges it.
+    stored_bytes: int
+    current_bytes: int
+    previous_bytes: int
+    deleted_bytes: int
+    files: int
+    previous_versions: int
+    deleted_files: int
+    administrator_bytes: int
+    # Uploads still being received; they are discarded a day after their last chunk.
+    upload_bytes: int
+    uploads: int
+    residents: list[DocumentResidentStorageOut]
+
+
 class StorageOut(Contract):
     community: CommunityStorageOut
     administrator: StorageUsageOut
     residents: list[ResidentStorageOut]
     resident_quota_bytes: int
     disk: DiskSpaceOut
+    documents: DocumentStorageOut
 
 
 class ActionChange(Contract):
@@ -833,6 +866,260 @@ class ContactHistoryPage(Contract):
     total: int
     page: int
     pages: int
+
+
+DocumentKind = Literal["pdf", "image", "video", "document", "spreadsheet", "presentation", "text"]
+DocumentPolicy = Literal["creator", "administrator", "everyone"]
+DocumentEventKind = Literal[
+    "created", "version_added", "renamed", "moved", "deleted", "restored", "purged",
+    "version_purged",
+]
+DocumentReference = Annotated[int, Field(ge=1, le=2147483647)]
+
+
+class DocumentFolderRef(Contract):
+    id: int
+    name: str
+
+
+class DocumentFolderOut(Contract):
+    id: int
+    parent_id: int | None
+    name: str
+    version: int
+    author: ActorOut
+    created_at: datetime
+    updated_at: datetime
+    # Everything active inside it, at any depth: files, their current versions' bytes, folders.
+    file_count: int
+    folder_count: int
+    size: int
+    can_manage: bool
+    # Under the "creator" policy a resident deletes a folder only if they created all it holds.
+    can_delete: bool
+
+
+class DocumentFolderInfoOut(DocumentFolderOut):
+    # The folders above it, from the top level of Documents.
+    location: list[DocumentFolderRef]
+    deleted_at: datetime | None
+    deleted_by: ActorOut | None
+    purged_at: datetime | None
+
+
+class DocumentTreeFolderOut(Contract):
+    id: int
+    parent_id: int | None
+    name: str
+
+
+class DocumentVersionOut(Contract):
+    id: str
+    number: int
+    extension: str
+    media_type: str
+    size: int
+    sha256: str
+    author: ActorOut
+    created_at: datetime
+    # Set when the administrator deleted the file; downloads then answer 410.
+    purged_at: datetime | None
+
+
+class DocumentOut(Contract):
+    id: int
+    folder_id: int | None
+    name: str
+    kind: DocumentKind
+    # PDFs, pictures, videos, and text and CSV files, which the portal's viewer shows.
+    previewable: bool
+    version: int
+    # Who uploaded the first version.
+    author: ActorOut
+    created_at: datetime
+    updated_at: datetime
+    current: DocumentVersionOut
+    version_count: int
+    can_manage: bool
+
+
+class DocumentInfoOut(DocumentOut):
+    location: list[DocumentFolderRef]
+    # Newest first, purged ones included.
+    versions: list[DocumentVersionOut]
+    deleted_at: datetime | None
+    deleted_by: ActorOut | None
+    purged_at: datetime | None
+
+
+class DocumentLimitsOut(Contract):
+    extensions: list[str]
+    video_extensions: list[str]
+    max_file_bytes: int
+    max_video_bytes: int
+    chunk_bytes: int
+    max_folder_items: int
+    max_depth: int
+    archive_max_items: int
+    archive_max_files: int
+    archive_max_bytes: int
+
+
+class DocumentBrowseOut(Contract):
+    # Null at the top level of Documents.
+    folder: DocumentFolderOut | None
+    # From the top level down to the folder itself.
+    path: list[DocumentFolderRef]
+    folders: list[DocumentFolderOut]
+    files: list[DocumentOut]
+    policy: DocumentPolicy
+    limits: DocumentLimitsOut
+
+
+DocumentSort = Literal["name", "modified", "size"]
+
+
+class DocumentFolderMatch(DocumentFolderOut):
+    # The folders above it, from the top level of Documents.
+    location: list[DocumentFolderRef]
+
+
+class DocumentFileMatch(DocumentOut):
+    location: list[DocumentFolderRef]
+
+
+class DocumentSearchPage(ActionPagination):
+    # This page of the matches: folders first, then files, each in the order asked for.
+    folders: list[DocumentFolderMatch]
+    files: list[DocumentFileMatch]
+
+
+class DocumentFolderIn(Contract):
+    name: str = Field(min_length=1, max_length=1000)
+    # Null: the top level of Documents.
+    parent_id: DocumentReference | None = None
+
+
+class DocumentItemEdit(Contract):
+    version: int = Field(ge=1)
+    name: str | None = Field(default=None, min_length=1, max_length=1000)
+    # The folder to move it into; null moves it to the top level, and leaving it out keeps it.
+    folder_id: DocumentReference | None = None
+
+
+class DocumentUploadIn(Contract):
+    upload_id: UUID
+    # The file's name on the device; its extension decides the type.
+    name: str = Field(min_length=1, max_length=1000)
+    size: int = Field(ge=0, le=9007199254740991)
+    # A new file in this folder (null: the top level), or a new version of document_id.
+    folder_id: DocumentReference | None = None
+    document_id: DocumentReference | None = None
+
+    @model_validator(mode="after")
+    def one_destination(self) -> "DocumentUploadIn":
+        if self.folder_id is not None and self.document_id is not None:
+            raise ValueError("Upload either into a folder or as a new version of a document")
+        return self
+
+
+class DocumentUploadOut(Contract):
+    id: str
+    name: str
+    size: int
+    received: int
+    folder_id: int | None
+    document_id: int | None
+    expires_at: datetime
+
+
+class DocumentEventOut(Contract):
+    id: int
+    kind: DocumentEventKind
+    author: ActorOut
+    created_at: datetime
+    # The details that apply to each kind; the others are null.
+    name: str | None
+    previous_name: str | None
+    # Names of the folders above the item, from the top level.
+    location: list[str] | None
+    previous_location: list[str] | None
+    number: int | None
+    size: int | None
+    # Deleted, restored or purged together with this folder.
+    folder: str | None
+
+
+class DocumentHistoryPage(ActionPagination):
+    items: list[DocumentEventOut]
+
+
+# The administrator sets the limits of shared documents in Storage, in whole MiB (1 MiB =
+# 1,048,576 bytes): a file or a video can take up to the 10 GiB of a ZIP download, and the
+# quotas can grow to 10 TiB.
+DOCUMENT_SIZE_LIMIT_MB = 10 * 1024
+DOCUMENT_QUOTA_LIMIT_MB = 10 * 1024 * 1024
+DocumentFileLimit = Annotated[int, Field(strict=True, ge=1, le=DOCUMENT_SIZE_LIMIT_MB)]
+DocumentQuota = Annotated[int, Field(strict=True, ge=1, le=DOCUMENT_QUOTA_LIMIT_MB)]
+
+
+class DocumentSettings(Contract):
+    manage_policy: DocumentPolicy
+    # The largest file, videos excepted, and the largest video.
+    max_file_mb: int
+    max_video_mb: int
+    # Every stored version counts, current, earlier or deleted, until it is purged: towards its
+    # uploader's quota (residents only) and the community's.
+    user_quota_mb: int
+    community_quota_mb: int
+
+
+class DocumentSettingsEdit(Contract):
+    manage_policy: DocumentPolicy | None = None
+    max_file_mb: DocumentFileLimit | None = None
+    max_video_mb: DocumentFileLimit | None = None
+    user_quota_mb: DocumentQuota | None = None
+    community_quota_mb: DocumentQuota | None = None
+
+    @model_validator(mode="after")
+    def validate_edit(self) -> "DocumentSettingsEdit":
+        if not self.model_fields_set or any(
+            getattr(self, field) is None for field in self.model_fields_set
+        ):
+            raise ValueError("Supply at least one non-null setting to change")
+        return self
+
+
+class DocumentDeletionOut(Contract):
+    id: str
+    folder_id: int | None
+    document_id: int | None
+    name: str
+    location: list[str]
+    file_kind: DocumentKind | None
+    file_count: int
+    folder_count: int
+    # Every stored version it holds, until purged.
+    stored_bytes: int
+    # Who deleted it.
+    author: ActorOut
+    created_at: datetime
+
+
+class DocumentDeletionPage(ActionPagination):
+    items: list[DocumentDeletionOut]
+
+
+class StoredDocumentVersionOut(DocumentVersionOut):
+    document_id: int
+    document_name: str
+    location: list[str]
+    # Whether the browser can show it (PDFs, pictures and videos), as for current versions.
+    previewable: bool
+
+
+class StoredDocumentVersionPage(ActionPagination):
+    items: list[StoredDocumentVersionOut]
 
 
 class ParsedRow(Contract):

@@ -30,7 +30,7 @@ async function mockImport(page: Page, { count = 62, initialAccount = false, fail
     if (path === '/admin/auth/session') return json({ authenticated: true, username: 'browser-test' })
     if (path === '/auth/session') return json({ authenticated: true, kind: 'administrator', name: 'browser-test', email: null, user_id: null, dwelling_id: null, expires_at: '2099-01-01T00:00:00Z' })
     if (path === '/settings/general') return json({ community_name: 'Synthetic community' })
-    if (path === '/features') return json({ actions: true, coefficient: true, events: false, google_login: false })
+    if (path === '/features') return json({ actions: true, coefficient: true, events: false, documents: false, google_login: false })
     if (path === '/version') return json({ version: 'development', build_date: '' })
     if (path === '/account') return json(initialAccount && !state.confirmation ? null : { iban: preview.iban, name: 'Community account' })
     if (path === '/catalog/categories') return json([{ id: 1, name: 'Cleaning', color: '#08735a' }, { id: 2, name: 'Maintenance', color: '#21639f' }])

@@ -7,6 +7,7 @@ import { auth } from './auth'
 import { common } from './common'
 import { contacts } from './contacts'
 import { demo } from './demo'
+import { documents } from './documents'
 import { errors } from './errors'
 import { events } from './events'
 import { finance } from './finance'
@@ -29,5 +30,6 @@ export const en = {
   contacts,
   labels,
   storage,
+  documents,
   demo,
 } as const

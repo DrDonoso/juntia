@@ -1,4 +1,4 @@
-import { useState, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useId } from 'react'
+import { useState, type MouseEvent, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useId } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import { Button, Tooltip, TooltipTrigger } from 'react-aria-components'
@@ -68,8 +68,13 @@ export function PhoneLink({ phone, name }: { phone: string; name: string }) {
   return phone ? <a className="phone-link" href={`tel:${phone}`} aria-label={t('common.phone.call', { name, phone })}>{phone}</a>
     : <span className="muted">{t('common.phone.missing')}</span>
 }
-export function PresidentBadge({ name }: { name: string }) {
-  const { t } = useI18n()
+/**
+ * An icon button that explains itself in a tooltip: on hover, on keyboard focus and, because touch
+ * screens cannot hover, on tap.
+ */
+function TooltipButton({ label, tooltip, className, tooltipClassName, children }: {
+  label: string; tooltip: ReactNode; className: string; tooltipClassName: string; children: ReactNode
+}) {
   const [open, setOpen] = useState(false)
   const trigger = useRef<HTMLButtonElement>(null)
   const opening = useRef(0)
@@ -78,7 +83,7 @@ export function PresidentBadge({ name }: { name: string }) {
   function changeOpen(next: boolean) {
     cancelAnimationFrame(opening.current)
     if (next) setContainer(trigger.current?.closest('dialog, main') ?? null)
-    // Focusing an off-screen medal scrolls it into view, and React Aria closes open tooltips on the
+    // Focusing an off-screen button scrolls it into view, and React Aria closes open tooltips on the
     // scroll event that the next frame dispatches before its animation frame callbacks: open after it.
     if (next && document.activeElement === trigger.current) {
       opening.current = requestAnimationFrame(() => { if (document.activeElement === trigger.current) setOpen(true) })
@@ -87,13 +92,26 @@ export function PresidentBadge({ name }: { name: string }) {
     setOpen(next)
   }
   return <TooltipTrigger isOpen={open} onOpenChange={changeOpen} delay={0} closeDelay={150} shouldCloseOnPress={false}>
-    <Button ref={trigger} className="president-badge" aria-label={t('common.president.label', { name })}
+    <Button ref={trigger} className={className} aria-label={label}
       onHoverStart={() => changeOpen(true)}
       onPress={event => changeOpen(event.pointerType === 'touch' ? !open : true)}>
-      <Icon name="medal" size={20} />
+      {children}
     </Button>
-    <Tooltip className="president-tooltip" placement="top" offset={8} UNSTABLE_portalContainer={container ?? undefined}>{t('common.president.title')}</Tooltip>
+    <Tooltip className={tooltipClassName} placement="top" offset={8} UNSTABLE_portalContainer={container ?? undefined}>{tooltip}</Tooltip>
   </TooltipTrigger>
+}
+export function PresidentBadge({ name }: { name: string }) {
+  const { t } = useI18n()
+  return <TooltipButton className="president-badge" tooltipClassName="president-tooltip"
+    label={t('common.president.label', { name })} tooltip={t('common.president.title')}>
+    <Icon name="medal" size={20} />
+  </TooltipButton>
+}
+/** An (i) button that explains what something is, such as a setting, in a tooltip. */
+export function InfoTip({ label, children }: { label: string; children: ReactNode }) {
+  return <TooltipButton className="info-tip" tooltipClassName="info-tooltip" label={label} tooltip={children}>
+    <Icon name="info" size={16} />
+  </TooltipButton>
 }
 export function EmailContact({ email, name }: { email: string; name: string }) {
   const { t } = useI18n()
@@ -131,6 +149,27 @@ export function Pagination({ page, pages, change, busy = false, label }: {
     <button type="button" className="secondary" disabled={busy || page >= pages} onClick={() => change(page + 1)} aria-label={t('common.pagination.nextLabel', { label })}>{t('common.pagination.next')}</button>
     {page > pages && <button type="button" className="quiet" disabled={busy} onClick={() => change(1)}>{t('common.pagination.first')}</button>}
   </nav>
+}
+export type SortDirection = 'asc' | 'desc'
+// A table sorted in the page: another column starts in its own first direction, the same one flips.
+export function useTableSort<Key extends string>(initial: Key, first: (key: Key) => SortDirection) {
+  const [sort, setSort] = useState(() => ({ key: initial, direction: first(initial) }))
+  function change(key: Key) {
+    setSort(current => current.key === key
+      ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+      : { key, direction: first(key) })
+  }
+  return { ...sort, change }
+}
+export function SortableHeader({ label, sortLabel, active, direction, numeric = false, change }: {
+  label: string; sortLabel: string; active: boolean; direction: SortDirection; numeric?: boolean; change: () => void
+}) {
+  return <th scope="col" className={numeric ? 'numeric' : undefined} aria-label={label}
+    aria-sort={active ? direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
+    <button type="button" className="table-sort-button" aria-label={sortLabel} onClick={change}>
+      {label}<Icon name={active ? direction === 'asc' ? 'arrow-up' : 'arrow-down' : 'sort'} size={14} />
+    </button>
+  </th>
 }
 export type DatePeriod = { start: string; end: string }
 export function currentYearPeriod(): DatePeriod {
@@ -188,6 +227,10 @@ export function useFeatureLifecycle(features: FeatureFlagsOut | undefined) {
     if (before.events !== features.events || before.actions !== features.actions) {
       void refreshEventData(features.events)
     }
+    if (before.documents !== features.documents) {
+      if (!features.documents) cache.removeQueries({ queryKey: ['documents'] })
+      else void cache.invalidateQueries({ queryKey: ['documents'] })
+    }
   }, [features])
 }
 export function useCatalog(kind: 'categories' | 'tags') {
@@ -214,13 +257,23 @@ export function useAction(queryKey?: readonly unknown[] | false) {
   function reset() { setError(''); setSuccess(''); setFailure(null) }
   return { busy, run, failure, reset, notice: <>{error && <Notice error>{error}</Notice>}{success && <Notice>{success}</Notice>}</> }
 }
-export function Modal({ title, close, children, disabled = false, className, restoreFocusRef }: {
+// A modal dialog's backdrop is part of the dialog element: its clicks target the dialog, outside its box.
+function onBackdrop(event: MouseEvent<HTMLDialogElement>): boolean {
+  if (event.target !== event.currentTarget) return false
+  const box = event.currentTarget.getBoundingClientRect()
+  return event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom
+}
+export function Modal({ title, close, children, disabled = false, className, restoreFocusRef, actions }: {
   title: string; close: () => void; children: ReactNode; disabled?: boolean; className?: string
   restoreFocusRef?: RefObject<HTMLElement | null>
+  // Controls shown in the header, before the close button.
+  actions?: ReactNode
 }) {
   const { t } = useI18n()
   const ref = useRef<HTMLDialogElement>(null)
   const openerRef = useRef<Element | null>(null)
+  // Only a click that also started on the backdrop closes: selecting text and releasing outside must not.
+  const pressedBackdrop = useRef(false)
   useLayoutEffect(() => {
     const dialog = ref.current
     openerRef.current = restoreFocusRef?.current ?? document.activeElement
@@ -232,12 +285,18 @@ export function Modal({ title, close, children, disabled = false, className, res
     const opener = openerRef.current
     if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
   }, [])
+  const closeButton = <button type="button" className="quiet icon-button" disabled={disabled} onClick={close} aria-label={t('common.close')}><Icon name="close" /></button>
   return <dialog ref={ref} className={className} aria-label={title} onCancel={event => {
     // React bubbles cancel from nested dialogs; only the topmost one should close.
     if (event.target !== event.currentTarget) return
     event.preventDefault(); if (!disabled) close()
+  }} onMouseDown={event => { pressedBackdrop.current = onBackdrop(event) }} onClick={event => {
+    // Nested dialogs bubble here too, but their backdrop clicks target them, not this one.
+    const backdrop = pressedBackdrop.current && onBackdrop(event)
+    pressedBackdrop.current = false
+    if (backdrop && !disabled) close()
   }}>
-    <header><h2>{title}</h2><button type="button" className="quiet icon-button" disabled={disabled} onClick={close} aria-label={t('common.close')}><Icon name="close" /></button></header>
+    <header><h2>{title}</h2>{actions ? <div className="dialog-actions">{actions}{closeButton}</div> : closeButton}</header>
     {children}
   </dialog>
 }

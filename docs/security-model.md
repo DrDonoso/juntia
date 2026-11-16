@@ -289,13 +289,20 @@ trusted content. No banking parser, OCR or AI service receives these attachments
 
 Downloads are served with `Content-Disposition: attachment`. The eye icon opens a
 separate, equally authenticated preview endpoint that serves the same file
-**inline, on the application's own origin**, in a new tab. Both responses carry
+**inline, on the application's own origin**. Both responses carry
 `Content-Type: application/pdf`, `nosniff`, `no-store` and the application's
-Content Security Policy (`script-src 'self'`, `object-src 'none'`,
-`frame-ancestors 'none'`). The browser displays the preview in its built-in PDF
-viewer, isolated from the application's pages, and the review found no way for a
-document to run script in the application's origin through this path. Two
-residual risks remain:
+Content Security Policy (`script-src 'self'`, `object-src 'none'`). Nothing the
+server sends may be shown in a frame (`frame-ancestors 'none'`, `X-Frame-Options:
+DENY`), except PDFs served inline: the portal shows them in its own viewer, a
+frame of the same origin, so they may be framed by the portal's pages and by no
+other site (`frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`). The viewer
+reads the file's first byte before framing it, so a deleted file or an expired
+session is explained instead of shown as the server's raw answer; and it is used
+only on computers whose browser shows PDFs inside a page (phones and tablets open
+the preview in a new tab). Either way, the browser displays the preview in its
+built-in PDF viewer, isolated from the application's pages, and the review found
+no way for a document to run script in the application's origin through this
+path. Two residual risks remain:
 
 - a resident can upload a convincing fake document, such as a forged invoice or a
   notice asking neighbors to sign in elsewhere, and it is displayed under the
@@ -394,7 +401,7 @@ by bytes, not only by the number of active files:
   whenever the community quota or the reserve refuses an upload. Installations
   already over a quota refuse new uploads until enough is purged.
 - **Purge.** Only the technical administrator can purge, through
-  `/api/admin/storage` (the **Storage** page), with the usual Origin and
+  `/api/admin/storage` (the **Free up space** page), with the usual Origin and
   anti-CSRF checks; it keeps working while Actions is off. Only withdrawn PDFs
   can be purged (`409 action_attachment_active`). A purge deletes the file but
   keeps the attachment record and adds an `attachment_purged` history event,
@@ -431,6 +438,94 @@ library escapes line breaks, semicolons and commas, so event text cannot inject
 calendar fields. The interface checks an `event=` address parameter as a
 positive integer before requesting anything.
 
+## Shared documents
+
+`/api/documents` requires an active resident or technical administrator session
+and the Documents switch (off by default) for every read, upload, preview and
+download; chunk uploads are authorized before their body is received. Every
+document is **public to all members**: anything uploaded can be listed, previewed
+and downloaded by every resident, and the interface says so above the files. It
+is meant for documents of common interest, not for private ones.
+
+Every member can create folders and upload files. Renaming, moving, uploading a
+new version and deleting follow the administrator's policy (`/admin/features`):
+only whoever created the item (the default), only the technical administrator,
+or every member; the technical administrator always can. Under the default
+policy a member can delete a folder only when they created everything inside
+it. The server enforces the policy on every change; the interface only hides
+what it would refuse. Changes to the tree are serialized by one lock (an
+advisory lock on PostgreSQL), and item versions reject stale renames, moves and
+deletions.
+
+The history of each file and folder records who created it, uploaded each
+version, renamed, moved, deleted, restored or purged it, and when, with names
+and locations as they were; it never records or compares contents. Like the
+other histories it is append-only through the application, keeps actor names
+after accounts change or are deleted, and is not a tamper-proof audit log.
+
+**Types.** Only the extensions listed in the
+[deployment guide](deployment.md#shared-documents) are accepted, and the content
+must match the extension once the upload is complete: PDF header and end of
+file; image signatures (HEIC/HEIF by their brand); the box structure of
+MP4/M4V/MOV videos; the declared main part of Word, Excel and PowerPoint files;
+the `mimetype` entry of OpenDocument files; and no NUL bytes in text and CSV
+(unless UTF-16). Office files with macros (`vbaProject`, macro-enabled types),
+ActiveX controls or embedded objects, and OpenDocument files with `Basic` or
+`Scripts` folders, are refused, as are ZIP containers with more than 10,000
+entries or ZIP64 records. These checks are not antivirus scanning or complete
+validation: a document can still contain links, external references or fields
+that ask to update, misleading text, or content that exploits flaws in the
+programs that open it. Treat member files as untrusted, open Office files in
+protected view and keep office software and browsers up to date.
+
+**Preview.** The eye icon shows PDFs, pictures and videos **inline, on the
+application's own origin**, in the portal's viewer (PDFs framed like
+[action PDFs](#community-actions-and-retained-pdfs)), with the recognized type
+(MOV and M4V videos as `video/mp4`, which browsers can play), `nosniff`,
+`no-store` and the application's Content Security Policy, with the same residual
+risks: convincing fake documents shown under the community's address, and
+flaws in the browser's PDF or media engines. Browsers that cannot display HEIC
+say so and offer the download. Other types are only sent as attachments. SVG,
+HTML and other active formats are never accepted, so no upload can run script in
+the application's origin.
+
+**Search.** Members find folders and files by name anywhere in Documents
+(`GET /api/documents/search`, up to 200 characters, ignoring capitals and
+accents). The search only covers what they can already browse: deleted items
+stay hidden, and each result shows what the person searching may do with it.
+
+**Downloads.** File names in `Content-Disposition` and in ZIP files come from
+the validated names (at most 200 characters, without `/ \ : * ? " < > |` or
+control characters, not names reserved by Windows, unique per folder regardless
+of case), and ZIP paths are built from the folder tree, so an archive cannot
+contain absolute paths or `..`. ZIP files are streamed without compression, up
+to 100 selected items, 5000 files and 10 GiB, with at most 4 being built at the
+same time.
+
+**Storage and retention.** Files are stored under server-generated names in
+`UPLOAD_DIR/documents`, never client paths. Uploads arrive in chunks of at most
+4 MiB into a partial file owned by the uploader; an upload ID cannot be reused
+by another person, and chunks must continue exactly where the stored data ends.
+A file whose type does not match is discarded; after an ambiguous commit the
+completed file is moved back to the upload so that a retry can finish it.
+Unfinished uploads expire a day after their last chunk, each person keeps at
+most 4, and the startup removes expired uploads and orphaned partial files.
+Every stored version, current, earlier or deleted, counts against the
+uploader's documents quota and the community's (see the
+[deployment guide](deployment.md#shared-documents)); quotas are checked under
+the lock when an upload starts and when it completes, and every chunk respects
+the free-disk reserve. The sizes and quotas are database settings that only
+the technical administrator changes (`/api/admin/settings/documents`, with
+the usual Origin and anti-CSRF checks); the server accepts whole MiB within
+fixed bounds (files and videos up to 10 GiB, quotas up to 10 TiB) and applies
+them to the next uploads and checks. Deleting hides an item and everything inside it from
+members but keeps its files and history; only the technical administrator can
+see deleted documents, restore them or purge them. Purging deletes the files
+of every version inside the database transaction, keeps names and history, and
+cannot be undone except from a backup; earlier versions of a file can also be
+purged one by one from the **Free up space** page. Migration `0022` refuses to
+downgrade while any document data exists.
+
 ## Deployment controls
 
 The **Actions** switch defaults to on. When it is off, both navigations hide
@@ -441,8 +536,11 @@ still require authentication. This retains all action data, audit history and
 files for later re-enablement; it is not an erasure or backup policy. Financial
 permissions and user/session management are unchanged. The **Events** switch
 defaults to off and works the same way for `/api/events` (`events_disabled`),
-images of event descriptions included. The administrator's storage page keeps
-showing and purging images while either switch is off.
+images of event descriptions included. The **Documents** switch also defaults to
+off and works the same way for `/api/documents` (`documents_disabled`), uploads,
+previews and ZIP downloads included; the technical administrator keeps managing
+deleted documents and their storage while it is off. The administrator's storage
+page keeps showing and purging images while either switch is off.
 
 **Ownership coefficients** is an administrator-controlled setting, not a
 user preference or an authorization role. With it disabled, coefficient values
@@ -453,8 +551,8 @@ re-enablement. All existing authentication and administrator checks still apply.
 The switches are persisted in the database and managed at `/admin/features`, not
 through `.env`. Each switch's PATCH endpoint requires an administrator session,
 an authorized Origin and the anti-CSRF header. Only the known switches
-(`coefficient`, `actions`, `events`) and strict boolean values are accepted. The
-server reads the current database values
+(`coefficient`, `actions`, `events`, `documents`) and strict boolean values are
+accepted. The server reads the current database values
 for each relevant request, including rechecking after staging an action upload;
 there is no per-process flag cache. Updates do not revoke sessions or alter
 financial revisions. The browser refreshes flags every five seconds while

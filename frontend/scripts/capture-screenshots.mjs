@@ -146,6 +146,21 @@ const SHOTS = [
     },
   },
   {
+    name: 'documents',
+    as: 'neighbor',
+    async capture(page) {
+      await go(page, '/documents')
+      await heading(page, 'Documents').waitFor()
+      const grid = page.getByRole('list', { name: 'Folders and files in Documents' })
+      // Two items selected for one ZIP download, and the options of a folder the sample neighbor
+      // created, with everything inside it: all of them, Delete included.
+      await grid.getByRole('checkbox', { name: 'Select Meeting minutes' }).check()
+      await grid.getByRole('checkbox', { name: 'Select Lift maintenance contract.pdf' }).check()
+      await grid.getByRole('button', { name: 'Options for Garden' }).click()
+      await page.getByRole('menu', { name: 'Options for Garden' }).getByRole('menuitem', { name: 'Delete' }).waitFor()
+    },
+  },
+  {
     name: 'neighbors',
     as: 'neighbor',
     // Wider cards: the email addresses fit on one line.
@@ -212,9 +227,10 @@ const SHOTS = [
     async capture(page) {
       await go(page, '/admin/storage')
       await heading(page, 'Storage').waitFor()
-      await page.getByRole('button', { name: /^Delete permanently/ }).nth(2).waitFor()
-      const withdrawn = page.locator('section', { has: page.getByRole('heading', { name: 'Withdrawn PDFs', exact: true }) }).last()
-      await scrollPast(withdrawn.locator('xpath=preceding-sibling::section[1]'))
+      const limits = page.getByRole('region', { name: 'Shared documents limits' })
+      await limits.getByRole('slider').first().waitFor()
+      // The limits of shared documents, right below the usage cards.
+      await scrollPast(page.locator('.storage-summary'))
     },
   },
   {
