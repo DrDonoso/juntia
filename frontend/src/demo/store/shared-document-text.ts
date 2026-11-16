@@ -304,21 +304,43 @@ function pdfString(value: string): string {
     /^[0-7]/.test(escaped) ? String.fromCharCode(parseInt(escaped, 8) & 0xff) : PDF_ESCAPES[escaped] ?? (escaped === '\n' ? '' : escaped))
 }
 
+/**
+ * The tokens of a content stream that show text, in a single pass: a literal string (to the end of the
+ * stream when it is never closed), the brackets of an array, and the operators Tj, TJ, ', ", T* and ET.
+ * Each token matches in one way only, so crafted streams cannot make the search backtrack.
+ */
+const CONTENT_TOKENS = /\(((?:\\[\s\S]|[^\\)])*)\)?|\[|\]|\bT[Jj]\b|\bT\*|\bET\b|['"]/g
+
 /** The text a content stream draws: strings shown with Tj, ' and " on lines, and the strings of TJ arrays. */
 function pageText(content: string): string {
   const lines: string[] = []
-  const operators = /\[((?:\((?:\\[\s\S]|[^\\)])*\)|[^\]])*)\]\s*TJ|\(((?:\\[\s\S]|[^\\)])*)\)\s*(?:Tj|'|")|(T\*|ET)\b/g
   let line = ''
-  for (const [, array, single, breaks] of content.matchAll(operators)) {
-    if (breaks !== undefined) {
+  let array: string[] | null = null
+  // What the next operator shows: the last string, or the strings of the last array.
+  let operand: string | string[] | null = null
+  for (const [token, string] of content.matchAll(CONTENT_TOKENS)) {
+    if (string !== undefined) {
+      const value = pdfString(string)
+      if (array) array.push(value)
+      else operand = value
+    } else if (token === '[') {
+      array = []
+    } else if (token === ']') {
+      operand = array
+      array = null
+    } else if (token === 'TJ') {
+      if (Array.isArray(operand)) line += operand.join('')
+      operand = null
+    } else if (token === 'T*' || token === 'ET') {
       lines.push(line)
       line = ''
-    } else if (single !== undefined) {
-      line += pdfString(single)
+      operand = null
+    } else {
+      // Tj, ' and ": the string ends its line.
+      if (typeof operand === 'string') line += operand
       lines.push(line)
       line = ''
-    } else if (array !== undefined) {
-      line += [...array.matchAll(/\(((?:\\[\s\S]|[^\\)])*)\)/g)].map(([, part]) => pdfString(part)).join('')
+      operand = null
     }
   }
   lines.push(line)

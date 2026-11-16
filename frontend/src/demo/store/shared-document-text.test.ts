@@ -36,6 +36,11 @@ async function compressedPdf(text: string): Promise<Uint8Array<ArrayBuffer>> {
   return bytes
 }
 
+/** A PDF whose page draws an uncompressed content stream. */
+function plainPdf(content: string): Uint8Array<ArrayBuffer> {
+  return encoder.encode(`%PDF-1.7\n1 0 obj\n<< /Type /Page >>\nendobj\n2 0 obj\n<< /Length ${content.length} >>\nstream\n${content}\nendstream\nendobj\n%%EOF\n`)
+}
+
 describe('the text of shared documents', () => {
   test('is cleaned onto one line like the server does', () => {
     expect(cleanText('Comu-\nnidad de\u00a0pro\u00adpietarios (cid:12)\tAlfa-\nBeta\u0000\ufffd\ue000 cuota')).toBe('Comunidad de propietarios Alfa- Beta cuota')
@@ -76,6 +81,17 @@ describe('the text of shared documents', () => {
     expect(await readDocumentText(encoder.encode('%PDF-1.7\n<< /Encrypt 5 0 R >>\n%%EOF\n'), 'pdf')).toEqual({ error: 'encrypted' })
     expect(await readDocumentText(encoder.encode('%PDF-1.7\n% not really a PDF\n%%EOF\n'), 'pdf')).toEqual({ error: 'damaged' })
     expect(await readDocumentText(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), 'png')).toEqual({ content: '', needsOcr: true, partial: false })
+  })
+
+  test('reads the strings of TJ arrays, and crafted PDF streams in a single pass', async () => {
+    const kerned = plainPdf('BT /F1 12 Tf [(Gar) -20 (den rota) 120 ( \\(rule [1]\\))] TJ T* (Bins: Monday) Tj [1 2] 0 d ET')
+    expect(await readDocumentText(kerned, 'pdf')).toEqual({ content: 'Garden rota (rule [1]) Bins: Monday', needsOcr: false, partial: false })
+    expect(await readDocumentText(plainPdf(`BT [(Fine)${')'.repeat(50_000)}] TJ ET`), 'pdf'))
+      .toEqual({ content: 'Fine', needsOcr: false, partial: false })
+    // Arrays and strings that never close: a search that backtracks would take ages.
+    for (const content of [`BT [${'()'.repeat(20_000)} ET`, `BT ${'('.repeat(100_000)} Tj ET`]) {
+      expect(await readDocumentText(plainPdf(content), 'pdf')).toEqual({ content: '', needsOcr: true, partial: false })
+    }
   })
 
   test.each([
