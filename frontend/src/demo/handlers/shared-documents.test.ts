@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import type {
-  DocumentBrowseOut, DocumentDeletionPage, DocumentFolderInfoOut, DocumentFolderOut, DocumentHistoryPage, DocumentInfoOut, DocumentOut,
-  DocumentSearchPage, DocumentSettings, DocumentTreeFolderOut, DocumentUploadOut, StorageOut,
+  DocumentBrowseOut, DocumentDeletionPage, DocumentFileMatch, DocumentFolderInfoOut, DocumentFolderOut, DocumentHistoryPage, DocumentInfoOut,
+  DocumentOut, DocumentSearchPage, DocumentSettings, DocumentTextFilePage, DocumentTextSummaryOut, DocumentTreeFolderOut, DocumentUploadOut,
+  StorageOut,
 } from '../../api/schema.gen'
 import { MUTATION_HEADER, readZip, readZipMember, setClock, zipArchive } from '../core'
 import { resetDemo } from '../store'
@@ -208,23 +209,87 @@ describe('the search', () => {
     // Each match is described as in its folder, with what the visitor may do.
     const minutes = scenarioFolder('Meeting minutes')
     const year = (await browse(minutes.id)).folders[1]
-    const { location, ...ordinary } = found.files[1]
+    const { location, excerpt, ...ordinary } = found.files[1]
     expect(ordinary).toEqual((await browse(year.id)).files[0])
     expect(location).toEqual([{ id: minutes.id, name: 'Meeting minutes' }, { id: year.id, name: '2026' }])
-    // Deleted items stay hidden; the largest or the latest changed come first when asked.
+    expect(excerpt).toBeNull()
+    // Deleted items stay hidden; the largest or the latest changed come first when asked, among the
+    // files found by name and among those found by their text, which come after them.
     const deleted = sharedDocumentsStore().folders.find(item => item.deletedAt !== null)!
     expect((await search(`q=${encodeURIComponent(deleted.name)}`)).folders.map(item => item.id)).not.toContain(deleted.id)
-    const sizes = (await search('q=e&sort=size')).files.map(item => item.current.size)
-    expect(sizes.length).toBeGreaterThan(1)
-    expect(sizes).toEqual([...sizes].sort((a, b) => b - a))
-    const changes = (await search('q=e&sort=modified')).files.map(item => item.updated_at)
-    expect(changes).toEqual([...changes].sort().reverse())
-    expect(await search('q=%20%20')).toEqual({ total: 0, page: 1, pages: 1, folders: [], files: [] })
+    for (const [sort, value] of [['size', (item: DocumentFileMatch) => -item.current.size], ['modified', (item: DocumentFileMatch) => -Date.parse(item.updated_at)]] as const) {
+      const files = (await search(`q=e&sort=${sort}`)).files
+      const groups = [files.filter(item => item.excerpt === null), files.filter(item => item.excerpt !== null)]
+      expect(groups[0].length).toBeGreaterThan(1)
+      expect(groups[1].map(item => item.name)).toEqual(['Claims log.csv'])
+      expect(files).toEqual([...groups[0], ...groups[1]])
+      for (const group of groups) expect(group.map(value)).toEqual(group.map(value).sort((a, b) => a - b))
+    }
+    expect(await search('q=%20%20')).toEqual({ total: 0, page: 1, pages: 1, folders: [], files: [], pending: 0 })
     for (const query of ['', '?q=', `?q=${'x'.repeat(201)}`, '?q=a&sort=type', '?q=a&page=0']) {
       expect(await get(`/api/documents/search${query}`), query).toMatchObject({ status: 422, body: { code: 'invalid_request' } })
     }
     coreStore().features.documents = false
     expect(await get('/api/documents/search?q=a')).toMatchObject({ status: 404, body: { code: 'documents_disabled' } })
+  })
+
+  test('finds files by the words inside them, after those found by name, with the words around the match', async () => {
+    const found = await search(`q=${encodeURIComponent('QUIET hours')}`)
+    expect(found.files.map(item => item.name)).toEqual(['House rules.pdf', 'Minutes - ordinary meeting.pdf'])
+    expect(found.files[0].excerpt?.match).toBe('Quiet hours')
+    expect(found.files[0].excerpt?.before).toMatch(/^….+ 1\. $/)
+    expect(found.files[0].excerpt?.after).toMatch(/^: from 22:00 to 08:00 every day\. 2\. Rubbish: .+[a-z]…$/)
+    expect(found.pending).toBe(0)
+    // Word documents, CSV files and the current versions only; deleted files stay hidden.
+    expect((await search('q=mailbox')).files.map(item => item.name)).toEqual(['Welcome letter for new residents.docx'])
+    expect((await search('q=downpipe')).files.map(item => item.name)).toEqual(['Claims log.csv'])
+    expect((await search(`q=${encodeURIComponent('on weekdays')}`)).total).toBe(0)
+    expect((await search(`q=${encodeURIComponent('to be discussed')}`)).total).toBe(0)
+    // New files are read for the search at once.
+    const notice = await uploaded('Notice.txt', encoder.encode('The lift is out of service on Friday.\n'))
+    expect((await search(`q=${encodeURIComponent('out of service')}`)).files.map(item => item.id)).toEqual([notice.id])
+    const info = (id: number) => get<DocumentInfoOut>(`/api/documents/files/${id}`).then(answer => answer.body.text)
+    expect(await info(notice.id)).toEqual({ status: 'ready', ocr_pages: 0, partial: false })
+    expect(await info((await uploaded('Hall.png', png())).id)).toEqual({ status: 'empty', ocr_pages: 0, partial: false })
+    expect(await info((await uploaded('Visit.mp4', mp4())).id)).toEqual({ status: 'unsupported', ocr_pages: 0, partial: false })
+  })
+})
+
+describe('reading the documents', () => {
+  const summary = async () => (await get<DocumentTextSummaryOut>('/api/admin/documents/text')).body
+  const files = async (query = '') => (await get<DocumentTextFilePage>(`/api/admin/documents/text/files${query}`)).body
+
+  test('the administrator follows how the text of every file is read, without OCR in the demo', async () => {
+    expect(await get('/api/admin/documents/text')).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
+    await adminLogin()
+    expect(await summary()).toEqual({
+      engine: { available: false, version: null, language: 'en' },
+      counts: { files: 10, readable: 10, pending: 0, text: 10, empty: 0, failed: 0, partial: 0, ocr: 0, needs_ocr: 0 },
+      reading: null,
+    })
+    const all = await files()
+    expect(all).toMatchObject({ total: 10, page: 1, pages: 1 })
+    expect(all.items.find(item => item.name === 'Watering rota.csv')).toMatchObject({
+      kind: 'text', location: [{ name: 'Garden' }], status: 'ready', reading: false, error: null, ocr_pages: 0, partial: false,
+      needs_ocr: false, read_at: NOW.toISOString(),
+    })
+    // A file that cannot be read says why; reading it again, alone or with every failed one.
+    const broken = await uploaded('Broken.pdf', pdf())
+    expect((await summary()).counts).toMatchObject({ files: 11, failed: 1 })
+    expect((await files('?status=failed')).items.map(item => [item.document_id, item.error])).toEqual([[broken.id, 'damaged']])
+    expect(await post(`/api/admin/documents/text/files/${broken.id}/read`)).toMatchObject({ status: 200, body: { status: 'pending' } })
+    expect(await post('/api/admin/documents/text/retry')).toMatchObject({ status: 200, body: { queued: 0 } })
+    expect((await summary()).counts).toMatchObject({ pending: 0, failed: 1 })
+    expect(await post('/api/admin/documents/text/retry')).toMatchObject({ status: 200, body: { queued: 1 } })
+    const video = await uploaded('Visit.mp4', mp4())
+    expect(await post(`/api/admin/documents/text/files/${video.id}/read`))
+      .toMatchObject({ status: 409, body: { code: 'document_text_unsupported' } })
+    expect(await remove('files', broken)).toMatchObject({ status: 204 })
+    expect(await post(`/api/admin/documents/text/files/${broken.id}/read`)).toMatchObject({ status: 404, body: { code: 'document_not_found' } })
+    expect(await get('/api/admin/documents/text/files?status=x')).toMatchObject({ status: 422, body: { code: 'invalid_request' } })
+    // It keeps working while Documents is turned off.
+    coreStore().features.documents = false
+    expect((await summary()).counts.files).toBe(11)
   })
 })
 

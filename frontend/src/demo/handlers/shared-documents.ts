@@ -1,10 +1,11 @@
 /**
  * Shared documents routes of the demo API (src/juntia/community_documents.py): folders and files
- * with their details, edits, deletions and history, the search by name across all of them, chunked
- * uploads, downloads, previews and ZIP archives for every member while Documents is on (404
- * `documents_disabled` otherwise); and the administrator's deleted documents (restore and purge),
- * copies of any stored version, and the settings (management policy, largest file and video,
- * quotas), which keep working while the feature is off.
+ * with their details, edits, deletions and history, the search by name and by text across all of
+ * them, chunked uploads, downloads, previews and ZIP archives for every member while Documents is
+ * on (404 `documents_disabled` otherwise); and the administrator's deleted documents (restore and
+ * purge), copies of any stored version, the settings (management policy, largest file and video,
+ * quotas) and the reading of the documents' text (document_reading.py), which keep working while
+ * the feature is off.
  */
 import type { ActorOut, DocumentDeletionPage, DocumentSettings } from '../../api/schema.gen'
 import {
@@ -13,10 +14,11 @@ import {
 } from '../core'
 import { canonicalUuid } from '../store/community-text'
 import {
-  CHUNK_BYTES, DOCUMENT_PAGE_SIZE, DOCUMENT_POLICIES, DOCUMENT_QUOTA_LIMIT_MB, DOCUMENT_SIZE_LIMIT_MB, DOCUMENT_SORTS, activeDocument, activeFolder, browse,
-  cancelUpload, completeUpload, createFolder,
+  CHUNK_BYTES, DOCUMENT_PAGE_SIZE, DOCUMENT_POLICIES, DOCUMENT_QUOTA_LIMIT_MB, DOCUMENT_SIZE_LIMIT_MB, DOCUMENT_SORTS, DOCUMENT_TEXT_FILTERS,
+  activeDocument, activeFolder, browse, cancelUpload, completeUpload, createFolder,
   deleteDocument, deleteFolder, deletionOut, documentArchive, documentInfo, documentOut, editDocument, editFolder, findDocument,
-  findFolder, folderInfo, folderOut, folderTree, historyPage, openDeletions, ownUpload, purgeDeletion, receiveChunk, restoreDeletion,
+  findFolder, folderInfo, folderOut, folderTree, historyPage, openDeletions, ownUpload, purgeDeletion, readAgain, readTexts,
+  readingFiles, readingSummary, receiveChunk, restoreDeletion, retryFailed,
   searchDocuments, sharedDocumentsStore, startUpload, uploadOut, versionFile, type DemoDocument, type DemoDocumentFolder, type ItemEdit,
   type SharedDocumentsState, type UploadInput, type VersionFile,
 } from '../store/shared-documents'
@@ -127,12 +129,15 @@ function anyDocument(documents: SharedDocumentsState, id: number): DemoDocument 
 
 const residentHandlers: HttpHandler[] = [
   http.get('/api/documents/browse', route('session', context => browse(sharedDocumentsStore(), queryInt(context.url, 'folder'), author(context)), DOCUMENTS)),
-  // A name anywhere in Documents: `q` is required, 1 to 200 characters.
-  http.get('/api/documents/search', route('session', context => {
+  // A name or words anywhere in Documents: `q` is required, 1 to 200 characters.
+  http.get('/api/documents/search', route('session', async context => {
     const { url } = context
     if (!url.searchParams.get('q')) throw new DemoApiError('invalid_request', 422)
     const q = queryText(url, 'q', { max: 200 })
-    return searchDocuments(sharedDocumentsStore(), q, queryChoice(url, 'sort', DOCUMENT_SORTS, 'name'), pageParam(url), author(context))
+    const sort = queryChoice(url, 'sort', DOCUMENT_SORTS, 'name'), page = pageParam(url)
+    const documents = sharedDocumentsStore()
+    await readTexts(documents, nowIso())
+    return searchDocuments(documents, q, sort, page, author(context))
   }, DOCUMENTS)),
   http.get('/api/documents/folders', route('session', () => folderTree(sharedDocumentsStore()), DOCUMENTS)),
   http.post('/api/documents/folders', route('session', async context => {
@@ -160,9 +165,11 @@ const residentHandlers: HttpHandler[] = [
     const documents = sharedDocumentsStore()
     return historyPage(documents, activeFolder(documents, folderId), page)
   }, DOCUMENTS)),
-  http.get('/api/documents/files/:documentId', route('session', context => {
+  http.get('/api/documents/files/:documentId', route('session', async context => {
+    const documentId = idParam(context.params, 'documentId')
     const documents = sharedDocumentsStore()
-    return documentInfo(documents, activeDocument(documents, idParam(context.params, 'documentId')), author(context))
+    await readTexts(documents, nowIso())
+    return documentInfo(documents, activeDocument(documents, documentId), author(context))
   }, DOCUMENTS)),
   http.patch('/api/documents/files/:documentId', route('session', async context => {
     const documentId = idParam(context.params, 'documentId')
@@ -222,9 +229,11 @@ const administrationHandlers: HttpHandler[] = [
     const { items, ...info } = paginate(openDeletions(documents), page, DOCUMENT_PAGE_SIZE)
     return { ...info, items: items.map(deletion => deletionOut(documents, deletion)) }
   })),
-  http.get('/api/admin/documents/files/:documentId', route('admin', context => {
+  http.get('/api/admin/documents/files/:documentId', route('admin', async context => {
+    const documentId = idParam(context.params, 'documentId')
     const documents = sharedDocumentsStore()
-    return documentInfo(documents, anyDocument(documents, idParam(context.params, 'documentId')), author(context))
+    await readTexts(documents, nowIso())
+    return documentInfo(documents, anyDocument(documents, documentId), author(context))
   })),
   http.get('/api/admin/documents/files/:documentId/history', route('admin', ({ params, url }) => {
     const documentId = idParam(params, 'documentId'), page = pageParam(url)
@@ -246,6 +255,21 @@ const administrationHandlers: HttpHandler[] = [
     purgeDeletion(sharedDocumentsStore(), author(context), uuidParam(context.params, 'deletionId'), nowIso())
   }, { status: 204 })),
   http.get('/api/admin/settings/documents', route('admin', (): DocumentSettings => ({ ...sharedDocumentsStore().settings }))),
+  // How the text of the documents is read for the search; the demo reads what waits at once.
+  http.get('/api/admin/documents/text', route('admin', async () => {
+    const documents = sharedDocumentsStore()
+    await readTexts(documents, nowIso())
+    return readingSummary(documents)
+  })),
+  http.get('/api/admin/documents/text/files', route('admin', async ({ url }) => {
+    const status = queryChoice(url, 'status', DOCUMENT_TEXT_FILTERS, 'all'), page = pageParam(url)
+    const documents = sharedDocumentsStore()
+    await readTexts(documents, nowIso())
+    return readingFiles(documents, status, page)
+  })),
+  http.post('/api/admin/documents/text/files/:documentId/read', route('admin', context =>
+    readAgain(sharedDocumentsStore(), idParam(context.params, 'documentId'), nowIso()))),
+  http.post('/api/admin/documents/text/retry', route('admin', () => retryFailed(sharedDocumentsStore(), nowIso()))),
   // Changes only the settings sent; the limits apply at once to browsing, new uploads and both quota checks.
   http.patch('/api/admin/settings/documents', route('admin', async ({ request }): Promise<DocumentSettings> => {
     const edit = parseBody(await readJson(request), settingsEdit)

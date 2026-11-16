@@ -59,6 +59,7 @@ const docx: DocumentOut = {
 const info: DocumentInfoOut = {
   ...pdf, location: [], deleted_at: null, deleted_by: null, purged_at: null,
   versions: [version('v7-2', 2, 2 * MiB, bob), { ...version('v7-1', 1, MiB), purged_at: '2026-02-02T10:00:00Z' }],
+  text: { status: 'ready', ocr_pages: 2, partial: false },
 }
 const tree: DocumentTreeFolderOut[] = [
   { id: 4, name: 'Minutes', parent_id: null }, { id: 6, name: '2026', parent_id: 4 }, { id: 5, name: 'Plans', parent_id: null },
@@ -86,7 +87,7 @@ beforeEach(() => {
   browse = { folder: null, path: [], folders: [folder], files: [docx, pdf], limits, policy: 'creator' }
   events = []
   deletions = []
-  search = { total: 0, page: 1, pages: 1, folders: [], files: [] }
+  search = { total: 0, page: 1, pages: 1, folders: [], files: [], pending: 0 }
   writes = {}
   vi.mocked(api).mockImplementation(async (url, method = 'GET', body) => {
     const write = writes[`${method} ${url}`]
@@ -288,6 +289,8 @@ test('info shows who uploaded the file, its versions and the history of changes'
   const dialog = within(screen.getByRole('dialog', { name: 'Info: Acta.pdf' }))
   expect(await dialog.findByText('PDF · .pdf')).toBeVisible()
   expect(dialog.getByText('Uploaded by').nextElementSibling).toHaveTextContent(/^Ana López · /)
+  expect(dialog.getByText('Search by text').nextElementSibling)
+    .toHaveTextContent('Its text is searchable: 2 scanned pages were read with OCR.')
   expect(dialog.getByRole('link', { name: 'Download version 2' })).toHaveAttribute('href', '/api/documents/versions/v7-2/download')
   expect(dialog.queryByRole('link', { name: 'Download version 1' })).toBeNull()
   expect(dialog.getByText(/^Deleted permanently:/)).toBeVisible()
@@ -366,15 +369,16 @@ test('the search finds folders and files anywhere in Documents, says where they 
   }
   const march: DocumentFileMatch = {
     ...pdf, id: 9, folder_id: 6, name: 'Minutes of March.pdf', location: [{ id: 4, name: 'Minutes' }, { id: 6, name: 'Minutes 2026' }],
+    excerpt: null,
   }
-  search = { total: 2, page: 1, pages: 1, folders: [year], files: [march] }
+  search = { total: 2, page: 1, pages: 1, folders: [year], files: [march], pending: 0 }
   const user = userEvent.setup()
   page()
   await grid()
   const box = screen.getByRole('searchbox', { name: 'Search all documents' })
   await user.type(box, ' MINUTES')
   expect(api).toHaveBeenLastCalledWith('/documents/search?q=MINUTES&sort=name&page=1', 'GET', undefined, expect.any(AbortSignal))
-  const results = within(await screen.findByRole('list', { name: 'Folders and files whose name contains “MINUTES”' }))
+  const results = within(await screen.findByRole('list', { name: 'Folders and files that contain “MINUTES”' }))
   expect(screen.getByRole('heading', { name: '2 results' })).toBeVisible()
   expect(results.getAllByRole('checkbox').map(check => check.getAttribute('aria-label'))).toEqual(['Select Minutes 2026', 'Select Minutes of March.pdf'])
   expect(results.getByRole('link', { name: 'In Documents / Minutes' })).toHaveAttribute('href', '/documents/folders/4')
@@ -386,18 +390,38 @@ test('the search finds folders and files anywhere in Documents, says where they 
     .toHaveAttribute('href', '/api/documents/archive?file=9')
   await user.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'size')
   expect(api).toHaveBeenLastCalledWith('/documents/search?q=MINUTES&sort=size&page=1', 'GET', undefined, expect.any(AbortSignal))
-  search = { total: 0, page: 1, pages: 1, folders: [], files: [] }
+  search = { total: 0, page: 1, pages: 1, folders: [], files: [], pending: 0 }
   await user.type(box, 'x')
-  expect(await screen.findByText('No file or folder name contains “MINUTESx”.')).toBeVisible()
+  expect(await screen.findByText('No folder or file contains “MINUTESx” in its name or its text.')).toBeVisible()
   // Emptying the search shows the folder again.
   await user.clear(box)
   expect(await screen.findByRole('list', { name: 'Folders and files in Documents' })).toBeVisible()
   expect(screen.getByRole('heading', { name: '3 items' })).toBeVisible()
-  search = { total: 2, page: 1, pages: 1, folders: [year], files: [march] }
+  search = { total: 2, page: 1, pages: 1, folders: [year], files: [march], pending: 0 }
   await user.type(box, 'minutes')
   await user.click(await screen.findByRole('link', { name: 'In Documents / Minutes' }))
   expect(await screen.findByRole('heading', { name: 'Minutes', level: 1 })).toBeVisible()
   expect(screen.getByRole('searchbox', { name: 'Search all documents' })).toHaveValue('')
+})
+
+test('files found by their text come after those found by name, with the words around the match', async () => {
+  const named: DocumentFileMatch = { ...docx, name: 'Lift budget.docx', location: [], excerpt: null }
+  const read: DocumentFileMatch = {
+    ...pdf, location: [], excerpt: { before: '…the meeting approved the ', match: 'lift', after: ' repair before May…' },
+  }
+  // The server's order: here the larger file comes last, found by its text.
+  search = { total: 2, page: 1, pages: 1, folders: [], files: [named, read], pending: 2 }
+  const user = userEvent.setup()
+  page()
+  await grid()
+  await user.type(screen.getByRole('searchbox', { name: 'Search all documents' }), 'lift')
+  const results = within(await screen.findByRole('list', { name: 'Folders and files that contain “lift”' }))
+  expect(results.getAllByRole('checkbox').map(check => check.getAttribute('aria-label'))).toEqual(['Select Lift budget.docx', 'Select Acta.pdf'])
+  const excerpt = results.getByText((_, element) => element?.className === 'document-excerpt')
+  expect(excerpt).toHaveTextContent('…the meeting approved the lift repair before May…')
+  expect(within(excerpt).getByText('lift').tagName).toBe('MARK')
+  expect(results.getAllByText((_, element) => element?.className === 'document-excerpt')).toHaveLength(1)
+  expect(screen.getByText('2 files have not been read yet: their text cannot be found until they are.')).toBeVisible()
 })
 
 test('history entries explain what happened together with a folder', () => {

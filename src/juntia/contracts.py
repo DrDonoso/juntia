@@ -943,6 +943,20 @@ class DocumentOut(Contract):
     can_manage: bool
 
 
+# pending: waiting to be read; ready: read, with text; empty: read, without any; failed: could
+# not be read; unsupported: videos and HEIC pictures, which are found by name only.
+DocumentTextStatus = Literal["pending", "ready", "empty", "failed", "unsupported"]
+DocumentTextError = Literal["encrypted", "damaged", "too_large", "timeout", "missing", "failed"]
+
+
+class DocumentTextOut(Contract):
+    status: DocumentTextStatus
+    # Pages, or the picture, read with OCR.
+    ocr_pages: int
+    # Only part of it was read: the file exceeds what is read of each file.
+    partial: bool
+
+
 class DocumentInfoOut(DocumentOut):
     location: list[DocumentFolderRef]
     # Newest first, purged ones included.
@@ -950,6 +964,8 @@ class DocumentInfoOut(DocumentOut):
     deleted_at: datetime | None
     deleted_by: ActorOut | None
     purged_at: datetime | None
+    # What the search knows of the current version's text; null once it is purged.
+    text: DocumentTextOut | None
 
 
 class DocumentLimitsOut(Contract):
@@ -977,6 +993,14 @@ class DocumentBrowseOut(Contract):
 
 
 DocumentSort = Literal["name", "modified", "size"]
+DocumentTextFilter = Literal["all", "pending", "failed", "empty", "partial", "ocr", "text"]
+
+
+class DocumentExcerpt(Contract):
+    # The words around the first place where the text contains the search; "…" marks a cut.
+    before: str
+    match: str
+    after: str
 
 
 class DocumentFolderMatch(DocumentFolderOut):
@@ -986,12 +1010,81 @@ class DocumentFolderMatch(DocumentFolderOut):
 
 class DocumentFileMatch(DocumentOut):
     location: list[DocumentFolderRef]
+    # Where its text contains the search, for files found by their text and not by their name.
+    excerpt: DocumentExcerpt | None
 
 
 class DocumentSearchPage(ActionPagination):
-    # This page of the matches: folders first, then files, each in the order asked for.
+    # This page of the matches: folders, files found by name and then by their text, each group
+    # in the order asked for.
     folders: list[DocumentFolderMatch]
     files: list[DocumentFileMatch]
+    # Files whose text was never read yet, which the search cannot find by their text yet.
+    pending: int
+
+
+class DocumentTextEngineOut(Contract):
+    # Tesseract and the model of APP_LANGUAGE are installed: scanned pages and pictures are read.
+    available: bool
+    version: str | None
+    language: Literal["en", "es"]
+
+
+class DocumentTextCountsOut(Contract):
+    # Every active file, and those whose text can be read: the others, videos and HEIC pictures,
+    # are found by name only.
+    files: int
+    readable: int
+    pending: int
+    # Read with text, read without any, or not readable.
+    text: int
+    empty: int
+    failed: int
+    # Read in part, read with OCR, and read without their scanned pages or pictures, which are
+    # read once OCR is available.
+    partial: int
+    ocr: int
+    needs_ocr: int
+
+
+class DocumentTextReadingOut(Contract):
+    document_id: int
+    name: str
+    started_at: datetime
+
+
+class DocumentTextSummaryOut(Contract):
+    engine: DocumentTextEngineOut
+    counts: DocumentTextCountsOut
+    # The file being read now.
+    reading: DocumentTextReadingOut | None
+
+
+class DocumentTextFileOut(Contract):
+    document_id: int
+    name: str
+    kind: DocumentKind
+    location: list[DocumentFolderRef]
+    status: DocumentTextStatus
+    # Being read now.
+    reading: bool
+    # Why the latest reading failed.
+    error: DocumentTextError | None
+    characters: int
+    ocr_pages: int
+    partial: bool
+    needs_ocr: bool
+    # The latest reading; null until it is first read.
+    read_at: datetime | None
+
+
+class DocumentTextFilePage(ActionPagination):
+    items: list[DocumentTextFileOut]
+
+
+class DocumentTextQueueOut(Contract):
+    # Files that will be read again.
+    queued: int
 
 
 class DocumentFolderIn(Contract):

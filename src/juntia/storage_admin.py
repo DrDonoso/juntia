@@ -13,6 +13,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse
 
+from . import document_index
 from .auth import DB, administrator, mutation_session, settings
 from .community_action_files import delete_pdf, pdf_path
 from .community_actions import (
@@ -465,6 +466,7 @@ async def purge_document_version(
         db, actor, "version_purged", document, now, name=document.name, number=version.number,
         size=version.size,
     )
+    await document_index.forget(db, [version.id])
     await db.flush()
     await run_in_threadpool(remove_file, path)
     await db.commit()

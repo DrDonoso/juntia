@@ -23,6 +23,7 @@ deployment relies on are explained in the [security model](security-model.md).
 - [Migration notes](#migration-notes)
 - [Storage quotas and purging](#storage-quotas-and-purging)
 - [Shared documents](#shared-documents)
+  - [Reading the text of documents](#reading-the-text-of-documents)
 - [Troubleshooting](#troubleshooting)
 
 ## Requirements
@@ -87,8 +88,10 @@ restrictive `umask`, so the files it writes are private. On every start it:
 1. applies the database migrations (`alembic upgrade head`);
 2. on the first start of a new installation only, creates the default categories, tags and
    community name in `APP_LANGUAGE` (existing data is never renamed);
-3. removes expired import previews, then serves the API and the web app with Uvicorn on port 7778,
-   with access logs disabled.
+3. removes expired import previews and queues the shared documents whose text has never been read
+   ([reading the text of documents](#reading-the-text-of-documents)), then serves the API and the
+   web app with Uvicorn on port 7778, with access logs disabled, and reads those documents in the
+   background.
 
 PostgreSQL is reachable only from the `api` service on the Compose network; its port is never
 published. Docker checks `/health` every 15 seconds.
@@ -394,6 +397,7 @@ data. Before downgrading, handle the data they protect, or simply restore a back
 | `0020` | Transaction keys of the current statement reader (stored transactions are re-keyed) | Refused while transactions exist: restore the backup taken before upgrading. |
 | `0021` | Images pasted into the Markdown of actions, comments and events | Refused while images exist, purged ones included. |
 | `0022` | Shared documents (switch off by default) | Refused while folders, documents, uploads or their history exist, purged ones included, or while Documents is on. |
+| `0023` | The text of shared documents, for their search | Discards the text read; upgrading again reads every document again. |
 
 ## Storage quotas and purging
 
@@ -533,6 +537,39 @@ earlier version and purge them one by one, also while Documents is turned off; t
 of a file is only purged with the file. Text and CSV files are previewed in Juntia's own viewer,
 which reads their first MiB as plain text (UTF-8, UTF-16 with a byte order mark, or Windows-1252).
 Migration `0022` refuses to downgrade while documents exist, purged ones included.
+
+### Reading the text of documents
+
+So that the search also finds files by the words inside them, the server reads the text of the
+current version of every PDF, Word, Excel, PowerPoint, OpenDocument, text and CSV file, and of JPG,
+PNG, GIF and WebP pictures. Videos and HEIC pictures are found by name only. Nothing is sent
+outside the server.
+
+- **When.** Each file is read in the background a moment after its upload completes, one at a
+  time, the newest first. Every start queues the files whose text was never read, so the first
+  start of a version with this feature reads every existing document, which can take a while on a
+  large archive. **Housekeeping > Document reading** (`/admin/document-reading`) shows the progress,
+  each file's state and why a file could not be read, and reads files again.
+- **OCR.** Scanned pages and pictures are read with
+  [Tesseract](https://github.com/tesseract-ocr/tesseract), which the image includes with its
+  English and Spanish models (about 100 MB of the image). The model follows `APP_LANGUAGE`; after
+  changing it, the next start reads the scanned files again. A PDF page is scanned when it has no
+  text or little text over a picture. OCR takes a few seconds per page on one processor core;
+  other files are read in a moment.
+- **Limits.** Each file is read in a separate low-priority process with at most 2 GiB of memory
+  and 20 minutes of processor time, stopped after 15 minutes. The search keeps the first 500,000
+  characters of each file, read in up to 10 minutes from its first 500 pages, with OCR on up to
+  100 of them; longer files are searchable in part. Pictures over 150 megapixels and files
+  protected with a password are not read, and stay searchable by name.
+- **Storage.** The text is kept in the database, so its backups include it, and is deleted when a
+  new version replaces the file or the file is purged.
+- **Without Docker.** Install Tesseract with the model of `APP_LANGUAGE` (`tesseract-ocr-eng` or
+  `tesseract-ocr-spa` on Debian and Ubuntu). Without it, the server logs a warning at startup and
+  reads everything but scanned pages and pictures, which it reads at the first start after
+  Tesseract is installed.
+
+Asking to read again a file whose text is never read, such as a video, answers
+`409 document_text_unsupported`.
 
 ## Troubleshooting
 

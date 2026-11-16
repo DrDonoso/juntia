@@ -44,8 +44,8 @@ All screenshots show synthetic data from the [demo](https://demo.juntia.drdonoso
   Events and Documents, when they are on) and **Community** (Neighbors, Contacts).
 - The administration sidebar groups **Finances** (Import, Classify transactions, Rules, Categories
   and tags, Manage statements), **Settings** (General, Features, Dwellings, Users, Community labels,
-  Storage) and **Housekeeping** (Free up space, Deleted documents, Deleted contacts). **Community
-  portal** opens the residents' pages with the same session.
+  Storage) and **Housekeeping** (Free up space, Deleted documents, Document reading, Deleted
+  contacts). **Community portal** opens the residents' pages with the same session.
 - The administration is not linked from the residents' navigation, on any screen size: open `/admin`
   directly. Its sign-in and server-side authorization are independent of that.
 - Old bookmarks such as `/admin/actions`, `/admin/actions/<id>`, `/admin/neighbors` and
@@ -366,10 +366,18 @@ PDFs attached to actions.
   cannot show PDFs inside a page, PDFs open in a new tab instead. Pictures and videos the browser
   cannot show, such as HEIC pictures outside Safari, say so. Clicking a file opens that preview, or
   downloads the file when it has none; Ctrl-click or the middle button opens it in a new tab.
-- **Search all documents**, above the cards, finds folders and files in any folder by name,
-  ignoring capitals and accents, 20 at a time. Each result says where it is, with a link to its
-  folder, and works like the cards of a folder: open, select, download together, or use its
-  options. Emptying the box shows the folder again.
+- **Search all documents**, above the cards, finds folders and files in any folder by name, and
+  files by the words inside them, ignoring capitals and accents, 20 at a time: folders first, then
+  the files whose name contains the words, then those that only contain them in their text, each
+  with an excerpt that highlights them. Each result says where it is, with a link to its folder,
+  and works like the cards of a folder: open, select, download together, or use its options.
+  Emptying the box shows the folder again.
+- Juntia reads the text of PDFs, Word, Excel and PowerPoint files and their OpenDocument
+  equivalents, and text and CSV files; scanned pages and JPG, PNG, GIF and WebP pictures are read
+  with OCR, on the server itself. Each file is read in the background shortly after its upload, and
+  while some are waiting the search says how many cannot be found by their text yet. Only the
+  current version of each file is searched; videos and HEIC pictures are found by name only.
+  **Info** says whether the text of a file is searchable.
 
 <p align="center">
   <img src="screenshots/documents.png" alt="Documents: the box that searches all documents above folders and files as cards, two of them selected for one ZIP download, and the options menu of a folder, with Delete in red" width="900"><br>
@@ -387,8 +395,8 @@ The **⋮** button at the top right of each card offers:
 - **Rename** (files keep their extension), **Move to…** (choose the destination folder) and **Upload
   new version** (a file of the same type, which becomes the current one; earlier versions stay
   downloadable from **Info**), for those allowed to change the item.
-- **Info**: type, size, location, who uploaded or created it and when, its versions and its
-  [history](#document-history).
+- **Info**: type, size, location, who uploaded or created it and when, whether its text is
+  searchable, its versions and its [history](#document-history).
 - **Delete**, in red, for those allowed to delete the item. After a confirmation it disappears for
   everyone, with everything inside it; only the administrator can restore it or delete it
   permanently, in [Deleted documents](#deleted-documents).
@@ -421,8 +429,8 @@ what, not what changed inside the files, which are never compared.
 
 Turning **Documents** off hides the section, clears its data from open browsers and blocks its API
 (`404 documents_disabled`). Folders, files, their versions and history are kept for when it is
-turned on again, and **Storage**, **Free up space** and **Deleted documents** keep working in the
-administration.
+turned on again, and **Storage**, **Free up space**, **Deleted documents** and **Document reading**
+keep working in the administration.
 
 ## Neighbors
 
@@ -695,8 +703,9 @@ and, for documents, in [shared documents](deployment.md#shared-documents).
 
 ### Free up space
 
-**Housekeeping** gathers what keeps using space or is kept as an archive: **Free up space**,
-[Deleted documents](#deleted-documents) and [Deleted contacts](#deleted-contacts).
+**Housekeeping** gathers what keeps using space or is kept as an archive, and the reading of the
+documents: **Free up space**, [Deleted documents](#deleted-documents),
+[Document reading](#document-reading) and [Deleted contacts](#deleted-contacts).
 
 **Free up space** (`/admin/cleanup`) lists the files that stay on the server until the
 administrator deletes them permanently, each list 5 per page with a box that finds files by name,
@@ -723,6 +732,24 @@ everything deleted together with it, where it was (or at the top level if that f
 exists; a number is added to its name if it is in use there). **Delete permanently** removes its
 files, every version included, for good after a confirmation that shows the space it frees; its
 name and history stay. The page keeps working while Documents is off.
+
+### Document reading
+
+**Document reading** (`/admin/document-reading`) follows how Juntia reads the text of the shared
+documents for their [search](#folders-and-files), with the documents that already existed when the
+feature arrived included:
+
+- **Progress**: how many files have been read, with a bar, and which one is being read and since
+  when. It counts the files with text, without text, that could not be read, waiting, read with OCR
+  or only in part (very long files), and those found by name only (videos and HEIC pictures).
+- Whether OCR is available, with the version of Tesseract and its model, which follows the
+  server's language (`APP_LANGUAGE`). Without it, scanned pages and pictures wait until it is
+  installed.
+- **Files**, 20 per page and filtered by their state: where each one is, how it was read and when,
+  or why it could not be (protected with a password, damaged, too large or too slow to read).
+  **Read again** reads a file again, and a button above reads again every file that failed.
+
+The page follows the reading while files are waiting, and keeps working while Documents is off.
 
 ### Deleted contacts
 

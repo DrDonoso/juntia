@@ -33,6 +33,7 @@ const EventsPage = lazy(() => import('./community-events').then(m => ({ default:
 const EventDetailPage = lazy(() => import('./community-events').then(m => ({ default: m.EventDetailPage })))
 const DocumentsPage = lazy(() => import('./documents').then(m => ({ default: m.DocumentsPage })))
 const DeletedDocumentsPage = lazy(() => import('./documents-admin').then(m => ({ default: m.DeletedDocumentsPage })))
+const DocumentReadingPage = lazy(() => import('./document-reading').then(m => ({ default: m.DocumentReadingPage })))
 // The public demo's banner, welcome dialog and sign-in help (src/demo). The literal
 // `import.meta.env.VITE_DEMO` check lets the bundler drop the demo from normal builds.
 const DemoChrome = import.meta.env.VITE_DEMO === '1' ? lazy(() => import('./demo/DemoChrome')) : null
@@ -209,6 +210,7 @@ export function Shell() {
           <NavigationGroup title={t('shell.groups.housekeeping')}>
             <NavLink to="/admin/cleanup"><Icon name="trash" />{t('shell.links.cleanup')}</NavLink>
             <NavLink to="/admin/deleted-documents"><Icon name="folder" />{t('shell.links.deletedDocuments')}</NavLink>
+            <NavLink to="/admin/document-reading"><Icon name="eye" />{t('shell.links.documentReading')}</NavLink>
             <NavLink to="/admin/deleted-contacts"><Icon name="file-text" />{t('shell.links.deletedContacts')}</NavLink>
           </NavigationGroup>
         </nav>}
@@ -283,6 +285,7 @@ function App() {
       <Route path="labels" element={<CommunityLabelsPage />} />
       <Route path="deleted-contacts" element={<ContactsPage deleted />} />
       <Route path="deleted-documents" element={<DeletedDocumentsPage />} />
+      <Route path="document-reading" element={<DocumentReadingPage />} />
       <Route path="storage" element={<StoragePage />} />
       <Route path="cleanup" element={<CleanupPage />} />
       <Route path="neighbors" element={<LegacyCommunityRedirect />} />

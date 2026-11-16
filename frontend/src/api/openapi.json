@@ -2327,6 +2327,30 @@
         "title": "DocumentEventOut",
         "type": "object"
       },
+      "DocumentExcerpt": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "title": "After",
+            "type": "string"
+          },
+          "before": {
+            "title": "Before",
+            "type": "string"
+          },
+          "match": {
+            "title": "Match",
+            "type": "string"
+          }
+        },
+        "required": [
+          "before",
+          "match",
+          "after"
+        ],
+        "title": "DocumentExcerpt",
+        "type": "object"
+      },
       "DocumentFileMatch": {
         "additionalProperties": false,
         "properties": {
@@ -2344,6 +2368,16 @@
           },
           "current": {
             "$ref": "#/components/schemas/DocumentVersionOut"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocumentExcerpt"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "folder_id": {
             "anyOf": [
@@ -2415,7 +2449,8 @@
           "current",
           "version_count",
           "can_manage",
-          "location"
+          "location",
+          "excerpt"
         ],
         "title": "DocumentFileMatch",
         "type": "object"
@@ -2879,6 +2914,16 @@
             ],
             "title": "Purged At"
           },
+          "text": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocumentTextOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -2917,7 +2962,8 @@
           "versions",
           "deleted_at",
           "deleted_by",
-          "purged_at"
+          "purged_at",
+          "text"
         ],
         "title": "DocumentInfoOut",
         "type": "object"
@@ -3172,6 +3218,10 @@
             "title": "Pages",
             "type": "integer"
           },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
           "total": {
             "title": "Total",
             "type": "integer"
@@ -3182,7 +3232,8 @@
           "page",
           "pages",
           "folders",
-          "files"
+          "files",
+          "pending"
         ],
         "title": "DocumentSearchPage",
         "type": "object"
@@ -3377,6 +3428,336 @@
           "residents"
         ],
         "title": "DocumentStorageOut",
+        "type": "object"
+      },
+      "DocumentTextCountsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "empty": {
+            "title": "Empty",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "files": {
+            "title": "Files",
+            "type": "integer"
+          },
+          "needs_ocr": {
+            "title": "Needs Ocr",
+            "type": "integer"
+          },
+          "ocr": {
+            "title": "Ocr",
+            "type": "integer"
+          },
+          "partial": {
+            "title": "Partial",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "readable": {
+            "title": "Readable",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "files",
+          "readable",
+          "pending",
+          "text",
+          "empty",
+          "failed",
+          "partial",
+          "ocr",
+          "needs_ocr"
+        ],
+        "title": "DocumentTextCountsOut",
+        "type": "object"
+      },
+      "DocumentTextEngineOut": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "language": {
+            "enum": [
+              "en",
+              "es"
+            ],
+            "title": "Language",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "available",
+          "version",
+          "language"
+        ],
+        "title": "DocumentTextEngineOut",
+        "type": "object"
+      },
+      "DocumentTextFileOut": {
+        "additionalProperties": false,
+        "properties": {
+          "characters": {
+            "title": "Characters",
+            "type": "integer"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "enum": [
+                  "encrypted",
+                  "damaged",
+                  "too_large",
+                  "timeout",
+                  "missing",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "kind": {
+            "enum": [
+              "pdf",
+              "image",
+              "video",
+              "document",
+              "spreadsheet",
+              "presentation",
+              "text"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "location": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentFolderRef"
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "needs_ocr": {
+            "title": "Needs Ocr",
+            "type": "boolean"
+          },
+          "ocr_pages": {
+            "title": "Ocr Pages",
+            "type": "integer"
+          },
+          "partial": {
+            "title": "Partial",
+            "type": "boolean"
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
+          },
+          "reading": {
+            "title": "Reading",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "ready",
+              "empty",
+              "failed",
+              "unsupported"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "name",
+          "kind",
+          "location",
+          "status",
+          "reading",
+          "error",
+          "characters",
+          "ocr_pages",
+          "partial",
+          "needs_ocr",
+          "read_at"
+        ],
+        "title": "DocumentTextFileOut",
+        "type": "object"
+      },
+      "DocumentTextFilePage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentTextFileOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "page",
+          "pages",
+          "items"
+        ],
+        "title": "DocumentTextFilePage",
+        "type": "object"
+      },
+      "DocumentTextOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ocr_pages": {
+            "title": "Ocr Pages",
+            "type": "integer"
+          },
+          "partial": {
+            "title": "Partial",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "ready",
+              "empty",
+              "failed",
+              "unsupported"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "ocr_pages",
+          "partial"
+        ],
+        "title": "DocumentTextOut",
+        "type": "object"
+      },
+      "DocumentTextQueueOut": {
+        "additionalProperties": false,
+        "properties": {
+          "queued": {
+            "title": "Queued",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "queued"
+        ],
+        "title": "DocumentTextQueueOut",
+        "type": "object"
+      },
+      "DocumentTextReadingOut": {
+        "additionalProperties": false,
+        "properties": {
+          "document_id": {
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "name",
+          "started_at"
+        ],
+        "title": "DocumentTextReadingOut",
+        "type": "object"
+      },
+      "DocumentTextSummaryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/DocumentTextCountsOut"
+          },
+          "engine": {
+            "$ref": "#/components/schemas/DocumentTextEngineOut"
+          },
+          "reading": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocumentTextReadingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "engine",
+          "counts",
+          "reading"
+        ],
+        "title": "DocumentTextSummaryOut",
         "type": "object"
       },
       "DocumentTreeFolderOut": {
@@ -9336,6 +9717,159 @@
         ]
       }
     },
+    "/api/admin/documents/text": {
+      "get": {
+        "operationId": "reading_summary_api_admin_documents_text_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTextSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Reading Summary",
+        "tags": [
+          "Shared documents"
+        ]
+      }
+    },
+    "/api/admin/documents/text/files": {
+      "get": {
+        "description": "The files whose text is read, by state: those waiting in the order they will be read, the\nothers the latest read first.",
+        "operationId": "reading_files_api_admin_documents_text_files_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "pending",
+                "failed",
+                "empty",
+                "partial",
+                "ocr",
+                "text"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 1000000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTextFilePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reading Files",
+        "tags": [
+          "Shared documents"
+        ]
+      }
+    },
+    "/api/admin/documents/text/files/{document_id}/read": {
+      "post": {
+        "description": "Read a file again, after a failure or to check it; one waiting already keeps its place.",
+        "operationId": "read_again_api_admin_documents_text_files__document_id__read_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTextFileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Again",
+        "tags": [
+          "Shared documents"
+        ]
+      }
+    },
+    "/api/admin/documents/text/retry": {
+      "post": {
+        "description": "Read again every file that could not be read.",
+        "operationId": "retry_failed_api_admin_documents_text_retry_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTextQueueOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Retry Failed",
+        "tags": [
+          "Shared documents"
+        ]
+      }
+    },
     "/api/admin/documents/versions/{version_id}/download": {
       "get": {
         "operationId": "admin_download_version_api_admin_documents_versions__version_id__download_get",
@@ -12641,7 +13175,7 @@
     },
     "/api/documents/search": {
       "get": {
-        "description": "Folders and files anywhere in Documents whose name contains the text, ignoring case and\naccents.",
+        "description": "Folders and files anywhere in Documents whose name contains the text, ignoring case and\naccents, and then the files whose text contains it, with the words around the first place.",
         "operationId": "search_api_documents_search_get",
         "parameters": [
           {

@@ -599,6 +599,43 @@ class DocumentVersion(Authorship, Base):
     purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class DocumentText(Base):
+    """The text of a document's current version, which the search finds: read in the background
+    from the file itself, with OCR for scanned pages and pictures (document_index.py). Videos and
+    HEIC pictures have none. A purge or a newer version removes it."""
+
+    __tablename__ = "document_texts"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'ready', 'failed')", name="document_text_status"),
+        CheckConstraint("characters >= 0 AND ocr_pages >= 0", name="document_text_counts"),
+        Index("ix_document_texts_queue", "status", "claimed_until"),
+    )
+    version_id: Mapped[str] = mapped_column(ForeignKey("document_versions.id"), primary_key=True)
+    # pending: waiting to be read, or being read; ready: read; failed: could not be read.
+    status: Mapped[str] = mapped_column(String(10), default="pending")
+    # As read, on one line. Reading it again keeps the earlier text searchable until it ends.
+    content: Mapped[str] = mapped_column(Text, default="")
+    # The content without case and accents (fold_text), which the search compares.
+    content_key: Mapped[str] = mapped_column(Text, default="")
+    characters: Mapped[int] = mapped_column(default=0)
+    # Pages (or the picture) read with OCR, and the Tesseract model APP_LANGUAGE chose for them.
+    ocr_pages: Mapped[int] = mapped_column(default=0)
+    ocr_language: Mapped[str | None] = mapped_column(String(10))
+    # Scanned pages or a picture went unread because OCR was not available; read again once it is.
+    needs_ocr: Mapped[bool] = mapped_column(default=False)
+    # Only the beginning was read: the file exceeds the limits of what is read of each file.
+    partial: Mapped[bool] = mapped_column(default=False)
+    # Why the latest reading failed (encrypted, damaged, too_large, timeout, missing, failed).
+    error: Mapped[str | None] = mapped_column(String(20))
+    # The reader working on it, which renews its claim while it reads: an abandoned claim expires.
+    claim_id: Mapped[str | None] = mapped_column(String(36))
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claimed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class DocumentDeletion(Authorship, Base):
     """One deletion: a file, or a folder with everything it held. The author deleted it."""
 

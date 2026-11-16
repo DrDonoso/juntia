@@ -21,6 +21,8 @@ from . import (
     community_events,
     community_images,
     contacts,
+    document_index,
+    document_reading,
     google_auth,
     queries,
     storage_admin,
@@ -51,7 +53,9 @@ class VersionOut(Contract):
     build_date: str
 
 
-def create_app(config: Settings | None = None) -> FastAPI:
+def create_app(config: Settings | None = None, *, text_worker: bool = True) -> FastAPI:
+    """`text_worker=False` leaves the shared documents' text unread until tests read it."""
+
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         current = config or Settings()
@@ -64,6 +68,8 @@ def create_app(config: Settings | None = None) -> FastAPI:
             current.admin_password.get_secret_value().encode(), bcrypt.gensalt()
         )
         application.state.google_provider = google_auth.GoogleProvider(current)
+        reader = document_index.DocumentReader(application.state.sessions, current)
+        application.state.document_reader = reader
         try:
             async with application.state.sessions() as db:
                 if await db.get(State, 1) is None:
@@ -71,8 +77,12 @@ def create_app(config: Settings | None = None) -> FastAPI:
                 await clean_expired(db, current.upload_dir)
                 await auth.clean_user_access(db)
                 await community_documents.clean_uploads(db, current.upload_dir)
+            await reader.prepare()
+            if text_worker:
+                reader.start()
             yield
         finally:
+            await reader.stop()
             await application.state.google_provider.close()
             await engine.dispose()
 
@@ -139,6 +149,7 @@ def create_app(config: Settings | None = None) -> FastAPI:
     application.include_router(community_documents.router)
     application.include_router(community_documents.admin_router)
     application.include_router(community_documents.settings_router)
+    application.include_router(document_reading.router)
     application.include_router(contacts.router)
     application.include_router(api.public_router)
     application.include_router(api.reader)

@@ -13,7 +13,7 @@ small body limits and on slow connections, and an interrupted upload resumes whe
 
 import logging
 import math
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path as FilePath
@@ -31,7 +31,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse, StreamingResponse
 from starlette.types import Receive, Scope, Send
 
-from . import queries
+from . import document_index, queries
 from .auth import DB, administrator, mutation_session, reader_session, settings
 from .config import Language
 from .contracts import (
@@ -447,6 +447,7 @@ async def document_info(
         "deleted_at": aware(value.deleted_at) if value.deleted_at else None,
         "deleted_by": await deleted_by(db, value, language),
         "purged_at": aware(value.purged_at) if value.purged_at else None,
+        "text": await document_index.text_info(db, current),
     })
 
 
@@ -659,9 +660,11 @@ async def search(
     page: PageNumber = 1, sort: DocumentSort = "name",
 ) -> DocumentSearchPage:
     """Folders and files anywhere in Documents whose name contains the text, ignoring case and
-    accents."""
+    accents, and then the files whose text contains it, with the words around the first place."""
     actor = actor_of(identity, language)
     needle = fold_text(q.strip())
+    # The text is kept on one line with single spaces.
+    words = fold_text(" ".join(q.split()))
     tree = await load_tree(db)
     stats = folder_stats(tree, actor)
     folders = sorted(
@@ -670,14 +673,19 @@ async def search(
             sort, value.name_key, value.id, aware(value.updated_at), stats[value.id].size,
         ),
     )
-    files = sorted(
-        (
-            item for items in tree.files.values() for item in items
-            if needle and needle in fold_text(item.name)
-        ),
-        key=lambda item: search_order(sort, item.name_key, item.id, item.updated, item.size),
-    )
-    matches: list[DocumentFolder | TreeFile] = [*folders, *files]
+    every = [item for items in tree.files.values() for item in items]
+    named = [item for item in every if needle and needle in fold_text(item.name)]
+    texts = await document_index.text_matches(db, words)
+    by_text = {item.id for item in every if item.id in texts} - {item.id for item in named}
+
+    def ordered(items: Iterable[TreeFile]) -> list[TreeFile]:
+        return sorted(items, key=lambda item: search_order(
+            sort, item.name_key, item.id, item.updated, item.size,
+        ))
+
+    matches: list[DocumentFolder | TreeFile] = [
+        *folders, *ordered(named), *ordered(item for item in every if item.id in by_text),
+    ]
     shown = matches[(page - 1) * PAGE_SIZE:page * PAGE_SIZE]
     shown_files = [item.id for item in shown if isinstance(item, TreeFile)]
     rows = {
@@ -686,6 +694,9 @@ async def search(
             .where(Document.id.in_(shown_files))
         )).all()
     } if shown_files else {}
+    found = await document_index.excerpts(
+        db, [item for item in shown_files if item in by_text], words,
+    )
     policy = await manage_policy(db)
     return DocumentSearchPage(
         **page_info(len(matches), page),
@@ -696,8 +707,9 @@ async def search(
         # A file deleted while searching is left out of this page.
         files=[DocumentFileMatch.model_validate({
             **document_out(*rows[item.id], actor, policy, language).model_dump(),
-            "location": refs(tree_path(tree, item.folder_id)),
+            "location": refs(tree_path(tree, item.folder_id)), "excerpt": found.get(item.id),
         }) for item in shown if isinstance(item, TreeFile) and item.id in rows],
+        pending=await document_index.unread(db),
     )
 
 
@@ -1445,10 +1457,12 @@ async def complete_upload(
         db.add(version)
         await db.delete(upload)
         await db.flush()
+        await document_index.queue_version(db, version, now)
         await run_in_threadpool(move_file, partial, destination)
         published = True
         await db.commit()
         committed = True
+        document_index.wake(request.app)
         return document_out(document, version, actor, policy, language)
     finally:
         if not committed:
@@ -1634,6 +1648,8 @@ async def restore_deletion(
     root.updated_at = now
     deletion.restored_at = now
     await db.commit()
+    # Restored files whose text was waiting can be read now.
+    document_index.wake(request.app)
 
 
 @admin_router.post("/deletions/{deletion_id}/purge", status_code=204)
@@ -1680,6 +1696,7 @@ async def purge_deletion(
             folder=None if is_root else root_name,
         )
     deletion.purged_at = now
+    await document_index.forget(db, [version.id for version in versions])
     await db.flush()
     # As for action PDFs: the files are deleted before the commit, so the database never
     # reports a purged file that is still on disk.

@@ -146,7 +146,10 @@ The database is never published: only the `api` service can reach it, on the Com
 - fallback labels in API responses, such as "Uncategorized" and "No merchant" in the summary and
   "Technical administrator" as the author of content the administrator writes (the web interface
   shows these in each reader's own language);
-- the description and language of the web app manifest used for home-screen installation.
+- the description and language of the web app manifest used for home-screen installation;
+- the OCR model, English or Spanish, that reads scanned pages and pictures for the
+  [search of shared documents](deployment.md#reading-the-text-of-documents); after a change, the
+  next start reads the scanned files again.
 
 It never renames existing data: categories, tags or names created earlier keep their text. It does
 not choose the interface language either: the web app follows each browser's language (English when

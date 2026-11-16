@@ -15,6 +15,11 @@ ENV TZ=Europe/Madrid \
     UV_NO_CACHE=1 \
     UV_PYTHON_DOWNLOADS=never \
     PATH="/app/.venv/bin:$PATH"
+# Tesseract reads the scanned pages and pictures of the shared documents for their search, with its
+# English and Spanish models (about 100 MB).
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa \
+    && rm -rf /var/lib/apt/lists/*
 # The application runs from /app/.venv. The system pip is never used, and removing it also drops
 # the outdated packages it vendors.
 RUN python -m pip uninstall --yes --root-user-action=ignore pip \

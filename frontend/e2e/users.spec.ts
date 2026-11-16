@@ -299,7 +299,7 @@ test('neighbors directory groups contact phones by naturally ordered dwelling', 
   const adminNavigation = page.getByRole('navigation', { name: 'Administration navigation' })
   await expect(adminNavigation.getByRole('group', { name: 'Finances', exact: true }).getByRole('link')).toHaveCount(5)
   await expect(adminNavigation.getByRole('group', { name: 'Settings', exact: true }).getByRole('link')).toHaveCount(6)
-  await expect(adminNavigation.getByRole('group', { name: 'Housekeeping', exact: true }).getByRole('link')).toHaveCount(3)
+  await expect(adminNavigation.getByRole('group', { name: 'Housekeeping', exact: true }).getByRole('link')).toHaveCount(4)
   await expect(adminNavigation.getByRole('link', { name: 'Storage', exact: true })).toHaveAttribute('href', '/admin/storage')
   await expect(adminNavigation.getByRole('group', { name: 'Management', exact: true })).toHaveCount(0)
   await expect(adminNavigation.getByRole('link', { name: 'Community labels', exact: true })).toHaveAttribute('href', '/admin/labels')

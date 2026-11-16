@@ -48,6 +48,7 @@ export const shell = {
     communityLabels: 'Community labels',
     deletedContacts: 'Deleted contacts',
     deletedDocuments: 'Deleted documents',
+    documentReading: 'Document reading',
     storage: 'Storage',
     cleanup: 'Free up space',
     communityPortal: 'Community portal',

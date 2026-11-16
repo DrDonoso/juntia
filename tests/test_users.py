@@ -68,7 +68,7 @@ def current_user(admin, user_id):
 
 
 def visitor(config):
-    return TestClient(create_app(config), headers={
+    return TestClient(create_app(config, text_worker=False), headers={
         "origin": config.public_origin, "x-juntia-request": "1",
     })
 

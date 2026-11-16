@@ -152,10 +152,19 @@ test('neighbors share folders and files, preview PDFs, follow their history and 
     // The search finds files in any folder, ignoring capitals, and says where they are.
     const searchBox = ana.getByRole('searchbox', { name: 'Search all documents' })
     await searchBox.fill('MEETING')
-    const results = ana.getByRole('list', { name: 'Folders and files whose name contains “MEETING”' })
+    const results = ana.getByRole('list', { name: 'Folders and files that contain “MEETING”' })
     await expect(results.getByRole('listitem')).toHaveCount(1)
     await expect(ana.getByRole('heading', { name: '1 result', exact: true })).toBeVisible()
     await expect(results.getByRole('link', { name: 'In Documents / Minutes 2026', exact: true })).toHaveAttribute('href', /^\/documents\/folders\/\d+$/)
+    expect((await new AxeBuilder({ page: ana }).analyze()).violations).toEqual([])
+    // The server reads the files' text in the background; then the words inside them are found too.
+    await expect.poll(async () => (await (await ana.request.get('/api/documents/search?q=quiet%20hours')).json()).total, { timeout: 30_000 }).toBe(1)
+    await searchBox.fill('quiet HOURS')
+    const byText = ana.getByRole('list', { name: 'Folders and files that contain “quiet HOURS”' })
+    await expect(byText.getByRole('listitem')).toHaveCount(1)
+    await expect(byText.getByRole('link', { name: 'Community rules.txt', exact: true })).toBeVisible()
+    await expect(byText.locator('mark')).toHaveText('Quiet hours')
+    await expect(byText.getByText('Quiet hours from 22:00 to 08:00.')).toBeVisible()
     expect((await new AxeBuilder({ page: ana }).analyze()).violations).toEqual([])
     await searchBox.fill('')
     await expect(ana.getByRole('list', { name: 'Folders and files in Documents' }).getByRole('listitem')).toHaveCount(2)
@@ -203,6 +212,19 @@ test('neighbors share folders and files, preview PDFs, follow their history and 
     await expect(admin.getByText('“Community rules.txt” restored.')).toBeVisible()
     await leo.reload()
     await expect(shared.getByRole('link', { name: 'Community rules.txt', exact: true })).toBeVisible()
+
+    // The administrator follows how the text of the files is read for the search.
+    await admin.getByRole('navigation', { name: 'Administration navigation' }).getByRole('link', { name: 'Document reading', exact: true }).click()
+    await expect(admin.getByRole('heading', { name: 'Document reading', level: 1 })).toBeVisible()
+    await expect(admin.getByText('2 of 2 files read')).toBeVisible({ timeout: 15_000 })
+    await expect(admin.getByRole('progressbar', { name: 'Files read' })).toHaveAttribute('aria-valuenow', '2')
+    const reading = admin.getByRole('list', { name: 'Files: Every file' })
+    await expect(reading.getByRole('listitem')).toHaveCount(2)
+    await expect(reading.getByText('Community rules.txt', { exact: true })).toBeVisible()
+    expect((await new AxeBuilder({ page: admin }).analyze()).violations).toEqual([])
+    await reading.getByRole('button', { name: 'Read again: Community rules.txt' }).click()
+    await expect(admin.getByText('“Community rules.txt” will be read again.')).toBeVisible()
+    await expect(admin.getByText('Every file has been read.')).toBeVisible({ timeout: 15_000 })
 
     // When every neighbor may change documents, Leo deletes Ana's PDF and the administrator purges it.
     await admin.goto('/admin/features')

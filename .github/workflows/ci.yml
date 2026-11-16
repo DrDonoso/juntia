@@ -47,6 +47,11 @@ jobs:
         with:
           version: "0.12.19"
       - run: uv sync --locked --extra test
+      # Like the Docker image, so the tests that read scanned documents run instead of being skipped.
+      - name: Install Tesseract
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa
       - name: Audit locked public dependencies
         if: matrix.group == 1
         run: uv run --no-sync python scripts/audit_dependencies.py
@@ -189,6 +194,11 @@ jobs:
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Build the actual production image
         run: docker build -t juntia:ci .
+      - name: Read a picture with OCR in both languages
+        run: |
+          for model in eng spa; do
+            docker run --rm --entrypoint python juntia:ci -m juntia.document_text --check "$model"
+          done
       - name: Boot and smoke-test the isolated stack
         run: |
           docker tag juntia:ci drdonoso/juntia:ci
@@ -205,6 +215,8 @@ jobs:
             --json '{"username":"ci-admin","password":"ci-password-for-container-tests"}' \
             http://localhost:7778/api/admin/auth/login
           curl -fsS -b "$RUNNER_TEMP/juntia-ci-cookies" http://localhost:7778/api/summary
+          # The running server found Tesseract with the model of its language.
+          curl -fsS -b "$RUNNER_TEMP/juntia-ci-cookies" http://localhost:7778/api/admin/documents/text | jq -e '.engine.available'
           rm "$RUNNER_TEMP/juntia-ci-cookies"
           curl -fsS http://localhost:7778/admin | grep '<div id="root">'
       - name: Stop the isolated stack
