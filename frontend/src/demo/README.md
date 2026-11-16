@@ -201,13 +201,14 @@ Every operation of `src/api/openapi.json` belongs to exactly one module (`{x}` i
   `POST /api/admin/storage/images/{image_id}/purge`, `GET /api/admin/storage/document-versions`,
   `POST /api/admin/storage/document-versions/{version_id}/purge`.
 - **documents** (`handlers/shared-documents.ts`): everything under `/api/documents/` (browse, the
-  search by name, the folder tree, folders and files with their history, uploads with their chunks
-  and completion, downloads, previews and archives), `GET /api/admin/documents/deleted`,
+  search by name and by text, the folder tree, folders and files with their history, uploads with
+  their chunks and completion, downloads, previews and archives), `GET /api/admin/documents/deleted`,
   `POST /api/admin/documents/deletions/{deletion_id}/restore|purge`,
   `GET /api/admin/documents/files/{document_id}` and its `/history`,
   `GET /api/admin/documents/folders/{folder_id}/history`,
   `GET /api/admin/documents/versions/{version_id}/download|preview`,
-  `GET|PATCH /api/admin/settings/documents`.
+  `GET /api/admin/documents/text` and `/text/files`, `POST /api/admin/documents/text/retry` and
+  `/text/files/{document_id}/read`, `GET|PATCH /api/admin/settings/documents`.
 
 Any other `/api` request reaches the catch-all: a 501 `not_implemented` and a console error
 starting with `[demo] Unhandled API request:`. Two guards keep it that way:
@@ -302,6 +303,18 @@ and 20 GiB for the community.
 - Downloads and previews answer single `Range` requests with 206, and earlier versions download as
   `Name (version N).ext`. Text and CSV files preview as `text/plain`, for the portal's own viewer.
   Archives are ZIPs with stored entries built in memory by `core/zip.ts`.
+- The text of each current version is read for the search like on the server
+  (`document_index.py`, `document_text.py`) by `store/shared-document-text.ts`: text and CSV files
+  (UTF-8 or UTF-16 with a byte order mark, UTF-8, or else Windows-1252), the XML of OOXML and
+  OpenDocument files, and the strings PDFs draw (`Tj`, `TJ`, FlateDecode streams included). There
+  is no OCR: the reading summary reports it unavailable (English model), and pictures and PDFs
+  without text are read as empty and waiting for OCR. Uploads queue their text and replace the
+  earlier version's, and purges forget it; the search, the file info and the reading page read
+  what is waiting first, so their `pending` is 0. The search lists the folders, the files found by
+  name, then those found by their text with an excerpt. The administrator's reading page
+  (`/api/admin/documents/text…`, also while Documents is off) counts, filters and pages the files,
+  reads one again (409 `document_text_unsupported` for videos and HEIC pictures, 404 for deleted
+  files) and retries the failed ones.
 - The administrator restores deletions (at the top level when their folder is gone, numbered when
   the name is taken) or purges them, lists the earlier versions on the storage page (the latest
   uploaded first, five per page, `q` by document name, with `previewable`), opens and purges them,

@@ -75,7 +75,8 @@ describes every part in detail.
 - **Events** form a shared agenda, with multi-day and all-day events, links to actions and export to
   Google Calendar or any `.ics` calendar.
 - **Documents** is a shared drive for every neighbor: folders, PDFs, pictures, Office files and
-  phone videos, with a search by name, previews, versions, a history of who changed what, and ZIP
+  phone videos, with a search by name and by the text inside them (scans and pictures included,
+  with OCR on your server), previews, versions, a history of who changed what, and ZIP
   downloads of folders or selections.
 - Descriptions and comments are written in **Markdown**, and images can be pasted, dropped or added
   into them like on GitHub: the browser reduces them and removes their metadata before uploading.
@@ -152,7 +153,8 @@ flowchart LR
 - One image, `drdonoso/juntia`, runs as a non-root user and serves the API and the compiled web app
   on port 7778, next to PostgreSQL. Every start applies the database migrations; the first one also
   creates the default categories, tags and community name in `APP_LANGUAGE`.
-- Statements are parsed locally in a time-limited child process. The optional AI receives only
+- Statements are parsed locally in a time-limited child process, and the text of shared documents
+  is read the same way, with Tesseract's OCR for scans and pictures. The optional AI receives only
   sanitized transaction descriptions and your category and tag names, never the PDF, IBAN or amounts.
 - Stack: Python 3.14, FastAPI, SQLAlchemy, Alembic and PostgreSQL 18; React 19, TypeScript 7, Vite 8,
   TanStack Query and React Aria.
@@ -256,7 +258,7 @@ environment variables: they are changed in the administration.
 | `PUBLIC_ORIGIN` | `http://localhost:7778` | The exact address residents open in the browser (comma-separated for several). |
 | `AUTH_COOKIE_SECURE` | `false` | Secure session cookies: `false` for `http://localhost`, `true` when every address uses HTTPS. |
 | `SESSION_HOURS` | `168` | Fixed lifetime of new resident and administrator sessions in hours (1–168). |
-| `APP_LANGUAGE` | `en` | Language of emails, first-run defaults and server labels: `en` or `es`. |
+| `APP_LANGUAGE` | `en` | Language of emails, first-run defaults, server labels and the OCR of shared documents: `en` or `es`. |
 | `APP_BIND_ADDRESS` | `127.0.0.1` | Host address the app port is published on (`127.0.0.1`: this machine only). |
 | `APP_PORT` | `7778` | Host port; the container always listens on 7778. |
 | `IMAGE_TAG` | `latest` | Image tag to run; pin a CalVer release. |

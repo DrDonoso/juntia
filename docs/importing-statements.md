@@ -30,9 +30,10 @@ account's Spanish IBAN in the page header.
   arithmetic. No AI is involved in reading a statement.
 - Both the booking date and the value date are kept; reports use the booking date. Dates are
   day/month/year; two-digit years are read as 2000 to 2099.
-- Unknown layouts, scanned documents (there is no OCR), encrypted documents, inconsistent columns,
-  invalid dates or amounts, balances that do not reconcile and ambiguous account headers are
-  rejected with an explicit error. Text that is missing from the PDF cannot be recovered.
+- Unknown layouts, scanned documents (statements are never read with OCR), encrypted documents,
+  inconsistent columns, invalid dates or amounts, balances that do not reconcile and ambiguous
+  account headers are rejected with an explicit error. Text that is missing from the PDF cannot be
+  recovered.
 - Limits: 20 MiB, 50 pages and 10,000 transactions per file, a bound on the characters per page,
   and 45 seconds of parsing in an isolated child process.
 

@@ -182,6 +182,7 @@ export const errors = {
     document_archive_busy: 'Several ZIP downloads are being prepared. Try again in a moment.',
     document_deletion_closed: 'This deletion has already been restored or deleted permanently.',
     document_version_current: 'The current version cannot be deleted permanently. Upload a newer version first, or delete the whole file.',
+    document_text_unsupported: 'Videos and HEIC pictures are found by their name only: their text is not read.',
     not_found: 'The requested page or data does not exist. Reload the page.',
     internal_error: 'The operation could not be completed. Contact the administrator.',
     demo_unavailable: 'This feature needs a real server, so it is not available in the demo.',

@@ -68,6 +68,12 @@ uv run --no-sync python scripts/audit_dependencies.py
 Without `TEST_DATABASE_URL`, every test uses its own temporary SQLite database, and the few tests
 that need PostgreSQL (mainly concurrency) are skipped. Every API test runs the whole migration chain.
 
+The test of OCR needs [Tesseract](https://github.com/tesseract-ocr/tesseract) with its English
+model, as in CI and the image (`sudo apt install tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa`
+on Debian and Ubuntu, `brew install tesseract tesseract-lang` on macOS); without it, it is skipped.
+The test clients never start the background reader of shared documents: tests read the waiting
+files themselves with `client.portal.call(client.app.state.document_reader.drain)`.
+
 ### PostgreSQL test database
 
 CI runs the suite on PostgreSQL 18. To do the same, point `TEST_DATABASE_URL` at a **disposable**
@@ -258,10 +264,10 @@ publish workflow:
 
 | Job | What it does |
 | --- | --- |
-| `backend` | Two [test groups](#test-groups) on PostgreSQL 18. Group 1 also runs the dependency audit, Ruff, mypy and the OpenAPI check. |
+| `backend` | Two [test groups](#test-groups) on PostgreSQL 18, with Tesseract installed for the test of OCR. Group 1 also runs the dependency audit, Ruff, mypy and the OpenAPI check. |
 | `frontend` | Two shards of the browser tests, each building the app. Shard 1 also runs the API type check, lint and unit tests; shard 2 adds the WebKit checks and the Google sign-in tests. |
 | `demo` | Builds the demo and runs its browser smoke test. |
-| `docker` | Builds the production image and smoke-tests it with Compose: health, an unauthenticated request refused, an administrator sign-in and the web app. |
+| `docker` | Builds the production image, reads a picture with its OCR in English and Spanish, and smoke-tests it with Compose: health, an unauthenticated request refused, an administrator sign-in, OCR available to the server and the web app. |
 | `application` | The required check: it fails unless every other job succeeded, including when one was cancelled or skipped. |
 
 A new push to a pull request cancels the CI run of its previous commit; that run then ends with a

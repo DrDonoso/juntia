@@ -749,6 +749,20 @@ dialog.file-preview-pdf[open] { display: flex; flex-direction: column; height: 8
 .document-policy-option > span { display: grid; gap: 2px; }
 .document-deleted-list > li { align-items: center; }
 .document-deleted-list > li > .icon { flex: 0 0 auto; }
+/* Search by text: the words around the match, and the files not read yet */
+.document-excerpt { display: -webkit-box; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 4; color: var(--text-muted); font-size: var(--text-xs); line-height: 1.45; overflow-wrap: anywhere; }
+.document-excerpt mark { padding: 0 2px; border-radius: 3px; background: var(--warning-bg); color: var(--text); font-weight: 600; }
+.documents-search-pending { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-3); font-size: var(--text-sm); }
+.documents-search-pending .icon { flex: 0 0 auto; }
+/* Document reading (administration) */
+.document-reading-progress .storage-breakdown { max-width: 520px; }
+.document-reading-header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--space-3); }
+.document-reading-header h2 { margin: 0; }
+.document-reading-list > li { align-items: center; }
+.document-reading-list > li > .icon { flex: 0 0 auto; }
+.document-reading-list .action-file-info { flex: 1 1 260px; min-width: 0; }
+.document-reading-list .action-file-info p { margin: 2px 0 0; font-size: var(--text-sm); }
+.document-reading-failed { color: var(--expense); }
 /* Limits of shared documents (Storage) and their sizes with a slider and a box (size-field.tsx) */
 .document-limits { scroll-margin-top: calc(var(--topbar-height) + var(--space-4)); }
 .document-limits-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: var(--space-5) var(--space-6); margin: var(--space-4) 0; }
@@ -788,4 +802,5 @@ dialog.file-preview-pdf[open] { display: flex; flex-direction: column; height: 8
 @media (forced-colors: active) {
   .document-check { opacity: 1; }
   .document-card.selected { outline: 2px solid Highlight; }
+  .document-excerpt mark { background: Mark; color: MarkText; forced-color-adjust: none; }
 }

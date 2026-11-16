@@ -184,6 +184,7 @@ export const errors: Messages<typeof source> = {
     document_archive_busy: 'Se están preparando varias descargas en ZIP. Inténtalo de nuevo en un momento.',
     document_deletion_closed: 'Esta eliminación ya se ha restaurado o eliminado definitivamente.',
     document_version_current: 'La versión actual no se puede eliminar definitivamente. Sube antes una versión más reciente o elimina el archivo completo.',
+    document_text_unsupported: 'Los vídeos y las fotos HEIC solo se encuentran por su nombre: no se lee su texto.',
     not_found: 'La página o los datos solicitados no existen. Recarga la página.',
     internal_error: 'No se ha podido completar la operación. Contacta con la administración.',
     demo_unavailable: 'Esta función necesita un servidor real, así que no está disponible en la demo.',

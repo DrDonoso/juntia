@@ -802,7 +802,7 @@ def names_of(found):
 
 
 def without_location(item):
-    return {key: value for key, value in item.items() if key != "location"}
+    return {key: value for key, value in item.items() if key not in ("location", "excerpt")}
 
 
 def test_search_finds_folders_and_files_anywhere_by_name(actors, enabled, monkeypatch):
@@ -830,7 +830,10 @@ def test_search_finds_folders_and_files_anywhere_by_name(actors, enabled, monkey
     ]
     assert found["files"][1]["location"] == []
     assert names_of(search(b, "año")) == (["Año 2026"], [])
-    assert search(b, "factura") == {"total": 0, "page": 1, "pages": 1, "folders": [], "files": []}
+    # Nothing was read of the three files yet, so their text cannot be found yet.
+    assert search(b, "factura") == {
+        "total": 0, "page": 1, "pages": 1, "folders": [], "files": [], "pending": 3,
+    }
     assert search(b, "   ")["total"] == 0
     # The latest change first, or the largest; then by name.
     assert edit(a, march, name="Acta de marzo firmada").status_code == 200

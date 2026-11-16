@@ -15,13 +15,14 @@
 import type {
   ActorOut, DocumentBrowseOut, DocumentDeletionOut, DocumentEventOut, DocumentFolderInfoOut, DocumentFolderOut,
   DocumentFolderRef, DocumentHistoryPage, DocumentInfoOut, DocumentLimitsOut, DocumentOut, DocumentSearchPage, DocumentSettings,
+  DocumentTextFileOut, DocumentTextFilePage, DocumentTextOut, DocumentTextQueueOut, DocumentTextSummaryOut,
   DocumentTreeFolderOut, DocumentUploadOut, DocumentVersionOut,
 } from '../../api/schema.gen'
 import { DemoApiError } from '../core/errors'
 import { IdSequence } from '../core/ids'
 import { paginate } from '../core/pagination'
 import { demoRandom, type Random } from '../core/random'
-import { MAX_ID } from '../core/validation'
+import { MAX_ID, characterCount } from '../core/validation'
 import { zipArchive, type ZipEntry, type ZipTime } from '../core/zip'
 import { sharedDocumentsScenario } from '../scenario/shared-documents'
 import { actorOut, compareText } from './community-model'
@@ -32,6 +33,7 @@ import {
   DOCUMENT_TYPES, VIDEO_EXTENSIONS, checkContent, checkedName, documentName, documentType, nameKey, numbered, uploadName,
   versionFilename, type DocumentKind,
 } from './shared-document-files'
+import { READABLE_EXTENSIONS, queuedText, readText, textExcerpt, type DemoText } from './shared-document-text'
 
 export type DocumentPolicy = DocumentSettings['manage_policy']
 export type DocumentEventKind = DocumentEventOut['kind']
@@ -116,6 +118,11 @@ export interface DemoDocumentVersion {
   author: ActorOut
   createdAt: string
   purgedAt: string | null
+  /**
+   * What the search knows of its text (`document_texts`): null for videos and HEIC pictures, and
+   * once a newer version replaces it or it is purged.
+   */
+  text: DemoText | null
 }
 
 /** One deletion: a file, or a folder with everything it held. The author deleted it. */
@@ -429,7 +436,112 @@ export function documentInfo(documents: SharedDocumentsState, document: DemoDocu
     ...documentOut(documents, document, actor), location: refs(folderPath(documents, document.folderId)),
     versions: documents.versions.filter(version => version.documentId === document.id).sort((a, b) => b.number - a.number).map(versionOut),
     deleted_at: document.deletedAt, deleted_by: deletion ? actorOut(deletion.author) : null, purged_at: document.purgedAt,
+    text: textOut(currentVersion(documents, document)),
   }
+}
+
+// --- The text the search reads (document_index.py, document_reading.py) ---
+
+function textStatus(text: DemoText): DocumentTextOut['status'] {
+  if (text.status !== 'ready') return text.status
+  return text.content ? 'ready' : 'empty'
+}
+
+/** `text_info`: what the search knows of a version's text; nothing once it is purged. */
+function textOut(version: DemoDocumentVersion): DocumentTextOut | null {
+  if (!READABLE_EXTENSIONS.has(version.extension)) return { status: 'unsupported', ocr_pages: 0, partial: false }
+  return version.text && { status: textStatus(version.text), ocr_pages: version.text.ocrPages, partial: version.text.partial }
+}
+
+interface ReadableFile { document: DemoDocument; version: DemoDocumentVersion; text: DemoText }
+
+/** The active documents whose current version has a text to read. */
+function readableFiles(documents: SharedDocumentsState): ReadableFile[] {
+  return documents.documents.flatMap(document => {
+    if (document.deletedAt !== null) return []
+    const version = currentVersion(documents, document)
+    return version.text ? [{ document, version, text: version.text }] : []
+  })
+}
+
+/** The server's reader, at once: what waits is read when a request needs it. */
+export async function readTexts(documents: SharedDocumentsState, at: string): Promise<void> {
+  for (const { version, text } of readableFiles(documents)) {
+    if (text.status === 'pending') await readText(text, version.bytes, version.extension, at)
+  }
+}
+
+export type DocumentTextFilter = 'all' | 'pending' | 'failed' | 'empty' | 'partial' | 'ocr' | 'text'
+export const DOCUMENT_TEXT_FILTERS = [
+  'all', 'pending', 'failed', 'empty', 'partial', 'ocr', 'text',
+] as const satisfies readonly DocumentTextFilter[]
+
+function selected(filter: DocumentTextFilter): (file: ReadableFile) => boolean {
+  return ({ text }) => {
+    const ready = text.status === 'ready'
+    switch (filter) {
+      case 'all': return true
+      case 'pending': return text.status === 'pending'
+      case 'failed': return text.status === 'failed'
+      case 'empty': return ready && !text.content
+      case 'text': return ready && text.content !== ''
+      case 'partial': return ready && text.partial
+      case 'ocr': return ready && text.ocrPages > 0
+    }
+  }
+}
+
+/** `reading_summary`: the demo has no OCR, like a server without Tesseract; nothing is ever left being read. */
+export function readingSummary(documents: SharedDocumentsState): DocumentTextSummaryOut {
+  const files = readableFiles(documents)
+  const count = (filter: DocumentTextFilter) => files.filter(selected(filter)).length
+  return {
+    engine: { available: false, version: null, language: 'en' },
+    counts: {
+      files: documents.documents.filter(document => document.deletedAt === null).length, readable: files.length,
+      pending: count('pending'), text: count('text'), empty: count('empty'), failed: count('failed'), partial: count('partial'),
+      ocr: count('ocr'), needs_ocr: files.filter(({ text }) => text.status === 'ready' && text.needsOcr).length,
+    },
+    reading: null,
+  }
+}
+
+function textFileOut(documents: SharedDocumentsState, { document, text }: ReadableFile): DocumentTextFileOut {
+  const status = textStatus(text)
+  return {
+    document_id: document.id, name: document.name, kind: document.kind, location: refs(folderPath(documents, document.folderId)), status,
+    reading: false, error: status === 'failed' ? text.error : null, characters: characterCount(text.content), ocr_pages: text.ocrPages,
+    partial: text.partial, needs_ocr: text.needsOcr, read_at: text.readAt,
+  }
+}
+
+/** Newest first by `newest`, then by version id, as SQL orders them. */
+function byNewest(newest: (file: ReadableFile) => string): (a: ReadableFile, b: ReadableFile) => number {
+  return (a, b) => newest(a) !== newest(b) ? (newest(a) < newest(b) ? 1 : -1) : a.version.id < b.version.id ? -1 : a.version.id > b.version.id ? 1 : 0
+}
+
+/** `reading_files`: those waiting in the order they will be read, the newest first; the others the latest read first. */
+export function readingFiles(documents: SharedDocumentsState, filter: DocumentTextFilter, page: number): DocumentTextFilePage {
+  const order = byNewest(filter === 'pending' ? file => file.version.createdAt : file => file.text.updatedAt)
+  const { items, ...info } = paginate(readableFiles(documents).filter(selected(filter)).sort(order), page, DOCUMENT_PAGE_SIZE)
+  return { ...info, items: items.map(file => textFileOut(documents, file)) }
+}
+
+/** `read_again`: a file waiting already keeps its place. */
+export function readAgain(documents: SharedDocumentsState, documentId: number, at: string): DocumentTextFileOut {
+  const document = activeDocument(documents, documentId)
+  const version = currentVersion(documents, document)
+  if (!READABLE_EXTENSIONS.has(version.extension)) throw new DemoApiError('document_text_unsupported', 409)
+  version.text ??= queuedText(at)
+  if (version.text.status !== 'pending') Object.assign(version.text, { status: 'pending', updatedAt: at })
+  return textFileOut(documents, { document, version, text: version.text })
+}
+
+/** `retry_failed`: every active file that could not be read is read again. */
+export function retryFailed(documents: SharedDocumentsState, at: string): DocumentTextQueueOut {
+  const failed = readableFiles(documents).filter(selected('failed'))
+  for (const { text } of failed) Object.assign(text, { status: 'pending', updatedAt: at })
+  return { queued: failed.length }
 }
 
 export function eventOut(event: DemoDocumentEvent): DocumentEventOut {
@@ -489,22 +601,34 @@ function searchOrder(sort: DocumentSort, size: (item: Item) => number): (a: Item
   }
 }
 
-/** `search`: active folders and files anywhere whose name contains `q`, ignoring case and accents; folders first. */
+/**
+ * `search`: active folders and files anywhere whose name contains `q`, ignoring case and accents,
+ * folders first; then the files whose text contains it, with the words around the first place.
+ */
 export function searchDocuments(
   documents: SharedDocumentsState, q: string, sort: DocumentSort, page: number, actor: ActorOut,
 ): DocumentSearchPage {
   const needle = foldText(q.trim())
-  const found = (item: Item) => item.deletedAt === null && needle !== '' && foldText(item.name).includes(needle)
+  // The text is kept on one line with single spaces.
+  const words = foldText(q.split(/\s+/u).filter(Boolean).join(' '))
+  const named = (item: Item) => item.deletedAt === null && needle !== '' && foldText(item.name).includes(needle)
+  const read = (document: DemoDocument) => document.deletedAt === null && words !== '' && !named(document)
+    && (currentVersion(documents, document).text?.key.includes(words) ?? false)
   const size = (item: Item) => isFolder(item) ? folderStats(documents, item, actor).size : currentVersion(documents, item).size
   const order = searchOrder(sort, size)
+  const byText = documents.documents.filter(read).sort(order)
   const { items, ...info } = paginate<Item>([
-    ...documents.folders.filter(found).sort(order), ...documents.documents.filter(found).sort(order),
+    ...documents.folders.filter(named).sort(order), ...documents.documents.filter(named).sort(order), ...byText,
   ], page, DOCUMENT_PAGE_SIZE)
+  const found = new Set(byText.map(document => document.id))
   return {
     ...info,
     folders: items.filter(isFolder).map(folder => ({ ...folderOut(documents, folder, actor), location: refs(folderPath(documents, folder.parentId)) })),
-    files: items.filter((item): item is DemoDocument => !isFolder(item))
-      .map(document => ({ ...documentOut(documents, document, actor), location: refs(folderPath(documents, document.folderId)) })),
+    files: items.filter((item): item is DemoDocument => !isFolder(item)).map(document => ({
+      ...documentOut(documents, document, actor), location: refs(folderPath(documents, document.folderId)),
+      excerpt: found.has(document.id) ? textExcerpt(currentVersion(documents, document).text?.content ?? '', words) : null,
+    })),
+    pending: readableFiles(documents).filter(({ text }) => text.status === 'pending' && text.readAt === null).length,
   }
 }
 
@@ -851,9 +975,12 @@ export function publishUpload(documents: SharedDocumentsState, actor: ActorOut, 
     })
   }
   const bytes = uploadedBytes(upload)
+  // The search knows the text of current versions only.
+  for (const version of documents.versions) if (version.documentId === document.id) version.text = null
   documents.versions.push({
     id: upload.id, documentId: document.id, number: document.currentNumber, extension: upload.extension, mediaType: type.mediaType,
     size: upload.size, sha256: sha256Hex(bytes), bytes, author: { ...actor }, createdAt: at, purgedAt: null,
+    text: READABLE_EXTENSIONS.has(upload.extension) ? queuedText(at) : null,
   })
   discard(documents, upload)
   return document
@@ -1027,6 +1154,7 @@ export function purgeDeletion(documents: SharedDocumentsState, actor: ActorOut, 
     if (ids.has(version.documentId) && version.purgedAt === null) {
       version.purgedAt = at
       version.bytes = new Uint8Array(0)
+      version.text = null
     }
   }
   for (const item of [...folders, ...files]) {
@@ -1053,6 +1181,7 @@ export function purgeDocumentVersion(documents: SharedDocumentsState, actor: Act
   if (document.deletedAt !== null) throw new DemoApiError('document_deleted', 409)
   version.purgedAt = at
   version.bytes = new Uint8Array(0)
+  version.text = null
   record(documents, actor, 'version_purged', document, at, { name: document.name, number: version.number, size: version.size })
   return version
 }

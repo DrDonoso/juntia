@@ -489,10 +489,28 @@ say so and offer the download. Other types are only sent as attachments. SVG,
 HTML and other active formats are never accepted, so no upload can run script in
 the application's origin.
 
-**Search.** Members find folders and files by name anywhere in Documents
-(`GET /api/documents/search`, up to 200 characters, ignoring capitals and
-accents). The search only covers what they can already browse: deleted items
-stay hidden, and each result shows what the person searching may do with it.
+**Search.** Members find folders and files by name, and files by the text inside
+them, anywhere in Documents (`GET /api/documents/search`, up to 200 characters,
+ignoring capitals and accents). The search only covers what they can already
+browse: deleted items stay hidden, only the current version of each file is
+searched, and each result shows what the person searching may do with it. The
+excerpt shown for a text match comes from a file they can already download.
+
+**Reading the text.** To search them, the server reads the text of PDFs, Office
+and OpenDocument files, text and CSV files and pictures itself: OCR runs on the
+server with Tesseract, and no document is sent to another service. Each file is
+read by a separate child process (`python -m juntia.document_text`) whose
+environment is reduced to a few variables, so it never receives `AUTH_SECRET`,
+the database URL or other credentials. It runs at a lower priority with at most
+2 GiB of address space and 20 minutes of processor time (on Linux), and is
+killed together with Tesseract after 15 minutes. Office and OpenDocument XML is
+streamed and refused when it declares a DTD or entities, which excludes entity
+expansion and external entities, and every reading is bounded: 2 MiB of a text
+file, 64 MiB of XML, 500 pages, 100 pages of OCR, pictures of 150 megapixels and
+500,000 characters kept. The child still parses untrusted files with complex
+libraries (pdfminer, PDFium, Pillow and Tesseract) as the same unprivileged user
+as the server, so a flaw exploited in them could reach what the application
+itself can: keep the image up to date.
 
 **Downloads.** File names in `Content-Disposition` and in ZIP files come from
 the validated names (at most 200 characters, without `/ \ : * ? " < > |` or
@@ -524,7 +542,10 @@ see deleted documents, restore them or purge them. Purging deletes the files
 of every version inside the database transaction, keeps names and history, and
 cannot be undone except from a backup; earlier versions of a file can also be
 purged one by one from the **Free up space** page. Migration `0022` refuses to
-downgrade while any document data exists.
+downgrade while any document data exists. The text read from the current version
+of each file is kept in the database, and so in its backups, until a new version
+replaces the file or the file is purged; a deleted file keeps it, so that
+restoring the file makes it searchable again.
 
 ## Deployment controls
 
@@ -539,7 +560,7 @@ defaults to off and works the same way for `/api/events` (`events_disabled`),
 images of event descriptions included. The **Documents** switch also defaults to
 off and works the same way for `/api/documents` (`documents_disabled`), uploads,
 previews and ZIP downloads included; the technical administrator keeps managing
-deleted documents and their storage while it is off. The administrator's storage
+deleted documents, their storage and the reading of their text while it is off. The administrator's storage
 page keeps showing and purging images while either switch is off.
 
 **Ownership coefficients** is an administrator-controlled setting, not a
@@ -621,7 +642,8 @@ filesystem paths; downloads resolve a validated document identifier. Uploads
 are bounded before multipart processing, and statement imports, action PDFs and
 images are refused when they would cross the free-disk reserve (see
 [storage quotas and retention](#storage-quotas-and-retention)). Bank statements
-are parsed in a time-limited child process. Financial data, action and event
+are parsed, and the text of shared documents is read, in limited child
+processes. Financial data, action and event
 descriptions and comments are never a template or executable HTML: texts are
 rendered as Markdown into React elements, with raw HTML shown as text.
 

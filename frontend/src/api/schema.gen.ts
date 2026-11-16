@@ -433,11 +433,18 @@ export interface DocumentEventOut {
   size: number | null
 }
 
+export interface DocumentExcerpt {
+  after: string
+  before: string
+  match: string
+}
+
 export interface DocumentFileMatch {
   author: ActorOut
   can_manage: boolean
   created_at: string
   current: DocumentVersionOut
+  excerpt: DocumentExcerpt | null
   folder_id: number | null
   id: number
   kind: 'pdf' | 'image' | 'video' | 'document' | 'spreadsheet' | 'presentation' | 'text'
@@ -530,6 +537,7 @@ export interface DocumentInfoOut {
   name: string
   previewable: boolean
   purged_at: string | null
+  text: DocumentTextOut | null
   updated_at: string
   version: number
   version_count: number
@@ -583,6 +591,7 @@ export interface DocumentSearchPage {
   folders: DocumentFolderMatch[]
   page: number
   pages: number
+  pending: number
   total: number
 }
 
@@ -616,6 +625,68 @@ export interface DocumentStorageOut {
   stored_bytes: number
   upload_bytes: number
   uploads: number
+}
+
+export interface DocumentTextCountsOut {
+  empty: number
+  failed: number
+  files: number
+  needs_ocr: number
+  ocr: number
+  partial: number
+  pending: number
+  readable: number
+  text: number
+}
+
+export interface DocumentTextEngineOut {
+  available: boolean
+  language: 'en' | 'es'
+  version: string | null
+}
+
+export interface DocumentTextFileOut {
+  characters: number
+  document_id: number
+  error: 'encrypted' | 'damaged' | 'too_large' | 'timeout' | 'missing' | 'failed' | null
+  kind: 'pdf' | 'image' | 'video' | 'document' | 'spreadsheet' | 'presentation' | 'text'
+  location: DocumentFolderRef[]
+  name: string
+  needs_ocr: boolean
+  ocr_pages: number
+  partial: boolean
+  read_at: string | null
+  reading: boolean
+  status: 'pending' | 'ready' | 'empty' | 'failed' | 'unsupported'
+}
+
+export interface DocumentTextFilePage {
+  items: DocumentTextFileOut[]
+  page: number
+  pages: number
+  total: number
+}
+
+export interface DocumentTextOut {
+  ocr_pages: number
+  partial: boolean
+  status: 'pending' | 'ready' | 'empty' | 'failed' | 'unsupported'
+}
+
+export interface DocumentTextQueueOut {
+  queued: number
+}
+
+export interface DocumentTextReadingOut {
+  document_id: number
+  name: string
+  started_at: string
+}
+
+export interface DocumentTextSummaryOut {
+  counts: DocumentTextCountsOut
+  engine: DocumentTextEngineOut
+  reading: DocumentTextReadingOut | null
 }
 
 export interface DocumentTreeFolderOut {

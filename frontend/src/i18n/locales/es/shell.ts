@@ -49,6 +49,7 @@ export const shell: Messages<typeof source> = {
     communityLabels: 'Etiquetas de la comunidad',
     deletedContacts: 'Contactos eliminados',
     deletedDocuments: 'Documentos eliminados',
+    documentReading: 'Lectura de documentos',
     storage: 'Almacenamiento',
     cleanup: 'Liberar espacio',
     communityPortal: 'Portal de la comunidad',

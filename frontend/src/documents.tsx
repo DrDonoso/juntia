@@ -4,8 +4,8 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { ApiError, api, cache, errorMessage } from './api/client'
 import type {
-  DocumentBrowseOut, DocumentEventOut, DocumentFolderInfoOut, DocumentFolderOut, DocumentFolderRef, DocumentHistoryPage,
-  DocumentInfoOut, DocumentLimitsOut, DocumentOut, DocumentSearchPage, DocumentTreeFolderOut, DocumentVersionOut,
+  DocumentBrowseOut, DocumentEventOut, DocumentExcerpt, DocumentFolderInfoOut, DocumentFolderOut, DocumentFolderRef, DocumentHistoryPage,
+  DocumentInfoOut, DocumentLimitsOut, DocumentOut, DocumentSearchPage, DocumentTextOut, DocumentTreeFolderOut, DocumentVersionOut,
 } from './api/schema.gen'
 import { useReaderAuth } from './auth'
 import { ActionTime, byteSize } from './community-action-shared'
@@ -169,14 +169,16 @@ function FolderView({ folderId }: { folderId: number | null }) {
     ...data.files.map(value => ({ kind: 'file' as const, value })),
   ], sort) : []
   const found = q ? results.data : undefined
-  const matches = found ? sorted([
+  // The server's order: folders, files found by name, then files found by their text.
+  const matches: DocumentItem[] = found ? [
     ...found.folders.map(value => ({ kind: 'folder' as const, value })),
     ...found.files.map(value => ({ kind: 'file' as const, value })),
-  ], sort) : []
+  ] : []
   const locations = new Map<string, DocumentFolderRef[]>([
     ...(found?.folders ?? []).map(value => [`folder:${value.id}`, value.location] as const),
     ...(found?.files ?? []).map(value => [`file:${value.id}`, value.location] as const),
   ])
+  const excerpts = new Map<string, DocumentExcerpt | null>((found?.files ?? []).map(value => [`file:${value.id}`, value.excerpt] as const))
   const shown = q ? matches : items
   const chosen = shown.filter(item => selected.has(itemKey(item)))
   function filter(changes: { q?: string; page?: number }) {
@@ -267,13 +269,16 @@ function FolderView({ folderId }: { folderId: number | null }) {
           {results.isPending && <Notice>{t('documents.search.loading')}</Notice>}
           {results.error && <><Notice error>{errorMessage(results.error)}</Notice>
             <button type="button" className="secondary" disabled={results.isFetching} onClick={() => void results.refetch()}>{t('common.retryLoading')}</button></>}
+          {found && found.pending > 0 && <p className="muted documents-search-pending">
+            <Icon name="info" size={16} />{t('documents.search.pending', { count: found.pending })}</p>}
           {found && (matches.length === 0
             ? <p className="empty">{searchPage > 1 ? t('documents.search.emptyPage') : t('documents.search.empty', { query: q })}</p>
             : <ul className="document-grid" aria-label={t('documents.search.listLabel', { query: q })} aria-busy={results.isFetching}
               data-selecting={chosen.length > 0 || undefined}>
               {matches.map(item => <DocumentCard key={itemKey(item)} item={item} selected={selected.has(itemKey(item))}
                 toggle={() => toggle(item)} act={action => act(action, item)} newVersion={newVersion}
-                view={file => { setMessage(''); setDialog({ kind: 'view', file }) }} location={locations.get(itemKey(item))} />)}
+                view={file => { setMessage(''); setDialog({ kind: 'view', file }) }} location={locations.get(itemKey(item))}
+                excerpt={excerpts.get(itemKey(item))} />)}
             </ul>)}
           {found && <Pagination page={searchPage} pages={found.pages} change={page => filter({ page })} busy={results.isFetching}
             label={t('documents.search.pagination')} />}
@@ -378,12 +383,14 @@ export function ItemMenu({ label, options }: { label: string; options: MenuOptio
   </div>
 }
 
-function DocumentCard({ item, selected, toggle, act, newVersion, view, location }: {
+function DocumentCard({ item, selected, toggle, act, newVersion, view, location, excerpt }: {
   item: DocumentItem; selected: boolean; toggle: () => void
   act: (action: 'rename' | 'move' | 'delete' | 'info') => void; newVersion: (file: DocumentOut) => void
   view: (file: PreviewFile) => void
   // The folders above a search result.
   location?: DocumentFolderRef[]
+  // Where the text of a file found by its text contains the search.
+  excerpt?: DocumentExcerpt | null
 }) {
   const { t } = useI18n()
   const name = item.value.name
@@ -434,6 +441,7 @@ function DocumentCard({ item, selected, toggle, act, newVersion, view, location 
     </p>
     {location && <p className="document-location"><Link to={folderLink(location)}><Icon name="folder" size={14} />
       {t('documents.card.location', { location: locationText(location.map(folder => folder.name), t) })}</Link></p>}
+    {excerpt && <p className="document-excerpt">{excerpt.before}<mark>{excerpt.match}</mark>{excerpt.after}</p>}
     <div className="document-card-actions">
       {preview && <a className="button quiet icon-button" href={`/api${preview.path}`}
         target="_blank" rel="noopener noreferrer" aria-label={t('documents.card.preview', { name })}
@@ -756,6 +764,13 @@ export function VersionList({ versions, current, download }: {
   </li>)}</ol>
 }
 
+/** What the search knows of a file's text, as the Info dialog says it. */
+export function textStatus(text: DocumentTextOut, translate: Translate): string {
+  if (text.status !== 'ready') return translate(`documents.info.textStatus.${text.status}`)
+  const read = text.ocr_pages > 0 ? translate('documents.info.textStatus.ocr', { count: text.ocr_pages }) : translate('documents.info.textStatus.ready')
+  return text.partial ? `${read} ${translate('documents.info.textStatus.partial')}` : read
+}
+
 export function FileDetails({ value }: { value: DocumentInfoOut }) {
   const { t } = useI18n()
   return <dl className="document-details">
@@ -764,6 +779,7 @@ export function FileDetails({ value }: { value: DocumentInfoOut }) {
     <div><dt>{t('documents.info.location')}</dt><dd>{locationText(value.location.map(folder => folder.name), t)}</dd></div>
     <div><dt>{t('documents.info.uploadedBy')}</dt><dd>{authorName(value.author, t)} · <ActionTime value={value.created_at} /></dd></div>
     <div><dt>{t('documents.info.modified')}</dt><dd><ActionTime value={value.updated_at} /></dd></div>
+    {value.text && <div><dt>{t('documents.info.text')}</dt><dd>{textStatus(value.text, t)}</dd></div>}
   </dl>
 }
 
