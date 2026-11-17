@@ -719,8 +719,17 @@ package-manager integrity hashes.
 and test entries from both lockfiles. Only public package identifiers and exact
 versions are sent to OSV; local project names, private registry entries, code
 and secrets are never submitted. An advisory, malformed/incomplete response or
-service failure is explicit and fails the check. Absence of a known advisory is
-not proof of safety and does not replace image scanning or deployment review.
+service failure is explicit and fails the check, unless a temporary waiver in
+the script accepts that exact advisory for that exact locked version until its
+expiry date; waived advisories are listed, as warnings, on every run. Absence of
+a known advisory is not proof of safety and does not replace image scanning or
+deployment review.
+
+The frontend lock resolves `picomatch` to 4.0.7, affected by GHSA-fc5q-39xc-vjpf
+(a ReDoS through crafted glob patterns), which has no fixed version yet. Only
+Vite and Vitest use it, with the project's own patterns, to build and test the
+frontend; it is not in the image. The audit waives that advisory for that
+version, until the waiver expires on 2026-12-17 (UTC).
 
 ## Reporting
 
