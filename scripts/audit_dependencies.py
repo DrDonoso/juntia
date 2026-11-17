@@ -1,10 +1,12 @@
 """Check exact public lockfile versions without uploading project files or credentials."""
 
 import json
+import os
 import re
 import sys
 import tomllib
 from dataclasses import dataclass
+from datetime import UTC, date, datetime
 from pathlib import Path
 from urllib.error import URLError
 from urllib.parse import urlsplit
@@ -19,6 +21,29 @@ class Package:
     ecosystem: str
     name: str
     version: str
+
+
+@dataclass(frozen=True)
+class Waiver:
+    package: Package
+    advisory: str
+    # The first day (UTC) on which it no longer applies.
+    expires: date
+    reason: str
+
+
+# Temporary waivers, for advisories that have no fixed version yet. Each one accepts a single
+# advisory for a single locked version and says why. On its expiry date it stops applying and the
+# audit fails again, until the dependency is fixed or the waiver is reviewed and renewed. Every run
+# lists the findings it waives and the waivers that no longer match one, to be removed.
+WAIVERS = (
+    Waiver(
+        Package("npm", "picomatch", "4.0.7"), "GHSA-fc5q-39xc-vjpf", date(2026, 12, 17),
+        "ReDoS through crafted glob patterns, with no fixed version yet. Only Vite and Vitest use"
+        " it, with the project's own patterns, to build and test the frontend: it is not in the"
+        " image.",
+    ),
+)
 
 
 def public_url(value: str, host: str) -> bool:
@@ -86,6 +111,41 @@ def audit(packages: list[Package]) -> list[tuple[Package, str]]:
     return findings
 
 
+def notice(message: str) -> None:
+    # In GitHub Actions, also a warning on the run's summary, so that a waiver is never silent.
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        escaped = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+        message = f"::warning::{escaped}"
+    print(message)
+
+
+def report(findings: list[tuple[Package, str]], waivers: tuple[Waiver, ...], today: date) -> bool:
+    """Prints every finding and every unused waiver; returns whether a finding is not waived."""
+    by_finding = {(waiver.package, waiver.advisory): waiver for waiver in waivers}
+    used: set[Waiver] = set()
+    failed = False
+    for item, advisory in findings:
+        line = f"{item.ecosystem} {item.name} {item.version}: https://osv.dev/vulnerability/{advisory}"
+        waiver = by_finding.get((item, advisory))
+        if waiver is None:
+            failed = True
+            print(line)
+            continue
+        used.add(waiver)
+        expiry = waiver.expires.isoformat()
+        if today < waiver.expires:
+            notice(f"{line} (waived; the waiver expires on {expiry}, UTC). {waiver.reason}")
+        else:
+            failed = True
+            print(f"{line} (its waiver expired on {expiry}, UTC)")
+    for waiver in waivers:
+        if waiver not in used:
+            package = waiver.package
+            notice(f"The waiver of {waiver.advisory} for {package.ecosystem} {package.name} "
+                   f"{package.version} no longer matches a finding: remove it.")
+    return failed
+
+
 def main() -> int:
     try:
         packages = locked_packages(ROOT)
@@ -93,10 +153,9 @@ def main() -> int:
     except (OSError, URLError, ValueError, KeyError, TypeError) as error:
         print(f"Dependency audit could not complete ({type(error).__name__}).", file=sys.stderr)
         return 2
-    for item, advisory in findings:
-        print(f"{item.ecosystem} {item.name} {item.version}: https://osv.dev/vulnerability/{advisory}")
+    failed = report(findings, WAIVERS, datetime.now(UTC).date())
     print(f"Audited {len(packages)} locked public package versions, including development dependencies.")
-    return 1 if findings else 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

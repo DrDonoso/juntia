@@ -9,6 +9,7 @@ const paths = {
   menu: <path d="M4 6.6h16M4 12h16M4 17.4h16" />,
   close: <path d="M6.2 6.2 17.8 17.8M17.8 6.2 6.2 17.8" />,
   check: <path d="M4.8 12.6 9.6 17.4 19.2 6.8" />,
+  plus: <path d="M12 5v14M5 12h14" />,
   upload: <><path d="M12 15.6V4.4" /><path d="M7.6 8.8 12 4.4l4.4 4.4" /><path d="M4.4 17v2.4a1.2 1.2 0 0 0 1.2 1.2h12.8a1.2 1.2 0 0 0 1.2-1.2V17" /></>,
   download: <><path d="M12 3v12m-4-4 4 4 4-4" /><path d="M4 17v3h16v-3" /></>,
   calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M7 3v4M17 3v4M3 11h18M7 15h2M13 15h2M7 18h2" /></>,

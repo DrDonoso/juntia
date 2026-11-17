@@ -252,8 +252,12 @@ The favicon, Apple touch icon and Android icons are generated from `frontend/pub
   weaken TLS verification.
 - `scripts/audit_dependencies.py` checks every locked package, development and test dependencies
   included, against the [OSV](https://osv.dev) database. It sends only public package names and
-  versions. Any advisory, or an incomplete or unavailable answer, fails the check; there are no
-  silent exclusions.
+  versions. Any advisory, or an incomplete or unavailable answer, fails the check. The only
+  exceptions are the temporary waivers listed in the script (`WAIVERS`), for advisories that have no
+  fixed version yet: each one accepts a single advisory for a single locked version, gives the
+  reason, and stops applying on its expiry date, when the check fails again until the dependency is
+  fixed or the waiver is reviewed and renewed. Every run lists the advisories it waives (as warnings
+  in GitHub Actions) and the waivers that no longer match one, to be removed.
 - After upgrading `msw`, run `npx msw init` in `frontend/` so `public/mockServiceWorker.js` matches;
   a unit test fails otherwise.
 

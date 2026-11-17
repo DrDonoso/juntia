@@ -126,13 +126,13 @@ export const events = {
     pagination: 'available actions',
   },
   linked: {
-    upcoming: 'Upcoming events',
-    all: 'All events',
-    showPast: 'Show past events',
+    title: 'Events',
     create: 'New event for this action',
-    emptyUpcoming: 'This action has no upcoming events yet.',
+    now: 'Now',
+    ongoing: 'Ongoing',
+    earlier: 'Load earlier events',
+    later: 'Load later events',
     empty: 'This action has no events yet.',
-    pagination: 'action events',
     agenda: 'View events for this action',
   },
   dateField: {

@@ -179,9 +179,9 @@ are independent from financial tags and contact tags.
 
 ### Comments
 
-Comments appear newest first. Editing or withdrawing a comment keeps its earlier text in the
-history; a withdrawn comment links to it. A new comment never conflicts with someone editing the
-action's fields.
+Comments are the last section of an action's page, after its attachments and events, and appear
+newest first. Editing or withdrawing a comment keeps its earlier text in the history; a withdrawn
+comment links to it. A new comment never conflicts with someone editing the action's fields.
 
 ### Markdown and images
 
@@ -309,8 +309,14 @@ delete any event; versions stop concurrent edits from overwriting each other.
 
 An event can link to one action, and an action can have several events. Pick it in the **Linked
 action (optional)** field (type to search), remove it with **Remove link**, or start from the action
-with **New event for this action**. The action page lists its upcoming events, and **Show past
-events** shows its whole timeline. Linking never changes the action's status.
+with the **+** button of its **Events** (**New event for this action**), which links the new event to
+it. The action page shows all its events on a horizontal timeline in date order: finished events
+first and muted, a **Now** mark, then ongoing events (marked **Ongoing**) and upcoming ones. The
+timeline opens centered on **Now**; drag it sideways, with a finger or the mouse, to move along it.
+A click anywhere on an event opens it over the action (a drag does not). The 20 latest finished
+events and the next 20 load first; **Load earlier events** and **Load later events**, at its ends,
+bring 20 more. **View events for this action** shows them in the agenda. Linking never changes the
+action's status.
 
 ### Dates and time zone
 

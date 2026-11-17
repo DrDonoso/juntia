@@ -460,6 +460,20 @@ test('descriptions and comments are rendered as Markdown, with their pasted imag
   expect(within(comments).getByText('<b>not bold</b>')).toBeVisible()
 })
 
+test('the action page shows its attachments, then its events, and its comments last', async () => {
+  cache.setQueryData(['features'], { actions: true, coefficient: true, events: true, google_login: false })
+  cache.setQueryData(['events', 'config'], { timezone: 'Europe/Madrid' })
+  vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+    if (input === '/api/actions/items/1') return reply(item)
+    if (input.startsWith('/api/actions/items/1/attachments?') || input.startsWith('/api/actions/items/1/comments?')) return reply(page([]))
+    if (input.startsWith('/api/events?action_id=1&')) return reply(page([]))
+    throw new Error(`Unexpected request: ${input}`)
+  }))
+  renderView(<Routes><Route path="/actions/:itemId" element={<ActionDetailPage />} /></Routes>, '/actions/1')
+  expect(await screen.findByText('This action has no events yet.')).toBeVisible()
+  expect(screen.getAllByRole('region').map(region => region.querySelector('h2')?.textContent)).toEqual(['Attachments', 'Events', 'Comments'])
+})
+
 test('an image pasted into a new comment is uploaded first, then posted in its Markdown', async () => {
   const posted: unknown[] = []
   let finishUpload: (() => void) | null = null

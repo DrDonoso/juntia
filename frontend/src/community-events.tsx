@@ -1,13 +1,16 @@
-import { useEffect, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type MouseEvent, type PointerEvent } from 'react'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ApiError, api, errorMessage } from './api/client'
-import type { EventActionOut, EventAgendaPage, EventHistoryPage, EventOut } from './api/schema.gen'
-import { CalendarButton, EventActionLink, EventCards, EventEditor, EventFeatureGate, EventSnapshotView, cacheEvent, eventModalState, eventRange, useEventConfig, type EventModalState } from './community-event-shared'
+import type { EventActionOut, EventAgendaPage, EventHistoryPage, EventOut, EventPage } from './api/schema.gen'
+import {
+  CalendarButton, EventActionLink, EventCards, EventEditor, EventFeatureGate, EventSnapshotView, cacheEvent, eventModalState, eventRange,
+  localInput, useEventConfig, useEventLink, type EventModalState,
+} from './community-event-shared'
 import { MarkdownText } from './markdown'
 import { useI18n } from './i18n'
 import { Icon } from './icons'
-import { Modal, Notice, Pagination, authorName, connectionTime, useAction, useFeatures } from './shared'
+import { Modal, Notice, Pagination, authorName, connectionTime, day, useAction, useFeatures } from './shared'
 
 type Scope = 'upcoming' | 'all' | 'past' | 'deleted'
 const scopes: readonly Scope[] = ['upcoming', 'all', 'past', 'deleted']
@@ -200,37 +203,175 @@ export function EventDetailPage() {
     : <EventFeatureGate><Notice error>{t('events.detail.notFound')}</Notice></EventFeatureGate>
 }
 
+type TimelineSide = 'past' | 'upcoming'
+// Finished events come newest first and the others soonest first, so each side loads outwards from now.
+function useActionTimeline(actionId: number, scope: TimelineSide) {
+  return useInfiniteQuery({
+    queryKey: ['events', 'action', actionId, scope],
+    queryFn: ({ pageParam, signal }) => api<EventPage>(`/events?${new URLSearchParams({
+      action_id: String(actionId), scope, page: String(pageParam),
+    })}`, 'GET', undefined, signal),
+    initialPageParam: 1,
+    getNextPageParam: (last: EventPage) => last.page < last.pages ? last.page + 1 : undefined,
+    refetchInterval: 60_000,
+  })
+}
+// Pages read at different moments can repeat an event that changed side or page in between.
+function distinct(values: EventOut[], seen: Set<number>) {
+  return values.filter(value => {
+    if (seen.has(value.id)) return false
+    seen.add(value.id)
+    return true
+  })
+}
+// Scrolls the timeline, not the page, to bring an entry to its middle.
+function centerIn(track: HTMLElement, entry: Element) {
+  const box = track.getBoundingClientRect(), target = entry.getBoundingClientRect()
+  track.scrollLeft += target.left + target.width / 2 - box.left - box.width / 2
+}
+// A mouse drags the timeline sideways, as a finger does on touch screens; a drag never opens the
+// event it ends on, while a plain click still does.
+function useDragScroll() {
+  const drag = useRef<{ pointer: number; x: number; left: number; moved: boolean } | null>(null)
+  const dragged = useRef(false)
+  function end(event: PointerEvent<HTMLElement>) {
+    const state = drag.current
+    if (!state || state.pointer !== event.pointerId) return
+    drag.current = null
+    event.currentTarget.removeAttribute('data-dragging')
+    if (!state.moved) return
+    // The click that ends the drag, if any, follows in the same task.
+    dragged.current = true
+    setTimeout(() => { dragged.current = false })
+  }
+  return {
+    onPointerDown(event: PointerEvent<HTMLElement>) {
+      const track = event.currentTarget
+      // The scroll bar below the entries scrolls by itself.
+      const onScrollBar = event.clientY >= track.getBoundingClientRect().top + track.clientTop + track.clientHeight
+      if (event.pointerType !== 'mouse' || event.button !== 0 || onScrollBar || track.scrollWidth <= track.clientWidth) return
+      drag.current = { pointer: event.pointerId, x: event.clientX, left: track.scrollLeft, moved: false }
+    },
+    onPointerMove(event: PointerEvent<HTMLElement>) {
+      const track = event.currentTarget, state = drag.current
+      track.toggleAttribute('data-draggable', track.scrollWidth > track.clientWidth)
+      if (!state || state.pointer !== event.pointerId) return
+      const distance = event.clientX - state.x
+      if (!state.moved) {
+        if (Math.abs(distance) < 6) return
+        state.moved = true
+        track.setPointerCapture(event.pointerId)
+        track.setAttribute('data-dragging', '')
+        window.getSelection()?.removeAllRanges()
+        if (document.activeElement instanceof HTMLElement && track.contains(document.activeElement)) document.activeElement.blur()
+      }
+      track.scrollLeft = state.left - distance
+    },
+    onPointerUp: end,
+    onPointerCancel: end,
+    onLostPointerCapture: end,
+    onClickCapture(event: MouseEvent<HTMLElement>) {
+      if (!dragged.current) return
+      dragged.current = false
+      event.preventDefault()
+      event.stopPropagation()
+    },
+    // A link would otherwise start dragging its address instead of the timeline.
+    onDragStart(event: DragEvent<HTMLElement>) {
+      event.preventDefault()
+    },
+  }
+}
+function TimelineEvent({ value, zone, past, ongoing }: { value: EventOut; zone: string; past: boolean; ongoing: boolean }) {
+  const { t } = useI18n()
+  const eventLink = useEventLink()
+  const start = value.all_day ? value.starts_on : value.starts_at && localInput(value.starts_at, zone).slice(0, 10)
+  return <li className={`event-track-item${past ? ' event-past' : ''}`} data-event-id={value.id}>
+    <p className="event-track-day">{start && <time dateTime={start}>{day(start)}</time>}</p>
+    <span className="event-track-axis" aria-hidden="true" />
+    <div className="card event-track-card">
+      <h3><Link to={eventLink(value.id)} state={eventModalState}>{value.title}</Link></h3>
+      {past && <span className="sr-only">{t('events.cards.finished')}</span>}
+      <p className="event-schedule">{eventRange(value, zone, true)}</p>
+      {value.location && <p className="event-text">{value.location}</p>}
+      {ongoing && <span className="tag event-track-ongoing">{t('events.linked.ongoing')}</span>}
+    </div>
+  </li>
+}
+// What to bring into view once it is on the timeline: a new event, or the first event of a loaded page,
+// next to the event that was at that end.
+type Reveal = { id: number; loaded?: { side: TimelineSide; pages: number } }
 function LinkedEvents({ action }: { action: EventActionOut }) {
   const { t } = useI18n()
   const config = useEventConfig()
-  const [timeline, setTimeline] = useState(false), [page, setPage] = useState<number | null>(null)
+  const past = useActionTimeline(action.id, 'past'), upcoming = useActionTimeline(action.id, 'upcoming')
+  const sides = { past, upcoming }
   const [creating, setCreating] = useState(false)
-  const scope = timeline ? 'all' : 'upcoming'
-  const request = new URLSearchParams({ action_id: String(action.id), scope })
-  if (page) request.set('page', String(page))
-  const query = useEventAgenda(request)
-  const agendaLink = new URLSearchParams({ action_id: String(action.id) })
-  if (timeline) agendaLink.set('scope', 'all')
+  const track = useRef<HTMLDivElement>(null)
+  const dragScroll = useDragScroll()
+  // The timeline opens centered on now; afterwards it only moves to show what the reader loaded or created.
+  const centered = useRef(false), reveal = useRef<Reveal | null>(null)
+  const zone = config.data?.timezone
+  const failure = config.error || past.error || upcoming.error
+  const seen = new Set<number>()
+  const finished = distinct(past.data?.pages.flatMap(page => page.items).reverse() ?? [], seen)
+  const pending = distinct(upcoming.data?.pages.flatMap(page => page.items) ?? [], seen)
+  const loadingMore = past.isFetchingNextPage || upcoming.isFetchingNextPage
+  useLayoutEffect(() => {
+    const element = track.current
+    if (!element) return
+    if (!centered.current) {
+      centered.current = true
+      const marker = element.querySelector('.event-track-now')
+      if (marker) centerIn(element, marker)
+    }
+    const target = reveal.current
+    if (!target) return
+    const { loaded } = target
+    if (loaded && (sides[loaded.side].data?.pages.length ?? 0) <= loaded.pages) return
+    const anchor = element.querySelector(`[data-event-id="${target.id}"]`)
+    const entry = !loaded ? anchor : loaded.side === 'past' ? anchor?.previousElementSibling : anchor?.nextElementSibling
+    // A new event appears once the timeline refreshes.
+    if (!entry && !loaded) return
+    reveal.current = null
+    if (!entry?.classList.contains('event-track-item')) return
+    centerIn(element, entry)
+    // The button may be gone with the last page: focus continues on the first event it added.
+    if (loaded) entry.querySelector('a')?.focus({ preventScroll: true })
+  })
+  function loadMore(side: TimelineSide) {
+    const edge = side === 'past' ? finished[0] : pending.at(-1)
+    reveal.current = edge ? { id: edge.id, loaded: { side, pages: sides[side].data?.pages.length ?? 0 } } : null
+    void sides[side].fetchNextPage()
+  }
+  const now = Date.now(), today = zone ? localInput(new Date(now).toISOString(), zone).slice(0, 10) : ''
+  function started(value: EventOut) {
+    return value.all_day ? !!value.starts_on && value.starts_on <= today : !!value.starts_at && Date.parse(value.starts_at) <= now
+  }
+  const agendaLink = new URLSearchParams({ action_id: String(action.id), scope: 'all' })
   return <>
-    <section className="card event-linked">
-      <header className="page-heading"><h2>{timeline ? t('events.linked.all') : t('events.linked.upcoming')}</h2>
-        <div className="event-linked-controls">
-          <label className="check"><input type="checkbox" checked={timeline} onChange={event => { setTimeline(event.target.checked); setPage(null) }} />{t('events.linked.showPast')}</label>
-          <button type="button" className="secondary" disabled={!config.data || !!config.error} onClick={() => setCreating(true)}>{t('events.linked.create')}</button>
-        </div>
+    <section className="card event-linked" aria-labelledby="action-events-heading">
+      <header>
+        <h2 id="action-events-heading">{t('events.linked.title')}</h2>
+        <button type="button" className="icon-button" title={t('events.linked.create')} aria-label={t('events.linked.create')}
+          disabled={!config.data || !!config.error} onClick={() => setCreating(true)}><Icon name="plus" /></button>
       </header>
-      {query.isPending && <Notice>{t('events.agenda.loading')}</Notice>}
-      {query.error && <Notice error>{errorMessage(query.error)}</Notice>}
-      {config.error && <Notice error>{errorMessage(config.error)}</Notice>}
-      {query.data && config.data && !query.error && !config.error && <>
-        {!query.data.items.length && <p className="muted">{timeline ? t('events.linked.empty') : t('events.linked.emptyUpcoming')}</p>}
-        <EventCards items={query.data.items} zone={config.data.timezone} dimPast={timeline} />
-        <Pagination page={query.data.page} pages={query.data.pages} change={setPage} busy={query.isFetching} label={t('events.linked.pagination')} />
-      </>}
+      {(past.isPending || upcoming.isPending) && !failure && <Notice>{t('events.agenda.loading')}</Notice>}
+      {failure && <Notice error>{errorMessage(failure)}</Notice>}
+      {zone && past.data && upcoming.data && (finished.length || pending.length ? <div ref={track} className="event-track" {...dragScroll}>
+        {past.hasNextPage && <button type="button" className="secondary" disabled={loadingMore} onClick={() => loadMore('past')}>{t('events.linked.earlier')}</button>}
+        <ol className="event-track-list">
+          {finished.map(value => <TimelineEvent key={value.id} value={value} zone={zone} past ongoing={false} />)}
+          <li className="event-track-now">{t('events.linked.now')}</li>
+          {pending.map(value => <TimelineEvent key={value.id} value={value} zone={zone} past={false} ongoing={started(value)} />)}
+        </ol>
+        {upcoming.hasNextPage && <button type="button" className="secondary" disabled={loadingMore} onClick={() => loadMore('upcoming')}>{t('events.linked.later')}</button>}
+      </div> : <p className="muted">{t('events.linked.empty')}</p>)}
       <Link to={`/events?${agendaLink}`}>{t('events.linked.agenda')}</Link>
       {creating && config.data && <EventEditor value={null} timezone={config.data.timezone} initialAction={action}
         close={() => setCreating(false)} saved={value => {
-          setCreating(false); setPage(null); cacheEvent(value)
+          setCreating(false); cacheEvent(value)
+          if (value.action?.id === action.id) reveal.current = { id: value.id }
         }} />}
     </section>
     <EventModalHost />

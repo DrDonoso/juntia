@@ -632,9 +632,9 @@ function ActionDetail({ item, reader, basePath, search }: { item: ActionOut; rea
     </section>
     <div className="action-detail-content">
       <ActionAttachments item={item} reader={reader} />
+      <ActionEvents action={{ id: item.id, title: item.title }} />
       <ActionComments itemId={item.id} reader={reader} onHistory={() => setHistoryOpen(true)} />
     </div>
-    <ActionEvents action={{ id: item.id, title: item.title }} />
     {editing && <ActionEditor value={item} close={() => setEditing(false)} saved={() => setEditing(false)} />}
     {historyOpen && <ActionHistory itemId={item.id} close={() => setHistoryOpen(false)} />}
   </>

@@ -75,9 +75,33 @@
 .event-picker-list .icon { flex-shrink: 0; }
 .event-picker-dropdown .notice, .event-picker-dropdown .pagination { margin: 8px; }
 .event-calendar-options { display: flex; flex-wrap: wrap; gap: 12px; margin: 18px 0; }
-.event-linked { margin-top: 24px; }
-.event-linked-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
-.event-linked-controls .check { gap: 8px; min-height: 44px; }
+/* An action's events (community-events.tsx): a horizontal timeline in date order, finished events
+   first and muted, then the "Now" mark it opens centered on. Each entry stacks a 20px date row, a 20px
+   axis row with its dot and the card; the axis line runs through every entry 30px below their top. */
+.event-linked > header h2 { margin: 0; }
+.event-track { display: flex; align-items: center; gap: var(--space-3); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; padding: var(--space-1) var(--space-1) var(--space-3); margin-bottom: var(--space-3); }
+.event-track > button { flex: 0 0 auto; }
+.event-track[data-draggable] { cursor: grab; }
+.event-track[data-dragging], .event-track[data-dragging] * { cursor: grabbing; user-select: none; }
+.event-track-list { display: flex; flex: 0 0 auto; margin: 0; padding: 0; list-style: none; }
+.event-track-list > li { position: relative; flex: 0 0 auto; display: flex; flex-direction: column; padding: 0 var(--space-2); }
+.event-track-list > li::before { content: ''; position: absolute; top: 29px; left: 0; right: 0; border-top: 2px solid var(--border); }
+.event-track-item { width: 248px; }
+.event-track-day { margin: 0; font-size: var(--text-sm); font-weight: 600; line-height: 20px; color: var(--text-muted); white-space: nowrap; }
+.event-track-axis { position: relative; height: 20px; margin-bottom: var(--space-1); }
+.event-track-axis::after { content: ''; position: absolute; top: 4px; left: 12px; width: 12px; height: 12px; border: 6px solid var(--primary); border-radius: 50%; box-shadow: 0 0 0 3px var(--surface); }
+.event-track .event-track-card { position: relative; flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); margin: 0; padding: 14px 16px; overflow-wrap: anywhere; }
+.event-track .event-track-card p { margin: 0; }
+/* The title's link covers its card: a click anywhere on the card opens the event. */
+.event-track-card h3 a::after { content: ''; position: absolute; inset: 0; }
+.event-track-item:hover .event-track-card, .event-track-item:focus-within .event-track-card { border-color: rgba(var(--primary-rgb), .45); }
+.event-track .event-track-ongoing { color: var(--primary); font-weight: 600; }
+.event-track-item.event-past .event-track-card { background: var(--bg); box-shadow: none; color: var(--text-muted); }
+.event-track-item.event-past .event-track-axis::after { border-color: var(--text-muted); }
+.event-track-item.event-past:hover .event-track-card, .event-track-item.event-past:focus-within .event-track-card { background: var(--surface); box-shadow: var(--shadow); color: var(--text); }
+.event-track-item.event-past:hover .event-track-axis::after, .event-track-item.event-past:focus-within .event-track-axis::after { border-color: var(--primary); }
+.event-track-now { width: 72px; align-items: center; font-size: var(--text-2xs); font-weight: 700; line-height: 20px; letter-spacing: .08em; text-transform: uppercase; color: var(--primary); }
+.event-track-now::after { content: ''; flex: 1; min-height: 64px; margin-top: var(--space-1); border-left: 2px solid var(--primary); }
 .event-detail-modal { width: min(720px, calc(100vw - 24px)); }
 .event-detail-modal > header h2 { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .event-detail-actions .danger { margin-left: auto; }
