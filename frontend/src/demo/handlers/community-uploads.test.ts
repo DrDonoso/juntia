@@ -2,17 +2,18 @@
 // Node's Request cannot use: the body is written by hand and Node's `File` is restored meanwhile.
 import { File as NodeFile } from 'node:buffer'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import type { ActionAttachmentOut, ActionAttachmentPage, ActionHistoryPage, ActionOut } from '../../api/schema.gen'
+import type { ActionAttachmentOut, ActionAttachmentPage, ActionHistoryPage, ActionOut, StorageOut } from '../../api/schema.gen'
 import { MUTATION_HEADER, demoPdf } from '../core'
 import { resetDemo } from '../store'
 import { communityStore } from '../store/community'
 import type { DemoActionAttachment } from '../store/community-model'
 import { sha256Hex } from '../store/community-sha256'
 import { COMMUNITY_QUOTA_BYTES, USER_QUOTA_BYTES } from '../store/storage'
-import { demoFetch, demoRequest, demoUrl } from '../testing'
+import { demoFetch, demoRequest, demoUrl, signInAdmin, signInAs } from '../testing'
 
 const NOW = new Date(2026, 9, 29, 12)
 const OLIVIA = { kind: 'resident', name: 'Olivia Bennett', user_id: 6 }
+const JAMES = { kind: 'resident', name: 'James Okafor', user_id: 1 }
 const BOUNDARY = '----juntia-demo-upload-boundary'
 
 beforeEach(() => resetDemo({ now: () => NOW }))
@@ -137,9 +138,6 @@ describe('PDF uploads', () => {
 })
 
 describe('storage quotas', () => {
-  const adminLogin = () => demoRequest('POST', '/api/admin/auth/login', { body: { username: 'demo', password: 'demo' } })
-  const adminLogout = () => demoRequest('POST', '/api/admin/auth/logout')
-
   /** The sample neighbor's PDF: the bike rack catalogue. */
   function catalogue(): DemoActionAttachment {
     const attachment = communityStore().attachments.find(item => item.filename === 'Bike rack catalogue.pdf')
@@ -152,7 +150,7 @@ describe('storage quotas', () => {
     return communityStore().attachments.filter(item => item.purgedAt === null && matching(item)).reduce((sum, item) => sum + item.size, 0)
   }
 
-  test("a neighbor's PDFs, withdrawn ones included, must fit their quota until the administrator purges some", async () => {
+  test("a neighbor's PDFs, withdrawn ones included, must fit their quota until an administrator purges some", async () => {
     const id = actionId('Bike storage')
     const bytes = quote('Quota check')
     // Olivia's PDFs leave exactly the size of this one.
@@ -167,30 +165,44 @@ describe('storage quotas', () => {
     const path = `/api/actions/items/${id}/attachments/${catalogue().id}`
     expect((await demoRequest('DELETE', path, { body: { version: 1 } })).status).toBe(204)
     expect(await upload(id, { name: 'One more.pdf', bytes: quote() })).toMatchObject({ status: 409, body: { code: 'action_storage_user_quota' } })
-    await adminLogin()
+    await signInAdmin()
     expect(await demoRequest('POST', `/api/admin/storage/attachments/${catalogue().id}/purge`, { body: { version: 2 } })).toMatchObject({ status: 200 })
-    await adminLogout()
+    await signInAs(6)
     expect(await upload(id, { name: 'One more.pdf', bytes: quote() })).toMatchObject({ status: 201, body: { author: OLIVIA } })
   })
 
-  test("each neighbor has their own quota; the community's counts everybody, the administrator included", async () => {
+  test('administrators have a quota of their own, like every account', async () => {
+    await signInAdmin()
+    const id = actionId('Bike storage')
+    const bytes = quote('Quota check')
+    const own = communityStore().attachments.find(item => item.author.user_id === 1 && item.purgedAt === null)
+    if (!own) throw new Error('No PDF of the administrator')
+    own.size += USER_QUOTA_BYTES - stored(item => item.author.user_id === 1) - bytes.length
+    expect(await upload(id, { name: 'Fits exactly.pdf', bytes })).toMatchObject({ status: 201, body: { author: JAMES } })
+    expect(await upload(id, { name: 'One more.pdf', bytes })).toMatchObject({ status: 409, body: { code: 'action_storage_user_quota' } })
+    // The storage page lists him among the accounts; the line of the former technical administrator stays empty.
+    const summary = (await demoRequest<StorageOut>('GET', '/api/admin/storage')).body
+    expect(summary.residents.find(row => row.user_id === 1)).toMatchObject({ name: 'James Okafor', stored_bytes: USER_QUOTA_BYTES, quota_bytes: USER_QUOTA_BYTES })
+    expect(summary.administrator).toMatchObject({ stored_bytes: 0, active_files: 0, withdrawn_files: 0, image_files: 0 })
+  })
+
+  test("each account has its own quota; the community's counts everybody, administrators included", async () => {
     const id = actionId('Bike storage')
     const bytes = quote('Quota check')
     catalogue().size += USER_QUOTA_BYTES
     expect(await upload(id, { name: 'Mine.pdf', bytes })).toMatchObject({ status: 409, body: { code: 'action_storage_user_quota' } })
-    await demoRequest('POST', '/api/auth/login', { body: { email: 'james.okafor@example.com', password: 'demo' } })
-    expect((await upload(id, { name: 'James.pdf', bytes })).status).toBe(201)
+    await signInAs(13)
+    expect((await upload(id, { name: 'Thomas.pdf', bytes })).status).toBe(201)
 
     // The community quota leaves exactly the size of one more PDF.
-    const draft = communityStore().attachments.find(item => item.author.kind === 'administrator')
-    if (!draft) throw new Error('No PDF of the administrator')
-    draft.size += COMMUNITY_QUOTA_BYTES - stored() - bytes.length
+    const summary = communityStore().attachments.find(item => item.author.user_id === 7)
+    if (!summary) throw new Error('No PDF of Grace Liu')
+    summary.size += COMMUNITY_QUOTA_BYTES - stored() - bytes.length
     expect((await upload(id, { name: 'Last one.pdf', bytes })).status).toBe(201)
     expect(await upload(id, { name: 'Over.pdf', bytes })).toMatchObject({ status: 409, body: { code: 'action_storage_community_quota' } })
-    await adminLogin()
+    await signInAdmin()
     expect(await upload(id, { name: 'Over.pdf', bytes })).toMatchObject({ status: 409, body: { code: 'action_storage_community_quota' } })
-    await demoRequest('POST', '/api/auth/login', { body: { email: 'olivia.bennett@example.com', password: 'demo' } })
-    await adminLogout()
+    await signInAs(6)
     // Over both quotas, the uploader's is reported first.
     expect(await upload(id, { name: 'Over.pdf', bytes })).toMatchObject({ status: 409, body: { code: 'action_storage_user_quota' } })
   })

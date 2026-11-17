@@ -3,32 +3,29 @@ import secrets
 import pytest
 from pydantic import ValidationError
 
-from juntia.config import Settings
+from juntia.config import RETIRED_SETTINGS, Settings, retired_settings
 
 
 @pytest.mark.parametrize("zone", ["Europe/Madrid", "UTC", "America/New_York", "Asia/Kathmandu"])
 def test_event_timezone_uses_validated_environment(values, monkeypatch, zone):
     monkeypatch.setenv("TZ", zone)
-    assert Settings(_env_file=None, **{**values, "allow_insecure_local_admin": True}).tz == zone
+    assert Settings(_env_file=None, **values).tz == zone
 
 
 @pytest.mark.parametrize("zone", ["", "Not/AZone", "../Europe/Madrid", "/etc/localtime"])
 def test_invalid_event_timezone_fails_configuration(values, monkeypatch, zone):
     monkeypatch.setenv("TZ", zone)
     with pytest.raises(ValidationError, match="TZ must"):
-        Settings(_env_file=None, **{**values, "allow_insecure_local_admin": True})
+        Settings(_env_file=None, **values)
 
 
 @pytest.fixture
 def values():
     return {
         "database_url": "sqlite+aiosqlite:///:memory:",
-        "admin_username": "admin",
-        "admin_password": "admin",
         "auth_secret": secrets.token_urlsafe(32),
         "public_origin": "http://localhost:7778",
         "auth_cookie_secure": False,
-        "allow_insecure_local_admin": False,
     }
 
 
@@ -36,20 +33,15 @@ def values():
 def secure_values(values):
     return {
         **values,
-        "admin_password": secrets.token_urlsafe(24),
         "public_origin": "https://finances.example.com",
         "auth_cookie_secure": True,
     }
 
 
-def test_local_default_password_requires_explicit_opt_in(values):
-    with pytest.raises(ValidationError, match="ADMIN_PASSWORD"):
-        Settings(_env_file=None, **values)
-
 
 def test_default_origin_matches_application_port(values, monkeypatch):
     monkeypatch.delenv("PUBLIC_ORIGIN", raising=False)
-    local = {**values, "allow_insecure_local_admin": True}
+    local = {**values}
     local.pop("public_origin")
     settings = Settings(_env_file=None, **local)
     assert settings.public_origin == "http://localhost:7778"
@@ -62,7 +54,7 @@ def test_session_duration_default_and_environment_override(values, monkeypatch, 
     monkeypatch.delenv("SESSION_HOURS", raising=False)
     if configured is not None:
         monkeypatch.setenv("SESSION_HOURS", configured)
-    settings = Settings(_env_file=None, **{**values, "allow_insecure_local_admin": True})
+    settings = Settings(_env_file=None, **values)
     assert settings.session_hours == expected
 
 
@@ -70,82 +62,16 @@ def test_session_duration_default_and_environment_override(values, monkeypatch, 
 def test_session_duration_rejects_values_outside_the_allowed_range(values, monkeypatch, configured):
     monkeypatch.setenv("SESSION_HOURS", configured)
     with pytest.raises(ValidationError, match="between 1 and 168 hours"):
-        Settings(_env_file=None, **{**values, "allow_insecure_local_admin": True})
+        Settings(_env_file=None, **values)
 
 
-@pytest.mark.parametrize(
-    "origin", ["http://localhost:7778", "http://127.0.0.1:8888", "http://[::1]:7778"]
-)
-def test_local_default_credentials_work_for_loopback_only(values, origin):
-    settings = Settings(
-        _env_file=None, **{**values, "allow_insecure_local_admin": True, "public_origin": origin}
-    )
-    assert settings.admin_username == "admin"
-    assert settings.admin_password.get_secret_value() == "admin"
 
 
-@pytest.mark.parametrize(
-    "origin",
-    [
-        "http://0.0.0.0:7778",
-        "http://192.168.1.10:7778",
-        "http://localhost.example.com:7778",
-        "https://finances.example.com",
-        "https://localhost:7778",
-    ],
-)
-def test_local_password_exception_rejects_nonlocal_origins(values, origin):
-    with pytest.raises(ValidationError, match="loopback HTTP origin"):
-        Settings(
-            _env_file=None,
-            **{**values, "allow_insecure_local_admin": True, "public_origin": origin},
-        )
 
 
-@pytest.mark.parametrize(
-    ("username", "password"),
-    [
-        ("operator", "admin"),
-        ("admin", "short"),
-        ("admin", " " * 20),
-        ("admin", "x" * 73),
-        ("admin", "changeme-example-password"),
-    ],
-)
-def test_local_exception_does_not_bypass_other_password_validation(values, username, password):
-    with pytest.raises(ValidationError):
-        Settings(
-            _env_file=None,
-            **{
-                **values,
-                "allow_insecure_local_admin": True,
-                "admin_username": username,
-                "admin_password": password,
-            },
-        )
-
-
-def test_production_keeps_its_password_and_secure_cookie_requirements(values):
-    production = {
-        **values,
-        "public_origin": "https://finances.example.com",
-        "auth_cookie_secure": True,
-    }
-    with pytest.raises(ValidationError, match="ADMIN_PASSWORD"):
-        Settings(_env_file=None, **production)
-    settings = Settings(
-        _env_file=None, **{**production, "admin_password": secrets.token_urlsafe(24)}
-    )
-    assert not settings.allow_insecure_local_admin
-    assert settings.auth_cookie_secure
-
-
-def test_local_mode_still_requires_a_strong_session_secret(values):
+def test_local_origins_still_require_a_strong_session_secret(values):
     with pytest.raises(ValidationError, match="AUTH_SECRET"):
-        Settings(
-            _env_file=None,
-            **{**values, "allow_insecure_local_admin": True, "auth_secret": "admin"},
-        )
+        Settings(_env_file=None, **{**values, "auth_secret": "admin"})
 
 
 @pytest.mark.parametrize("from_environment", [False, True])
@@ -283,7 +209,6 @@ def test_invalid_origin_rejects_the_entire_configuration(secure_values, invalid,
         Settings(_env_file=None, **{**secure_values, "public_origin": configured})
     message = str(error.value)
     assert "private-origin-password" not in message
-    assert secure_values["admin_password"] not in message
     assert secure_values["auth_secret"] not in message
 
 
@@ -311,61 +236,18 @@ def test_secure_cookies_require_every_origin_to_be_https(secure_values, insecure
         )
 
 
-def test_local_mode_accepts_a_list_of_loopback_origins(values):
+def test_plain_http_accepts_a_list_of_loopback_origins(values):
     origins = ("http://localhost:7778", "http://127.0.0.1:7778", "http://[::1]:7778")
-    settings = Settings(
-        _env_file=None,
-        **{**values, "public_origin": ",".join(origins), "allow_insecure_local_admin": True},
-    )
+    settings = Settings(_env_file=None, **{**values, "public_origin": ",".join(origins)})
     assert settings.public_origins == origins
     assert not settings.auth_cookie_secure
-    assert settings.admin_password.get_secret_value() == "admin"
 
 
-def test_local_mode_cannot_use_secure_cookies(values):
-    with pytest.raises(ValidationError, match="loopback HTTP origin"):
-        Settings(
-            _env_file=None,
-            **{
-                **values,
-                "public_origin": "https://localhost,https://127.0.0.1",
-                "allow_insecure_local_admin": True,
-                "auth_cookie_secure": True,
-            },
-        )
-
-
-@pytest.mark.parametrize("reverse", [False, True])
-@pytest.mark.parametrize(
-    "invalid",
-    [
-        "http://finances.example.com",
-        "http://localhost.example.com",
-        "http://localhost.",
-        "http://127.0.0.2:7778",
-        "http://0.0.0.0:7778",
-        "https://localhost:7778",
-        "https://finances.example.com",
-    ],
-)
-def test_local_mode_checks_every_origin(values, invalid, reverse):
-    origins = ["http://localhost:7778", invalid]
-    with pytest.raises(ValidationError, match="loopback HTTP origin"):
-        Settings(
-            _env_file=None,
-            **{
-                **values,
-                "allow_insecure_local_admin": True,
-                "public_origin": ",".join(reversed(origins) if reverse else origins),
-            },
-        )
 
 
 @pytest.mark.parametrize(
     ("field", "invalid"),
     [
-        ("admin_username", " "),
-        ("admin_password", "admin"),
         ("auth_secret", "short"),
         ("session_hours", 0),
         ("preview_hours", 169),
@@ -381,3 +263,33 @@ def test_multiple_origins_preserve_other_configuration_validation(secure_values,
                 field: invalid,
             },
         )
+
+
+@pytest.mark.parametrize("source", ["init", "environment", "env_file"])
+def test_retired_administrator_settings_are_ignored_and_reported(
+    values, monkeypatch, tmp_path, source,
+):
+    retired = {
+        "admin_username": "operator", "admin_password": "admin",
+        "allow_insecure_local_admin": "maybe",
+    }
+    env_file = tmp_path / ".env"
+    for name in RETIRED_SETTINGS:
+        monkeypatch.delenv(name, raising=False)
+    assert retired_settings(env_file) == []
+    configured = {**values}
+    if source == "init":
+        configured.update(retired)
+    elif source == "environment":
+        for name, value in retired.items():
+            monkeypatch.setenv(name.upper(), value)
+    else:
+        env_file.write_text(
+            "# Earlier releases\nADMIN_USERNAME=operator\nexport ADMIN_PASSWORD=admin\n"
+            "allow_insecure_local_admin=maybe\n",
+            encoding="utf-8",
+        )
+    settings = Settings(_env_file=env_file, **configured)
+    assert not any(hasattr(settings, name) for name in retired)
+    expected = [] if source == "init" else list(RETIRED_SETTINGS)
+    assert retired_settings(env_file) == expected

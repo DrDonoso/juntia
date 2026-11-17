@@ -23,6 +23,8 @@ def make_label(client, kind, name="Puertas"):
 
 
 def test_admin_edits_apply_to_every_association_without_mixing_catalogs(admin, config):
+    session = admin.get("/api/auth/session").json()
+    administrator = {"kind": "resident", "user_id": session["user_id"], "name": session["name"]}
     first = create_item(admin, labels=["Puertas", "Portal"])
     second = create_item(admin, labels=["Puertas"], status="done")
     label = next(label for label in first["labels"] if label["name"] == "Puertas")
@@ -49,7 +51,7 @@ def test_admin_edits_apply_to_every_association_without_mixing_catalogs(admin, c
             value["id"] for value in item["labels"]
         }
         event = admin.get(item_path(item) + "/history").json()["items"][0]
-        assert event["author"]["kind"] == "administrator"
+        assert event["author"] == administrator
         assert {change["field"] for change in event["changes"]} == {"labels", "label_color"}
         assert "Puertas" in event["changes"][0]["before"]
         assert "Accesos" in event["changes"][0]["after"]
@@ -77,7 +79,7 @@ def test_admin_edits_apply_to_every_association_without_mixing_catalogs(admin, c
 
 
 @pytest.mark.parametrize("kind", ["actions", "contacts"])
-def test_admin_label_routes_require_the_technical_session_and_same_origin(
+def test_admin_label_routes_require_an_administrator_and_same_origin(
     kind, actors, admin, config,
 ):
     resident, _, _, _ = actors
@@ -85,10 +87,10 @@ def test_admin_label_routes_require_the_technical_session_and_same_origin(
     endpoint = label_endpoint(kind)
     body = {"name": "Changed", "color": "#123456", "version": 1}
     with visitor(config) as anonymous:
-        for client in (anonymous, resident):
-            assert client.get(endpoint).status_code == 401
-            assert client.get(f"{endpoint}/{label['id']}").status_code == 401
-            assert client.patch(f"{endpoint}/{label['id']}", json=body).status_code == 401
+        for client, status in ((anonymous, 401), (resident, 403)):
+            assert client.get(endpoint).status_code == status
+            assert client.get(f"{endpoint}/{label['id']}").status_code == status
+            assert client.patch(f"{endpoint}/{label['id']}", json=body).status_code == status
     assert admin.patch(f"{endpoint}/{label['id']}", json=body, headers={
         "origin": "https://other.invalid",
     }).status_code == 403

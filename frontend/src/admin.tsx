@@ -1,13 +1,12 @@
 import { useRef, useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api, cache, clearPrivateData, errorMessage } from './api/client'
+import { api, cache, errorMessage } from './api/client'
 import type {
-  AccountOut, AuthOut, CatalogOut, ConfirmIn, FeatureFlagIn, FeatureFlagsOut, GeneralSettings, ImportOut, PreviewOut,
-  RowDecision, RuleImpact, RuleIn, RuleOut, UserAuthOut,
+  AccountOut, CatalogOut, ConfirmIn, FeatureFlagIn, FeatureFlagsOut, GeneralSettings, ImportOut, PreviewOut,
+  RowDecision, RuleImpact, RuleIn, RuleOut,
 } from './api/schema.gen'
 import { Modal, Notice, day, money, useAction, useCatalog, useFeatures, useGeneralSettings } from './shared'
 import { MetadataFields, TransactionTags, metadataDraft, prepareMetadata, type MetadataDraft } from './transaction-metadata'
-import { AuthCardHeader, useLoginNotice } from './auth'
 import { DocumentPolicyCard } from './documents-admin'
 import { Icon } from './icons'
 import { formatNumber, useI18n } from './i18n'
@@ -69,27 +68,6 @@ export function FeaturesPage() {
     {query.data?.documents && !query.error && <DocumentPolicyCard />}
     <p className="muted">{t('admin.features.footer')}</p>
   </div>
-}
-
-export function Login() {
-  const { t } = useI18n()
-  const [username, setUsername] = useState(''), [password, setPassword] = useState('')
-  const action = useAction()
-  const { setNotice } = useLoginNotice()
-  return <section className="card login"><AuthCardHeader eyebrow={t('auth.admin.eyebrow')} /><h1>{t('auth.admin.title')}</h1><p className="muted">{t('auth.admin.help')}</p>
-    <form onSubmit={event => { event.preventDefault(); void action.run(async () => {
-      const result = await api<AuthOut>('/admin/auth/login', 'POST', { username, password })
-      await clearPrivateData(true)
-      const reader = await api<UserAuthOut>('/auth/session')
-      cache.setQueryData(['reader-auth'], reader)
-      setPassword(''); cache.setQueryData(['auth'], result)
-      setNotice(null)
-    }) }}>
-      <label>{t('auth.admin.username')}<input autoComplete="username" required value={username} onChange={e => setUsername(e.target.value)} /></label>
-      <label>{t('auth.password')}<input type="password" autoComplete="current-password" required value={password} onChange={e => setPassword(e.target.value)} /></label>
-      {action.notice}<button disabled={action.busy}>{action.busy ? t('auth.admin.submitting') : t('auth.admin.submit')}</button>
-    </form>
-  </section>
 }
 
 function AccountName({ value }: { value: AccountOut }) {

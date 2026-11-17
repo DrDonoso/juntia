@@ -1,7 +1,7 @@
 /**
  * Helpers shared by the people handlers (people.ts, people-users.ts, people-account.ts): the
  * backend's parameter ranges, the ownership coefficient as the API shows it, the password policy
- * and invitations, which the demo sends without email.
+ * (also of the first-run setup, core.ts) and invitations, which the demo sends without email.
  */
 import { Body, hoursFromNow, idParam, nowIso, type PathParams } from '../core'
 import { MAX_PASSWORD_BYTES, passwordBytes } from '../store/people'
@@ -26,10 +26,11 @@ export function visibleCoefficient(dwelling: DemoDwelling): string | null {
   return coreStore().features.coefficient ? dwelling.coefficient : null
 }
 
-/** The dwelling of a neighbor (always there, like the backend's foreign key). */
-export function dwellingOf(resident: DemoResident): DemoDwelling {
+/** The dwelling of an account: null for an administrator without one (a set one always exists, like the backend's foreign key). */
+export function dwellingOf(resident: DemoResident): DemoDwelling | null {
+  if (resident.dwellingId === null) return null
   const dwelling = findDwelling(resident.dwellingId)
-  if (!dwelling) throw new Error(`Neighbor ${resident.id} lives in a missing dwelling ${resident.dwellingId}`)
+  if (!dwelling) throw new Error(`Account ${resident.id} lives in a missing dwelling ${resident.dwellingId}`)
   return dwelling
 }
 
@@ -47,7 +48,7 @@ export function accountToken(body: Body, key: string, { optional = false }: { op
   return value
 }
 
-/** Forgets a neighbor's invitation (backend: status and email changes clear it before any new one). */
+/** Forgets an account's invitation (backend: status and email changes clear it before any new one). */
 export function clearInvitation(resident: DemoResident): void {
   resident.invitationDelivery = 'none'
   resident.invitationSentAt = null
@@ -57,7 +58,7 @@ export function clearInvitation(resident: DemoResident): void {
 /**
  * Sends an invitation the way the backend records it once the SMTP server accepts the message
  * (`invitation_status` "sent", a link valid for 72 hours). The demo has no email: nothing leaves the
- * browser and no link exists, so the neighbor stays pending (see `POST /api/auth/activate`).
+ * browser and no link exists, so the account stays pending (see `POST /api/auth/activate`).
  */
 export function sendInvitation(resident: DemoResident): void {
   resident.invitationDelivery = 'sent'

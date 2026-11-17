@@ -3,7 +3,7 @@
 import openapiSource from '../../api/openapi.json?raw'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { resetDemo } from '../store'
-import { demoRequest } from '../testing'
+import { demoRequest, signInAdmin } from '../testing'
 import { UNAVAILABLE_IN_DEMO, handlers, unhandledHandler } from './index'
 
 const NOW = new Date(2026, 9, 29, 12)
@@ -89,7 +89,7 @@ describe('the demo API covers the OpenAPI document', () => {
       .map(operation => operation.key)
     expect(Object.keys(requests).sort()).toEqual(handled.sort())
     for (const [key, request] of Object.entries(requests).sort(([, a], [, b]) => Number(a.admin ?? false) - Number(b.admin ?? false))) {
-      if (request.admin) await demoRequest('POST', '/api/admin/auth/login', { body: { username: 'demo', password: 'demo' } })
+      if (request.admin) await signInAdmin()
       expect(await demoRequest(request.method, request.path, { body: request.body }), key).toMatchObject({ status: 403, body: { code: 'demo_unavailable' } })
     }
   })

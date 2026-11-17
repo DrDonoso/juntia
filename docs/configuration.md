@@ -10,6 +10,7 @@ that live in the database, such as the feature switches, are managed in the admi
 - [How settings are read](#how-settings-are-read)
 - [Quick reference](#quick-reference)
 - [Required settings](#required-settings)
+  - [Administrators are not settings](#administrators-are-not-settings)
 - [Origins, cookies and proxies](#origins-cookies-and-proxies)
 - [Network and image](#network-and-image)
 - [Language and time zone](#language-and-time-zone)
@@ -44,8 +45,6 @@ that live in the database, such as the feature switches, are managed in the admi
 | --- | --- | --- |
 | `POSTGRES_PASSWORD` | required | [Required settings](#required-settings) |
 | `AUTH_SECRET` | required | [Required settings](#required-settings) |
-| `ADMIN_USERNAME` | required (`admin` in `.env.example`) | [Required settings](#required-settings) |
-| `ADMIN_PASSWORD` | required | [Required settings](#required-settings) |
 | `PUBLIC_ORIGIN` | required by the server Compose file (`http://localhost:7778` in `.env.example`) | [Origins, cookies and proxies](#origins-cookies-and-proxies) |
 | `AUTH_COOKIE_SECURE` | `true` (`false` in `.env.example`) | [Origins, cookies and proxies](#origins-cookies-and-proxies) |
 | `TRUSTED_PROXY_IPS` | `127.0.0.1` | [Origins, cookies and proxies](#origins-cookies-and-proxies) |
@@ -62,7 +61,10 @@ that live in the database, such as the feature switches, are managed in the admi
 | `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` | AI off | [AI classification](#ai-classification) |
 | `SESSION_HOURS`, `PREVIEW_HOURS` | `168`, `24` | [Sessions and import previews](#sessions-and-import-previews) |
 | `DATABASE_URL`, `UPLOAD_DIR`, `BUILD_DATE` | set for you | [Set by Compose or the image](#set-by-compose-or-the-image) |
-| `LOCAL_PUBLIC_ORIGIN`, `ALLOW_INSECURE_LOCAL_ADMIN` | local stack only | [Local Compose only](#local-compose-only) |
+| `LOCAL_PUBLIC_ORIGIN` | local stack only | [Local Compose only](#local-compose-only) |
+
+`ADMIN_USERNAME`, `ADMIN_PASSWORD` and `ALLOW_INSECURE_LOCAL_ADMIN` no longer exist: see
+[administrators are not settings](#administrators-are-not-settings).
 
 ## Required settings
 
@@ -70,9 +72,19 @@ that live in the database, such as the feature switches, are managed in the admi
 | --- | --- |
 | `POSTGRES_PASSWORD` | Password of the `juntia` database role. Compose inserts it into the database URL, so it must be URL-safe: generate it with `openssl rand -hex 32` (or `python3 -c "import secrets; print(secrets.token_hex(32))"`). It only initializes a **new** database volume; to change it later, change the role's password in PostgreSQL as well (`ALTER ROLE juntia PASSWORD '…'`) before updating `.env`. |
 | `AUTH_SECRET` | Secret that binds session, invitation, recovery and Google sign-in tokens. At least 32 characters; generate it like the database password. Changing it signs everyone out and invalidates pending invitation and recovery links. Rotate it when you restore a backup. |
-| `ADMIN_USERNAME` | Username of the technical administrator (`/admin`). 1 to 150 characters; surrounding spaces are removed. It is never shown to residents: content the administrator writes appears as "Technical administrator". |
-| `ADMIN_PASSWORD` | Password of the technical administrator. At least 15 characters and at most 72 UTF-8 bytes (bcrypt's limit; longer passwords are rejected, never truncated). Placeholders starting with `changeme` or `replace-me` are refused. There are no default credentials and no setup page. |
 | `PUBLIC_ORIGIN` | The browser origin(s) of the deployment. See [Origins, cookies and proxies](#origins-cookies-and-proxies). |
+
+### Administrators are not settings
+
+Earlier releases defined a technical administrator with `ADMIN_USERNAME` and `ADMIN_PASSWORD` (and
+`ALLOW_INSECURE_LOCAL_ADMIN`, which let the local Compose file use `admin` / `admin`). These
+settings no longer exist: administrators are accounts with the administrator role. The first person
+to open a new installation creates the administration account, administrators give the role to
+others in **Settings > Users**, and on the server `python -m juntia.admins` grants it or prints
+sign-in links (see [administrators](deployment.md#administrators)). If the application still finds
+these variables in its environment or its `.env` file, it ignores them and logs a warning at startup
+asking to remove them. When upgrading, follow
+[upgrading to administrator accounts](deployment.md#upgrading-to-administrator-accounts).
 
 ## Origins, cookies and proxies
 
@@ -97,7 +109,8 @@ What the list does:
 - Every `POST`, `PUT`, `PATCH` and `DELETE` must carry exactly one `Origin` header that equals a
   listed origin (scheme, hostname and port) plus `X-Juntia-Request: 1`, or it is rejected with
   `403 invalid_origin`.
-- The **first** entry is the canonical address used in invitation and password recovery emails.
+- The **first** entry is the canonical address used in invitation and password recovery emails
+  (`python -m juntia.admins` prints its links for every entry).
 - Every listed origin serves the same community and database. Cookies are host-only, so people sign
   in separately on each hostname. Adding an origin does not invalidate existing sessions.
 
@@ -144,8 +157,8 @@ The database is never published: only the `api` service can reach it, on the Com
   community name ("Residential community"), and the account name given on the first statement
   import ("Community account");
 - fallback labels in API responses, such as "Uncategorized" and "No merchant" in the summary and
-  "Technical administrator" as the author of content the administrator writes (the web interface
-  shows these in each reader's own language);
+  "Technical administrator" as the author of what the technical administrator of earlier releases
+  wrote (the web interface shows these in each reader's own language);
 - the description and language of the web app manifest used for home-screen installation;
 - the OCR model, English or Spanish, that reads scanned pages and pictures for the
   [search of shared documents](deployment.md#reading-the-text-of-documents); after a change, the
@@ -166,20 +179,20 @@ times that do not exist or happen twice at a daylight-saving change are rejected
 
 | Variable | Default | Description and rules |
 | --- | --- | --- |
-| `ACTION_STORAGE_USER_QUOTA_MB` | `250` | Storage each resident may use for the PDFs they attach to actions and the images they paste into descriptions and comments. |
-| `ACTION_STORAGE_COMMUNITY_QUOTA_MB` | `2048` | Storage for all action PDFs and pasted images together, the technical administrator's included (the administrator has no budget of their own). |
+| `ACTION_STORAGE_USER_QUOTA_MB` | `250` | Storage each account, administrators included, may use for the PDFs they attach to actions and the images they paste into descriptions and comments. |
+| `ACTION_STORAGE_COMMUNITY_QUOTA_MB` | `2048` | Storage for all action PDFs and pasted images together, including those the technical administrator of earlier releases uploaded, which count only here. |
 | `MIN_FREE_DISK_MB` | `1024` | Free space to keep on the uploads volume. Uploads of PDFs, images and shared documents and statement imports that would leave less are refused. |
 
 All three are whole numbers of MiB (1 MiB = 1,048,576 bytes) between 1 and 1,073,741,824; any other
 value stops the startup. Every stored action PDF counts, active or withdrawn, and so does every
-pasted image, also after it is removed from its text, until the administrator deletes it
+pasted image, also after it is removed from its text, until an administrator deletes it
 permanently (purges it) in **Housekeeping > Free up space**. A refused upload writes nothing. Details, error
 codes and the purge are in the [deployment guide](deployment.md#storage-quotas-and-purging) and the
 [security model](security-model.md#storage-quotas-and-retention).
 
 Shared documents have their own limits, which are **not** environment variables: the largest file
-and video and the documents quotas per neighbor and for the community are set in **Settings >
-Storage > Shared documents limits** (see [settings that are not environment
+and video and the documents quotas per neighbor (administrators included) and for the community are
+set in **Settings > Storage > Shared documents limits** (see [settings that are not environment
 variables](#settings-that-are-not-environment-variables)). Their uploads also keep the free-disk
 reserve.
 
@@ -190,7 +203,9 @@ withdrawn PDFs, images or documents are purged.
 
 Email sends invitations, re-invitations after an email change, and password recovery links. Leave
 `SMTP_HOST` and `SMTP_FROM` empty to turn it off: everything else keeps working, but inviting a
-resident reports that email is not configured.
+resident reports that email is not configured. Without email, `python -m juntia.admins` can still
+print, on the server, the activation link of a new administrator and password links for existing
+accounts (see [administrators](deployment.md#administrators)).
 
 | Variable | Default | Description and rules |
 | --- | --- | --- |
@@ -238,13 +253,13 @@ never the PDF, the IBAN, the amounts or the balances. Sanitizing is not anonymiz
 
 | Variable | Default | Description and rules |
 | --- | --- | --- |
-| `SESSION_HOURS` | `168` | Fixed lifetime of resident and administrator sessions, 1 to 168 hours. |
+| `SESSION_HOURS` | `168` | Fixed lifetime of every session, administrators' included, 1 to 168 hours. |
 | `PREVIEW_HOURS` | `24` | Lifetime of an unconfirmed statement import preview, 1 to 168 hours. |
 
 Sessions expire the configured number of hours after sign-in, even while the user is active; browsing
 does not extend them. A change to `SESSION_HOURS` affects newly issued sessions only. Existing
 sessions retain their original expiry, so users may need to sign in again once after an increase.
-Signing out, changing credentials or revoking a resident's sessions still ends them immediately.
+Signing out, changing credentials or revoking an account's sessions still ends them immediately.
 Longer sessions also give anyone with access to a stolen cookie or shared device more time to use it.
 
 Both Compose files pass `SESSION_HOURS` from `.env`; after changing it,
@@ -267,17 +282,17 @@ The database service uses the fixed role and database name `juntia`.
 
 | Variable | Default | Description and rules |
 | --- | --- | --- |
-| `LOCAL_PUBLIC_ORIGIN` | `http://localhost:7778` | Passed to the application as `PUBLIC_ORIGIN`. A comma-separated list is accepted, but every entry must use HTTP and the hostname `localhost`, `127.0.0.1` or `[::1]`. If you change `APP_PORT`, include the new port here. |
-| `ALLOW_INSECURE_LOCAL_ADMIN` | `false` (the local Compose file sets `true`) | Exempts exactly `admin` / `admin` from the administrator password rules. It requires every origin to be loopback HTTP and `AUTH_COOKIE_SECURE=false`, and nothing else is relaxed. Never set it on a server. |
+| `LOCAL_PUBLIC_ORIGIN` | `http://localhost:7778` | Passed to the application as `PUBLIC_ORIGIN`. A comma-separated list is accepted. The local stack uses plain HTTP with non-Secure cookies and publishes its port on `127.0.0.1` only, so list loopback HTTP origins (`localhost`, `127.0.0.1` or `[::1]`). If you change `APP_PORT`, include the new port here. |
 
-The local Compose file always signs in the administrator with `admin` / `admin`, uses non-Secure
-cookies over HTTP and publishes the port on `127.0.0.1` only. Never expose it through a proxy,
-tunnel or shared network.
+The local Compose file has no administrator credentials: on a new database, the first visit creates
+the administration account, as on a server (`ALLOW_INSECURE_LOCAL_ADMIN` and the local `admin` /
+`admin` of earlier releases no longer exist). It uses non-Secure cookies over HTTP and publishes the
+port on `127.0.0.1` only. Never expose it through a proxy, tunnel or shared network.
 
 ## Settings that are not environment variables
 
-These are stored in the database, survive restarts and backups, and are changed by the technical
-administrator without restarting anything:
+These are stored in the database, survive restarts and backups, and are changed by administrators
+without restarting anything:
 
 - **Features** (`/admin/features`): ownership coefficients, Actions, Events and Documents, and who
   can change shared documents. Older `FEATUREFLAG_*` environment variables are no longer read and
@@ -289,7 +304,8 @@ administrator without restarting anything:
   once to new uploads; files already stored are kept.
 - **General** (`/admin/general`): the community name.
 - The bank account's display name, in **Finances > Import**.
-- Dwellings, users, the presidency, categories, tags, rules and labels.
+- Dwellings, users and their administrator role, the presidency, categories, tags, rules and
+  labels.
 
 See [docs/features.md](features.md#administration).
 

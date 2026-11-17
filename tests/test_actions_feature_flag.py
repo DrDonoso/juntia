@@ -64,7 +64,7 @@ def test_disabling_actions_blocks_every_api_but_retains_data_and_sessions(actors
             assert client.get("/api/neighbors").status_code == 200
             assert client.get("/api/auth/session").json()["authenticated"] is True
         assert operator.get("/api/admin/users").status_code == 200
-        assert resident.get("/api/admin/users").status_code == 401
+        assert resident.get("/api/admin/users").status_code == 403
     set_flag(admin, "actions", True)
     assert first.get("/api/features").json()["actions"] is True
     assert first.get(path).json() == current

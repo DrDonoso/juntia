@@ -14,6 +14,7 @@ from juntia.app import create_app
 from juntia.bootstrap import seed
 from juntia.config import Settings
 from juntia.db import Base
+from tests.support import ADMINISTRATOR
 
 
 @pytest.fixture
@@ -32,6 +33,9 @@ def config(tmp_path, language):
         engine = create_async_engine(url)
         async with engine.begin() as connection:
             await connection.run_sync(Base.metadata.drop_all)
+            # Revision 0024 dropped the technical administrator's sessions, which the models no
+            # longer know: a test that ends below it leaves the table behind.
+            await connection.execute(text("DROP TABLE IF EXISTS sessions"))
             await connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
         await engine.dispose()
 
@@ -54,8 +58,6 @@ def config(tmp_path, language):
         _env_file=None,
         database_url=url,
         app_language=language,
-        admin_username="admin",
-        admin_password=secrets.token_urlsafe(24),
         auth_secret=secrets.token_urlsafe(32),
         auth_cookie_secure=False,
         google_client_id="",
@@ -81,13 +83,8 @@ def client(config):
 
 
 @pytest.fixture
-def admin(client, config):
-    response = client.post(
-        "/api/admin/auth/login",
-        json={
-            "username": config.admin_username,
-            "password": config.admin_password.get_secret_value(),
-        },
-    )
-    assert response.status_code == 200, response.text
+def admin(client):
+    # The first visitor of the new installation creates the administration account.
+    response = client.post("/api/auth/setup", json=ADMINISTRATOR)
+    assert response.status_code == 201, response.text
     return client

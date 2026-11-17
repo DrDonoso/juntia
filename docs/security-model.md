@@ -1,75 +1,132 @@
 # Security model
 
 Juntia is a single-community application, not a multi-tenant service.
-Financial reads require an active invited resident or technical administrator
-session. Residents can view community financial movements but cannot write
-financial data or access statement metadata, original bank PDFs, user management,
-or AI operations. Community actions are intentionally collaborative as described below.
+Financial reads require the session of an active account: an invited resident or
+an administrator. Accounts without the administrator role can view community
+financial movements but cannot write financial data or access statement
+metadata, original bank PDFs, user management, or AI operations. Community
+actions are intentionally collaborative as described below.
 An external access policy can provide defense in depth; apply it to every allowed
 hostname/access route and prevent direct origin bypass when using one.
 Allowing a second URL does not create a separate community or bypass login.
 
-## Administrator credentials
+## Administrator accounts
 
-Set unique `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `AUTH_SECRET` values in the
-server environment. Production has no default credentials or public setup endpoint.
-Keep `.env` readable only by the deployment owner. Environment variables are not
-an encrypted secret store and remain visible to privileged host/container
-operators. Never prefix server secrets with `VITE_`.
+Administrators are ordinary accounts with an administrator role, stored in the
+database. There is no shared or environment-defined administrator credential, no
+separate administrator sign-in (the `/api/admin/auth/*` endpoints of earlier
+releases are gone) and no default account: the `ADMIN_USERNAME`,
+`ADMIN_PASSWORD` and `ALLOW_INSECURE_LOCAL_ADMIN` settings of earlier releases
+are ignored, and startup logs a warning naming each one still set, never its
+value, until it is removed.
+Set a unique `AUTH_SECRET` in the server environment and keep `.env` readable
+only by the deployment owner. Environment variables are not an encrypted secret
+store and remain visible to privileged host/container operators. Never prefix
+server secrets with `VITE_`.
 
-`docker-compose.local.yml` intentionally uses `admin` / `admin` and explicitly
-enables `ALLOW_INSECURE_LOCAL_ADMIN`. That exception is disabled by default,
-requires every configured origin to be loopback HTTP, and only exempts this exact
-credential pair from the minimum password length. Local Compose fixes the published address to
-`127.0.0.1`; never expose it through a proxy, tunnel, or shared network. Use the
-server Compose file with strong credentials for any shared deployment.
-`LOCAL_PUBLIC_ORIGIN` is passed to `PUBLIC_ORIGIN` and may contain a CSV only if
-every hostname is exactly `localhost`, `127.0.0.1`, or `::1`, with non-Secure
-cookies. Mixing a remote origin or HTTPS into that list fails startup.
-Database passwords and `AUTH_SECRET` still require unique local values.
+**First run.** A new installation, seeded without accounts, offers its first
+visitor the creation of the administration account: `GET /api/auth/setup` tells
+whether the offer is open, and `POST /api/auth/setup` with a name, email and
+password creates an active administrator without a dwelling and signs it in. It
+has the Origin and `X-Juntia-Request` checks, body limit and password policy of
+the other account endpoints, and is throttled to 5 attempts per email and 20 per
+client address per hour. One atomic update closes the offer as the account is
+created, so simultaneous requests cannot create two administrators; later
+requests get `409 setup_unavailable`. The offer stays closed once any account
+exists (`python -m juntia.admins invite` also closes it), and migration `0024`
+leaves upgraded installations closed, also those without accounts. Until the
+account exists, **anyone who can reach the server can create it** and administer
+the community: create it right after the first start, while Juntia is reachable
+only from the server itself (or through an SSH tunnel to it) and before
+publishing its hostname, then check that `GET /api/auth/setup` answers
+`{"available":false}`.
 
-The server verifies a bcrypt password hash and stores only hashes of random
-session tokens. Cookies are host-only (no Domain attribute), HttpOnly and SameSite
-Strict, with Secure enabled in production and Path `/api`. They are not
+**Authorization.** `/api/admin/*` requires a signed-in account with the role:
+without a session it answers `401 authentication_required`, and for a signed-in
+account without the role `403 administrator_required`. The role is read from the
+database on every request, with the account's status and session, so granting or
+revoking it applies at once, without signing anyone out; administrative changes
+check it before their body is received and again when they run. The browser
+re-reads the session every 30 seconds and right after a refused administration
+request, then closes an open administration page; that is a convenience, not the
+protection. Administrative writes keep the Origin and anti-CSRF checks of every
+change.
+
+**Managing the role.** Administrators invite accounts, with or without the role,
+and manage other administrators like any account: give the role only to people
+trusted with the whole community's data. A change that would leave no active
+administrator (taking the role from the last one, or deactivating, deleting or
+changing the email of that account) is refused with `409 last_administrator`;
+these changes are serialized under one lock, so two administrators cannot remove
+each other at once. Nobody changes their own role or email, or deactivates or
+deletes their own account (`409 cannot_modify_self`): another administrator must.
+A dwelling is required unless the account is an administrator
+(`422 dwelling_required`).
+
+**Command line.** `python -m juntia.admins` lists the administrators, grants and
+revokes the role with the same rules (it never revokes the last active
+administrator), invites a pending administrator and prints one-time activation or
+password links for every configured origin, without sending email. It needs the
+application's settings and database, that is, a shell on the server or in the
+container: whoever has that access already controls the data. A printed link
+gives access to its account until it is used or expires (72 hours for an
+activation, one hour for a recovery): do not paste it into tickets, chats or
+logs. See [administrators](deployment.md#administrators).
+
+`docker-compose.local.yml` has no administrator credentials either: a new local
+database offers the same first-run screen. Local Compose fixes the published
+address to `127.0.0.1`; never expose it through a proxy, tunnel, or shared
+network. `LOCAL_PUBLIC_ORIGIN` is passed to `PUBLIC_ORIGIN`; list only HTTP
+origins whose hostname is `localhost`, `127.0.0.1`, or `::1` there, because the
+local stack uses non-Secure cookies. Database passwords and `AUTH_SECRET` still
+require unique local values.
+
+The server verifies bcrypt password hashes and stores only hashes of random
+session tokens. Every account, administrators included, gets the same session
+cookie, `juntia_user`: host-only (no Domain attribute), HttpOnly and SameSite
+Strict, with Secure enabled in production and Path `/api`. It is not
 automatically shared between hostnames; sign in on each hostname separately.
-Adding an origin alone does not invalidate existing sessions.
-Credential/secret rotation invalidates existing sessions after
-process restart; logout revokes the current token. With Compose, recreate the API
-container after editing `.env` (a plain restart retains its old environment).
-Rotate `AUTH_SECRET` when restoring a backup so old sessions cannot reappear.
-Administrative mutations require a valid technical administrator session,
-and same-origin POST/PUT/PATCH/DELETE requests, including login initiation,
+Adding an origin alone does not invalidate existing sessions. Secret rotation
+invalidates existing sessions after process restart; logout revokes the current
+token. With Compose, recreate the API container after editing `.env` (a plain
+restart retains its old environment). Rotate `AUTH_SECRET` when restoring a
+backup so old sessions cannot reappear. Signing in and signing out also delete
+the `juntia_admin` cookie that earlier releases gave the technical
+administrator, whose sessions migration `0024` removed. Same-origin
+POST/PUT/PATCH/DELETE requests, including sign-in and the first-run setup,
 require exactly one configured Origin and `X-Juntia-Request: 1`. Google's GET
 callback has separate protocol state, browser binding, nonce and PKCE protection
 described below.
-Administrative login uses shared, atomic database counters: 10 attempts per
-client-address/username pair and 50 per client address in five minutes. A client
-cannot consume another address's allowance by guessing the administrator name;
-changing names or untrusted forwarded headers does not evade the address limit.
-Successful attempts also count. These counters survive process restarts, expire
-at the window boundary, and are separate from resident limits. The legacy
-`State.login_attempts` field is no longer used for authentication.
-Empty or overlong password input is rejected even if the configured password
-matches the dummy value used to keep bcrypt verification on the failure path.
-Clients behind the same trusted address share its allowance. Distributed attacks
-still require appropriate proxy/access-policy protection; there is no global
-account lockout that anonymous clients can trigger. The client address is the
-proxy's unless `TRUSTED_PROXY_IPS` lists it: with Docker, a proxy on the same
-host reaches the container from the Compose network's gateway, not `127.0.0.1`
-(see [trusted proxies](deployment.md#trusted-proxies)). Without that setting,
-every visitor shares the proxy's allowance.
 
-The administrator's login name is never shown to residents. Every record the
-technical administrator authors (actions, comments, PDFs, events, contacts and all
-their history entries) is returned with the fixed author label "Technical
-administrator" (in `APP_LANGUAGE`) instead of `ADMIN_USERNAME`. The label is
-applied when records are read, so entries saved before this rule existed are
-covered too, and the interface always renders administrator authors with the
-label in the reader's own language. Only the administrator's own session
-responses contain its username.
+Sign-in uses shared, atomic database counters: 10 attempts per email and 50 per
+client address in five minutes. For an administrator, the 10 attempts count per
+client address and email, like the technical administrator's sign-in of earlier
+releases: failures from one client never lock an administrator out elsewhere.
+Changing emails or untrusted forwarded headers does not evade the address limit.
+Successful attempts also count. These counters survive process restarts and
+expire at the window boundary. The legacy `State.login_attempts` field is no
+longer used for authentication. When an account does not exist or cannot sign in
+with a password, the password is still checked against a placeholder bcrypt
+hash, so the answer takes as long as a real check; empty or overlong passwords
+never match, not even that placeholder. Clients behind the same trusted address
+share its allowance. A neighbor's per-email counter is shared by every client,
+so whoever knows that email can keep its password sign-in throttled, five
+minutes at a time; existing sessions and Google sign-in are not affected. Distributed
+attacks still require appropriate proxy/access-policy protection. The client
+address is the proxy's unless `TRUSTED_PROXY_IPS` lists it: with Docker, a proxy
+on the same host reaches the container from the Compose network's gateway, not
+`127.0.0.1` (see [trusted proxies](deployment.md#trusted-proxies)). Without that
+setting, every visitor shares the proxy's allowance.
+
+Administrators write under their own account and name, like everyone. What the
+technical administrator of earlier releases wrote (actions, comments, PDFs,
+images, events, contacts and all their history entries, and shared documents)
+is returned with the fixed author label "Technical administrator" (in
+`APP_LANGUAGE`) instead of its login name, and the interface renders it in the
+reader's own language.
 
 Cookie names do not use the `__Host-` prefix, because that prefix requires
-`Path=/` while Juntia scopes its session cookies to `/api` (and the short-lived
+`Path=/` while Juntia scopes its session cookie to `/api` (and the short-lived
 Google sign-in cookie to `/api/auth`). Without it, a site on a sibling subdomain
 of the same registrable domain (for example `other.example.com` next to
 `juntia.example.com`) could set a cookie with the same name for the parent
@@ -78,24 +135,23 @@ could sign a visitor into an account chosen by the attacker. Host Juntia on a
 domain whose sibling subdomains you control, and do not let untrusted parties
 publish content on other subdomains of it.
 
-## Resident accounts and invitations
+## Accounts and invitations
 
-Only the technical administrator can create dwellings and invite residents.
-There are no public registration/setup endpoints or resident administrator roles.
-Emails are validated, normalized, and uniquely constrained. A resident belongs
-to exactly one dwelling; its coefficient is shared metadata, not an authorization
-boundary. Every active resident can read the same community ledger.
+Only administrators can create dwellings and invite accounts. There is no public
+registration: apart from the first-run setup of a new installation (see
+[administrator accounts](#administrator-accounts)), every account starts with an
+invitation. Emails are validated, normalized, and uniquely constrained. A
+resident belongs to exactly one dwelling, and an administrator to one or none;
+the dwelling's coefficient is shared metadata, not an authorization boundary.
+Every active account can read the same community ledger.
 
-Resident passwords use bcrypt, with a minimum of 10 characters and a maximum of
-72 UTF-8 bytes; overlong inputs are rejected, never silently truncated. Resident
-forms count Unicode code points for the minimum and show localized inline errors
-without exposing storage details. This does not relax the independent technical
-administrator password policy. Session
-and account-link tokens are random, purpose-bound, and stored only as hashes
-bound to `AUTH_SECRET`. Resident and technical administrator cookies are
-separate. Both are HttpOnly/SameSite Strict, Secure in production, and scoped to
-`/api`; legacy administrator cookies are migrated without extending expiry.
-The interface's logout revokes both browser identities and clears private caches.
+Passwords of every account, administrators included, use bcrypt, with a minimum
+of 10 characters and a maximum of 72 UTF-8 bytes; overlong inputs are rejected,
+never silently truncated. Password forms count Unicode code points for the
+minimum and show localized inline errors without exposing storage details.
+Session and account-link tokens are random, purpose-bound, and stored only as
+hashes bound to `AUTH_SECRET`. Every account has the single session cookie
+described above; the interface's logout revokes it and clears private caches.
 Sessions expire 168 hours after sign-in by default, not after inactivity; `SESSION_HOURS` can set
 the lifetime from 1 to 168 hours for newly issued sessions. Existing sessions keep their original
 expiry. A longer lifetime also extends the time a stolen cookie can be used.
@@ -105,32 +161,36 @@ requires an explicit password-submission POST or a verified Google callback
 after same-origin initiation from the invitation. GETs from email scanners do
 not consume invitation links. Tokens are
 single-use and consumed atomically. Changing a password or email, or disabling a
-user, revokes resident sessions and outstanding links. Reactivation never
+user, revokes that account's sessions and outstanding links. Reactivation never
 resurrects old sessions. A disabled or unactivated account cannot use password
 recovery to obtain access. The last connection records successful password or Google
 authentication, not browsing activity.
 
-The resident profile resolves its owner exclusively from the authenticated
-session, never a client-supplied user ID. Display name and contact phone are self-editable;
-email, dwelling, coefficient and account state remain administrator-managed.
+The profile, available to every account, resolves its owner exclusively from the
+authenticated session, never a client-supplied user ID. Display name and contact
+phone are self-editable; email, dwelling, coefficient, role and account state
+remain administrator-managed, and administrators cannot change their own role or
+email in the administration either.
 Password changes require the current password, are throttled separately, and
 recheck session/account validity after password verification. Password changes
 and the explicit all-devices logout revoke sessions and pending account links
-without updating the last-login timestamp. The technical administrator cannot
-edit its environment-backed credentials through resident profile endpoints.
+without updating the last-login timestamp.
 
-Permanent resident deletion is administrator-only and requires the current
+Permanent account deletion is administrator-only, refused for one's own account
+and for the last active administrator, and requires the current
 record version and matching normalized email as explicit confirmation. The user
 row is locked while its session/token/Google-flow records and then the user are
 removed in one transaction. A failed deletion rolls back revocation as well.
 Dwelling and finance records are not deleted. A fresh invitation can reuse the
-email but not the deleted resident ID; old sessions and links do not transfer.
+email but not the deleted account's ID; old sessions and links do not transfer.
 Google consent outside this application and expiring abuse-prevention counters
 are unaffected. No self-service or anonymous user-deletion endpoint is exposed.
 
-The authenticated neighbors directory exposes only dwelling labels and active
-residents' IDs, names, account emails and voluntarily supplied/admin-managed contact phones.
-This community-only email visibility is intentional. It excludes pending/disabled accounts, credentials, invitation details,
+The authenticated neighbors directory exposes only dwelling labels and the IDs,
+names, account emails and voluntarily supplied/admin-managed contact phones of
+active accounts with a dwelling.
+This community-only email visibility is intentional. It excludes pending/disabled accounts,
+accounts without a dwelling, roles, credentials, invitation details,
 coefficients and last-login information. Its API uses the same authenticated
 reader gate as financial data; no anonymous directory is available.
 Phone entry explicitly discloses community visibility and may be left blank.
@@ -139,12 +199,12 @@ characters and URI schemes are rejected before producing `tel:` links.
 Contact phones are not verified identities or authentication factors. Updating
 a number does not change credentials, revoke sessions or count as a login.
 
-Login is limited to 10 attempts per identity and 50 per client address per
-five-minute window. Recovery is limited to 5 requests per identity and 20 per
-client per hour; administrator invitations to 10 per identity and 200 per client
-per hour. Token submissions are separately limited. Counters are persisted,
-expired records are cleaned up, and resident limits do not consume the technical
-administrator's allowance. Trust only configured proxies for the client address.
+Login is limited to 10 attempts per email (per client address and email for
+administrators) and 50 per client address per five-minute window. Recovery is limited to 5 requests per
+identity and 20 per client per hour, like the first-run setup; invitations sent
+by administrators to 10 per identity and 200 per client per hour. Token
+submissions are separately limited. Counters are persisted and expired records
+are cleaned up. Trust only configured proxies for the client address.
 
 SMTP secrets remain in server configuration. STARTTLS/implicit TLS verifies
 certificates; plaintext is restricted to explicit loopback development. SMTP
@@ -155,44 +215,48 @@ Public recovery responses stay neutral to avoid exposing account existence;
 SMTP delivery runs after the response so its latency cannot disclose membership.
 Operators must monitor sanitized delivery failures; in-process recovery mail
 may need to be requested again after a server restart. SMTP acceptance is not
-proof of final delivery. No raw resident-session, invitation or recovery token is
-returned by a production API.
+proof of final delivery. No raw session, invitation or recovery token is
+returned by a production API; only `python -m juntia.admins`, run on the server,
+prints invitation and recovery links.
 
 Email links use only the first normalized origin in `PUBLIC_ORIGIN`, carry tokens in fragments, and
 are removed from the browser address bar when opened. Do not add third-party
 analytics to these screens. Tokens and passwords must not enter logs, browser
 storage, screenshots, or monitoring payloads. Preserve the no-referrer policy.
-Only branding, feature availability, assets, health/version and account-access flows remain public.
-Protect backups containing resident emails and password hashes; rotating
-`AUTH_SECRET` also invalidates restored resident sessions and account links.
+Only branding, feature availability, assets, health/version, the first-run setup
+status and account-access flows remain public.
+Protect backups containing account emails and password hashes; rotating
+`AUTH_SECRET` also invalidates restored sessions and account links.
 
 ## Google authentication
 
 Google is optional and server-configured through `GOOGLE_CLIENT_ID` and
 `GOOGLE_CLIENT_SECRET`. The application requests only `openid email profile` and never
-grants administrator permissions through Google. It neither creates a resident
-nor assigns a dwelling from a Google response. Initial association requires
-either a valid invitation for that verified email or an active resident session
-and the current local password. This applies to Gmail, Workspace and third-party
-email accounts alike: a Google email match is never sufficient for automatic
-account linking. The stable Google `sub` is unique in the database; it is not
-derived from the email address.
+grants administrator permissions through Google: a Google sign-in opens the
+account it is linked to, with the role that account has in the database, so
+protect the Google accounts linked to administrators like their passwords. It
+neither creates an account nor assigns a dwelling or role from a Google response.
+Initial association requires either a valid invitation for that verified email
+or an active session and the current local password. This applies to Gmail,
+Workspace and third-party email accounts alike: a Google email match is never
+sufficient for automatic account linking. The stable Google `sub` is unique in
+the database; it is not derived from the email address.
 
 Only invitation activation imports the optional full name from the verified ID
-token. The existing resident-name validation applies; missing or invalid names
+token. The existing account-name validation applies; missing or invalid names
 leave the administrator-supplied name unchanged without blocking activation.
 Invalid names are logged without including their contents. Google profile names
 are not verified legal identities, and later logins or account linking never
-overwrite resident names.
+overwrite account names.
 
 The server-side code flow uses a short-lived, hashed database state bound to the
-browser, origin and (for linking) the resident session/version. State is consumed
+browser, origin and (for linking) the account's session/version. State is consumed
 atomically before contacting the provider. PKCE verifiers and nonces are derived
 from unpredictable state using `AUTH_SECRET`; invitation tokens are never sent
 to Google. A separate `juntia_google` cookie is HttpOnly, host-only, scoped to
 `/api/auth`, expires in ten minutes and uses SameSite **Lax** for the top-level
-redirect from Google. Normal resident and administrator session cookies remain
-SameSite **Strict**. Expired/replayed state or cross-browser/origin callbacks fail.
+redirect from Google. The normal session cookie remains SameSite **Strict**.
+Expired/replayed state or cross-browser/origin callbacks fail.
 
 Token exchange and signing-key retrieval use fixed Google HTTPS endpoints,
 bounded timeouts and verified TLS, without following arbitrary redirects.
@@ -219,8 +283,8 @@ Synthetic-provider overrides live only in the disposable browser-test script.
 
 ## Shared contacts and retained history
 
-The contacts, contact-tag and contact-history APIs require a current active
-resident or technical administrator session. All members may create, edit and
+The contacts, contact-tag and contact-history APIs require a current session of
+an active account. All members may create, edit and
 withdraw any contact and create/edit shared colored contact tags. These rights
 do not grant financial, account-management, community-action moderation or
 administrative permissions. Contact tags are separate from both other catalogs,
@@ -236,7 +300,7 @@ do not create events. Contacts never advance the financial import revision.
 Removal is logical, not erasure: former contact details, notes, tag snapshots
 and authorship remain readable by authenticated members in the history. Actor
 IDs/names are historical snapshots, not cascading references to accounts.
-The deletion confirmation discloses retention. Only the technical administrator
+The deletion confirmation discloses retention. Only administrators
 can enumerate removed contacts through `/api/admin/contacts/deleted`; the
 individual history retains its existing authenticated read-only access.
 There are no application
@@ -248,16 +312,17 @@ Notes are rendered as plain text. Emails and normalized phones are validated
 before constructing mail/dialer links, and colors accept only six-digit hex.
 Copying requires browser clipboard permission or an explicit manual fallback.
 Opening a link delegates to the device, not an SMTP or telephony service.
-Private queries are cleared on logout, revocation and identity changes, and
-responses from the previous identity cannot repopulate that cache.
+Private queries are cleared on logout, revocation, identity changes and changes of
+the administrator role, and responses from the previous identity cannot
+repopulate that cache.
 
 ## Community actions and retained PDFs
 
-`/api/actions` requires an active resident or technical administrator session for
+`/api/actions` requires a session of an active account for
 every read, mutation and download, including historical documents. Community
 actions deliberately allow every member to create and edit any action or change
 its state. This does not grant financial write access or access to administration.
-Only a contribution's author or the technical administrator can edit or withdraw a
+Only a contribution's author or an administrator can edit or withdraw a
 comment, or rename or withdraw a PDF. Parent-action identifiers are checked when
 resolving comments and attachments.
 
@@ -273,10 +338,10 @@ The history is append-only through the application, not a tamper-proof external
 audit log. Previous text, actor names at the time of the action and withdrawn
 PDFs remain visible to all authenticated members, including after the original
 author changes name, is deactivated or is deleted. Actor IDs are snapshots;
-resident IDs are not reused, so a newly invited account cannot acquire ownership
+account IDs are not reused, so a newly invited account cannot acquire ownership
 of an earlier account's contributions. The interface discloses this retention.
 There is no endpoint to delete actions, comments or history entries. The only
-permanent deletion is the administrator's purge of a withdrawn PDF's file (see
+permanent deletion is an administrator's purge of a withdrawn PDF's file (see
 [storage quotas and retention](#storage-quotas-and-retention)), which keeps its
 record and history. Do not publish content that must later be erased through the
 ordinary withdrawal controls.
@@ -365,10 +430,10 @@ Images are shared with every member, like the texts that show them. Removing an
 image from a text does not delete it, because earlier versions of the text in the
 history may still show it; images have no withdrawal and no history entry of
 their own. Their bytes count against the same quotas as the PDFs (see below), and
-only the technical administrator can delete one permanently, after which its
+only administrators can delete one permanently, after which its
 address answers `410 image_purged` wherever it appears. A member can paste a
 misleading picture, or one showing personal data: treat member images as
-untrusted, and ask the administrator to purge an image that must disappear.
+untrusted, and ask an administrator to purge an image that must disappear.
 Calendar exports copy event descriptions as written, with the community's own
 image addresses made absolute; those addresses still require signing in.
 
@@ -380,9 +445,10 @@ by bytes, not only by the number of active files:
 
 - **Quotas.** Every stored action PDF, active or withdrawn, and every stored
   image counts until it is purged: against its author's quota
-  (`ACTION_STORAGE_USER_QUOTA_MB`, 250 MiB by default) and against the community
-  quota (`ACTION_STORAGE_COMMUNITY_QUOTA_MB`, 2048 MiB by default), which also
-  covers the technical administrator. Withdrawing a PDF or removing an image from
+  (`ACTION_STORAGE_USER_QUOTA_MB`, 250 MiB by default), administrators included,
+  and against the community quota (`ACTION_STORAGE_COMMUNITY_QUOTA_MB`, 2048 MiB
+  by default), which also covers what the technical administrator of earlier
+  releases uploaded (it has no quota of its own). Withdrawing a PDF or removing an image from
   its text never frees quota, so repeatedly uploading and withdrawing cannot fill
   the disk. Uploads over a quota fail with `409 action_storage_user_quota` or
   `409 action_storage_community_quota`, checked in that order.
@@ -400,12 +466,12 @@ by bytes, not only by the number of active files:
 - Rejected uploads leave no file and no history event. The server logs a warning
   whenever the community quota or the reserve refuses an upload. Installations
   already over a quota refuse new uploads until enough is purged.
-- **Purge.** Only the technical administrator can purge, through
+- **Purge.** Only administrators can purge, through
   `/api/admin/storage` (the **Free up space** page), with the usual Origin and
   anti-CSRF checks; it keeps working while Actions is off. Only withdrawn PDFs
   can be purged (`409 action_attachment_active`). A purge deletes the file but
   keeps the attachment record and adds an `attachment_purged` history event,
-  authored by the administrator, with the file name, size and SHA-256 checksum.
+  authored by the administrator who purged it, with the file name, size and SHA-256 checksum.
   It frees the quota at once, and later downloads and previews answer
   `410 action_attachment_purged`. It does not change the action's version.
 - **Purge failures.** The file is deleted inside the database transaction: if
@@ -422,7 +488,7 @@ by bytes, not only by the number of active files:
 
 ## Community events
 
-`/api/events` requires an active resident or technical administrator session and
+`/api/events` requires a session of an active account and
 the Events switch (off by default) for every read, change and calendar export.
 Every member can create, edit and delete any event; versions reject stale
 changes, and each change and its history entry share a transaction. Deletion is
@@ -440,7 +506,7 @@ positive integer before requesting anything.
 
 ## Shared documents
 
-`/api/documents` requires an active resident or technical administrator session
+`/api/documents` requires a session of an active account
 and the Documents switch (off by default) for every read, upload, preview and
 download; chunk uploads are authorized before their body is received. Every
 document is **public to all members**: anything uploaded can be listed, previewed
@@ -448,9 +514,9 @@ and downloaded by every resident, and the interface says so above the files. It
 is meant for documents of common interest, not for private ones.
 
 Every member can create folders and upload files. Renaming, moving, uploading a
-new version and deleting follow the administrator's policy (`/admin/features`):
-only whoever created the item (the default), only the technical administrator,
-or every member; the technical administrator always can. Under the default
+new version and deleting follow the administrators' policy (`/admin/features`):
+only whoever created the item (the default), only administrators,
+or every member; administrators always can. Under the default
 policy a member can delete a folder only when they created everything inside
 it. The server enforces the policy on every change; the interface only hides
 what it would refuse. Changes to the tree are serialized by one lock (an
@@ -529,15 +595,15 @@ completed file is moved back to the upload so that a retry can finish it.
 Unfinished uploads expire a day after their last chunk, each person keeps at
 most 4, and the startup removes expired uploads and orphaned partial files.
 Every stored version, current, earlier or deleted, counts against the
-uploader's documents quota and the community's (see the
+uploader's documents quota, administrators included, and the community's (see the
 [deployment guide](deployment.md#shared-documents)); quotas are checked under
 the lock when an upload starts and when it completes, and every chunk respects
 the free-disk reserve. The sizes and quotas are database settings that only
-the technical administrator changes (`/api/admin/settings/documents`, with
+administrators change (`/api/admin/settings/documents`, with
 the usual Origin and anti-CSRF checks); the server accepts whole MiB within
 fixed bounds (files and videos up to 10 GiB, quotas up to 10 TiB) and applies
 them to the next uploads and checks. Deleting hides an item and everything inside it from
-members but keeps its files and history; only the technical administrator can
+members but keeps its files and history; only administrators can
 see deleted documents, restore them or purge them. Purging deletes the files
 of every version inside the database transaction, keeps names and history, and
 cannot be undone except from a backup; earlier versions of a file can also be
@@ -559,8 +625,8 @@ permissions and user/session management are unchanged. The **Events** switch
 defaults to off and works the same way for `/api/events` (`events_disabled`),
 images of event descriptions included. The **Documents** switch also defaults to
 off and works the same way for `/api/documents` (`documents_disabled`), uploads,
-previews and ZIP downloads included; the technical administrator keeps managing
-deleted documents, their storage and the reading of their text while it is off. The administrator's storage
+previews and ZIP downloads included; administrators keep managing
+deleted documents, their storage and the reading of their text while it is off. The storage
 page keeps showing and purging images while either switch is off.
 
 **Ownership coefficients** is an administrator-controlled setting, not a
@@ -570,8 +636,8 @@ writes are rejected server-side. Existing values remain stored for later
 re-enablement. All existing authentication and administrator checks still apply.
 
 The switches are persisted in the database and managed at `/admin/features`, not
-through `.env`. Each switch's PATCH endpoint requires an administrator session,
-an authorized Origin and the anti-CSRF header. Only the known switches
+through `.env`. Each switch's PATCH endpoint requires the session of an
+administrator, an authorized Origin and the anti-CSRF header. Only the known switches
 (`coefficient`, `actions`, `events`, `documents`) and strict boolean values are
 accepted. The server reads the current database values
 for each relevant request, including rechecking after staging an action upload;
@@ -658,6 +724,7 @@ Declared excessive lengths are rejected immediately, and bytes are also counted
 while receiving, including chunked requests without `Content-Length`.
 
 Administrative, community-action and event mutations check the current session
+(and, for the administration, the administrator role)
 before receiving their body. The Actions and Events switches are checked then as
 well. Existing route authorization and mutation revalidation still run after reception.
 Bodies spool to a temporary file above 64 KiB and are replayed in chunks no larger
@@ -692,7 +759,7 @@ recreated from the retained facts. Keep migrations and the deployed image aligne
 Original parsed fields and transaction identities are immutable through the API.
 IBAN checks run before enrichment and again during atomic confirmation.
 No mismatch bypass is available. Reconciliation does not prove a PDF's
-authenticity or account ownership; the administrator must trust its source.
+authenticity or account ownership; administrators must trust its source.
 
 When AI is configured, uploading a statement automatically requests classification
 after source-account validation; the first IBAN must still be explicitly
@@ -701,8 +768,9 @@ sanitized concepts and catalog labels are sent, never the PDF, account header,
 amount columns, or balances. Automatic masking cannot reliably remove every
 personal name or confidential detail. Review the provider's retention/privacy
 policy before uploading, prefer a suitable private endpoint where necessary, or
-do not enable AI. Suggestions remain in an administrator-bound preview until the
-administrator reviews and confirms the import.
+do not enable AI. Suggestions remain in a preview bound to the session of the
+administrator who uploaded the statement until that administrator reviews and
+confirms the import.
 
 Do not commit real PDFs, extracted bank data, screenshots containing personal
 information, credentials, backups, or private package-feed URLs. The automated

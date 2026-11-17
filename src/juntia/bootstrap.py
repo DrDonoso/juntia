@@ -20,6 +20,8 @@ async def seed(db: AsyncSession, language: Language) -> None:
         defaults = texts(language)
         db.add(State(
             id=1, revision=0, login_attempts=[], community_name=defaults.community_name,
+            # The first visitor creates the administration account.
+            setup_open=True,
         ))
         db.add_all(
             Category(name=name, color=color)

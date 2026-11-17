@@ -11,6 +11,8 @@ export const shell = {
   userMenuLabel: 'User menu, {initials}',
   userOptions: 'User options',
   defaultUserName: 'User',
+  // In the user menu of administrators, on the community pages (the administration offers the portal).
+  administration: 'Administration',
   myProfile: 'My profile',
   signOut: 'Sign out',
   defaultCommunityName: 'Residential community',

@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
+import { signInAsAdministrator } from './support'
 
 const password = 'synthetic contact resident password'
 
@@ -39,10 +40,7 @@ test('contacts are shared, audited, sortable and usable on mobile without financ
   test.setTimeout(120_000)
   const errors: string[] = []
   admin.on('pageerror', error => errors.push(error.message))
-  await admin.goto('/admin')
-  await admin.getByLabel('Username', { exact: true }).fill('browser-test')
-  await admin.getByLabel('Password', { exact: true }).fill('synthetic-browser-test-password')
-  await admin.getByRole('button', { name: 'Sign in to administration' }).click()
+  await signInAsAdministrator(admin)
   await admin.getByRole('link', { name: 'Community portal' }).click()
   await admin.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Contacts', exact: true }).click()
   await expect(admin).toHaveURL(/\/contacts$/)
@@ -59,7 +57,7 @@ test('contacts are shared, audited, sortable and usable on mobile without financ
     const a = await resident(first, admin, 'contacts-alice@example.org', 'Alice Contacts', unit.id)
     const b = await resident(second, admin, 'contacts-leo@example.org', 'Leo Contacts', unit.id)
     for (const page of [a, b]) page.on('pageerror', error => errors.push(error.message))
-    expect((await a.request.get('/api/admin/users')).status()).toBe(401)
+    expect((await a.request.get('/api/admin/users')).status()).toBe(403)
     await expect(a.getByRole('button', { name: 'Manage tags', exact: true })).toHaveCount(0)
     await expect(a.getByRole('button', { name: 'General history' })).toHaveCount(0)
     await expect(a.getByLabel('Sort by')).toHaveCount(0)
@@ -207,7 +205,7 @@ test('contacts are shared, audited, sortable and usable on mobile without financ
     await expect(deletion).toHaveCount(0)
     await expect(b.getByRole('button', { name: 'New contact' })).toBeFocused()
     await expect(b.getByRole('button', { name: 'View deleted contacts' })).toHaveCount(0)
-    expect((await b.request.get('/api/admin/contacts/deleted')).status()).toBe(401)
+    expect((await b.request.get('/api/admin/contacts/deleted')).status()).toBe(403)
     await b.getByRole('button', { name: 'User menu' }).click()
     await b.getByRole('button', { name: 'Sign out' }).click()
     await expect(b.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible()

@@ -1,17 +1,20 @@
 /**
  * Storage of the action PDFs, of the images pasted into texts and of the shared documents (SEC-03:
- * src/juntia/storage.py and storage_admin.py): the byte quotas of each resident and of the
- * community with the backend's default settings, the synthetic upload volume, and the usage,
- * withdrawn PDFs, images and earlier document versions of the administrator's storage page.
- * Everything is computed from the community store's attachments and images and from the shared
- * documents' versions and uploads: PDFs (active or withdrawn), images and document versions use
- * storage until the administrator purges them, so there is no state of its own to reset.
+ * src/juntia/storage.py and storage_admin.py): the byte quotas of each account (administrators
+ * included) and of the community with the backend's default settings, the synthetic upload volume,
+ * and the usage, withdrawn PDFs, images and earlier document versions of the administration's
+ * storage page. Everything is computed from the community store's attachments and images and from
+ * the shared documents' versions and uploads: PDFs (active or withdrawn), images and document
+ * versions use storage until an administrator purges them, so there is no state of its own to
+ * reset. The `administrator` line counts only what the technical administrator of earlier
+ * releases uploaded, without an account (`kind: 'administrator'`): the demo has none.
  */
 import type {
   ActorOut, DiskSpaceOut, DocumentResidentStorageOut, DocumentStorageOut, ResidentStorageOut, StorageOut, StorageUsageOut,
   StoredDocumentVersionOut,
 } from '../../api/schema.gen'
 import { DemoApiError } from '../core/errors'
+import type { DemoActor } from '../core/session'
 import { attachmentName } from './community-actions'
 import { findResident } from './core'
 import { compareText, type CommunityState, type DemoActionAttachment, type DemoCommunityImage } from './community-model'
@@ -21,10 +24,10 @@ import { findDocument, folderNames, folderPath, versionOut, type DemoDocument, t
 
 export const MIB = 1024 * 1024
 
-/** `ACTION_STORAGE_USER_QUOTA_MB` (250): what each resident's PDFs may take, withdrawn ones included. */
+/** `ACTION_STORAGE_USER_QUOTA_MB` (250): what each account's PDFs and images may take, withdrawn ones included. */
 export const USER_QUOTA_BYTES = 250 * MIB
 
-/** `ACTION_STORAGE_COMMUNITY_QUOTA_MB` (2048): what all the PDFs may take; the administrator has no quota of their own. */
+/** `ACTION_STORAGE_COMMUNITY_QUOTA_MB` (2048): what all the PDFs and images may take. */
 export const COMMUNITY_QUOTA_BYTES = 2048 * MIB
 
 /** `MIN_FREE_DISK_MB` (1024): free space kept on the upload volume. */
@@ -46,6 +49,7 @@ export function storedImages(state: CommunityState): DemoCommunityImage[] {
   return state.images.filter(image => image.purgedAt === null)
 }
 
+/** The account that uploaded a file; null for the technical administrator of earlier releases. */
 function residentAuthor(author: ActorOut): number | null {
   return author.kind === 'resident' ? author.user_id : null
 }
@@ -84,9 +88,10 @@ export function diskSpace(state: CommunityState, documents: SharedDocumentsState
 type AuthorFiles = { attachments: DemoActionAttachment[]; images: DemoCommunityImage[] }
 
 /**
- * `GET /api/admin/storage`: the community's usage and quota, the administrator's files, each
- * resident who stores PDFs or images, largest first, and the shared documents. Deleted accounts
- * keep their files: they are named by the author name of their latest file.
+ * `GET /api/admin/storage`: the community's usage and quota, the files of the technical
+ * administrator of earlier releases (none in the demo), each account that stores PDFs or images,
+ * administrators included, largest first, and the shared documents. Deleted accounts keep their
+ * files: they are named by the author name of their latest file.
  */
 export function storageSummary(state: CommunityState, documents: SharedDocumentsState): StorageOut {
   const stored = storedAttachments(state), images = storedImages(state)
@@ -126,7 +131,7 @@ function residentStorage(userId: number, { attachments, images }: AuthorFiles): 
   }
 }
 
-/** `storage_admin.PAGE_SIZE`: the administrator reviews the stored files five at a time. */
+/** `storage_admin.PAGE_SIZE`: administrators review the stored files five at a time. */
 export const STORAGE_PAGE_SIZE = 5
 
 /** `named`: whether a file name contains the search, ignoring case and accents; an empty search keeps every file. */
@@ -144,17 +149,15 @@ export function withdrawnAttachments(state: CommunityState, q = ''): DemoActionA
 
 /**
  * `check_attachment_quota`: a new PDF or image of `size` bytes must fit the uploader's quota
- * (residents only), then the community's (409 `action_storage_user_quota` /
- * `action_storage_community_quota`). PDFs and images share both budgets.
+ * (every account's, administrators included), then the community's (409
+ * `action_storage_user_quota` / `action_storage_community_quota`). PDFs and images share both
+ * budgets.
  */
-export function checkAttachmentQuota(state: CommunityState, actor: ActorOut, size: number): void {
+export function checkAttachmentQuota(state: CommunityState, actor: DemoActor, size: number): void {
   const stored = storedAttachments(state), images = storedImages(state)
-  const userId = residentAuthor(actor)
-  if (userId !== null) {
-    const mine = (author: ActorOut) => residentAuthor(author) === userId
-    const used = storageUsage(stored.filter(item => mine(item.author)), images.filter(item => mine(item.author))).stored_bytes
-    if (used + size > USER_QUOTA_BYTES) throw new DemoApiError('action_storage_user_quota', 409)
-  }
+  const mine = (author: ActorOut) => residentAuthor(author) === actor.user_id
+  const used = storageUsage(stored.filter(item => mine(item.author)), images.filter(item => mine(item.author))).stored_bytes
+  if (used + size > USER_QUOTA_BYTES) throw new DemoApiError('action_storage_user_quota', 409)
   if (storageUsage(stored, images).stored_bytes + size > COMMUNITY_QUOTA_BYTES) throw new DemoApiError('action_storage_community_quota', 409)
 }
 
@@ -166,8 +169,9 @@ function versionDocument(documents: SharedDocumentsState, version: DemoDocumentV
 
 /**
  * `document_storage`: the shared documents' stored versions (current, earlier and of deleted
- * documents) by uploader, with the byte budgets the administrator set for them, and the uploads
- * still being received. Deleted accounts are named by the author name of their latest version.
+ * documents) by uploader, with the byte budgets administrators set for them, and the uploads still
+ * being received. Deleted accounts are named by the author name of their latest version;
+ * `administrator_bytes` counts the technical administrator of earlier releases (none in the demo).
  */
 export function documentStorage(documents: SharedDocumentsState): DocumentStorageOut {
   const stored = storedDocumentVersions(documents)

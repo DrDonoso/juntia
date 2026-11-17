@@ -13,6 +13,8 @@ import { es } from '../src/i18n/locales/es'
 const UNHANDLED_PREFIX = '[demo] Unhandled API request:'
 
 const SAMPLE_NEIGHBOR = { name: 'Olivia Bennett', email: 'olivia.bennett@example.com' }
+/** The president, whose account is also the administrator's ("Open administration" signs it in). */
+const ADMINISTRATOR = { name: 'James Okafor', email: 'james.okafor@example.com' }
 
 type Language = 'en' | 'es'
 const MESSAGES = { en, es } as const
@@ -90,6 +92,9 @@ const mainNavigation = (page: Page, language: Language = 'en') =>
 const adminNavigation = (page: Page, language: Language = 'en') =>
   page.getByRole('navigation', { name: MESSAGES[language].shell.navigation.admin })
 
+const userMenu = (page: Page, language: Language = 'en') =>
+  page.getByRole('navigation', { name: MESSAGES[language].shell.userOptions })
+
 /** The page rendered without falling into the error boundary. */
 async function expectNoCrash(page: Page): Promise<void> {
   for (const messages of [en, es]) await expect(page.getByRole('heading', { name: messages.shell.crash.title })).toHaveCount(0)
@@ -136,23 +141,51 @@ test('opens signed in as the sample neighbor, with the banner and a welcome once
   await expectNoCrash(page)
 })
 
-test('the welcome dialog opens the administration', async ({ page }) => {
+test('the welcome dialog opens the administration as James Okafor, whose user menu leads to the portal and back', async ({ page }) => {
   await page.goto('/')
   await welcome(page).getByRole('button', { name: en.demo.welcome.admin }).click()
   await expect(page).toHaveURL(/\/admin$/)
   await expect(welcome(page)).toBeHidden()
   await expect(adminNavigation(page)).toBeVisible()
+  await expect(page.getByRole('button', { name: en.shell.userMenu })).toHaveText('JO')
+  await page.getByRole('button', { name: en.shell.userMenu }).click()
+  await userMenu(page).getByRole('link', { name: en.shell.links.communityPortal, exact: true }).click()
+  await expect(page).toHaveURL(/\/$/)
+  await expect(mainNavigation(page)).toBeVisible()
+  await page.getByRole('button', { name: en.shell.userMenu }).click()
+  await userMenu(page).getByRole('link', { name: en.shell.administration, exact: true }).click()
+  await expect(page).toHaveURL(/\/admin$/)
+  await expect(adminNavigation(page)).toBeVisible()
   await expectNoCrash(page)
 })
 
-test('the administration sign-in comes filled in with demo / demo', async ({ page }) => {
+test('the sample neighbor has no administration: no entry in the user menu, and /admin is not found', async ({ page }) => {
   await page.goto('/admin')
   await welcome(page).getByRole('button', { name: en.common.close }).click()
+  await expect(page.getByText(en.shell.notFound)).toBeVisible()
+  await expect(adminNavigation(page)).toHaveCount(0)
+  await page.getByRole('button', { name: en.shell.userMenu }).click()
+  await expect(userMenu(page).getByRole('link', { name: en.shell.myProfile, exact: true })).toBeVisible()
+  await expect(userMenu(page).getByRole('link', { name: en.shell.administration, exact: true })).toHaveCount(0)
+  await expect(userMenu(page).getByRole('link', { name: en.shell.links.communityPortal, exact: true })).toHaveCount(0)
+  await expectNoCrash(page)
+})
+
+test('signing out of the administration offers to sign in again as James Okafor, filled in', async ({ page }) => {
+  await page.goto('/')
+  await welcome(page).getByRole('button', { name: en.demo.welcome.admin }).click()
+  await expect(adminNavigation(page)).toBeVisible()
+  await page.getByRole('button', { name: en.shell.userMenu }).click()
+  await page.getByRole('button', { name: en.shell.signOut }).click()
+  await expect(page).toHaveURL(/\/login\?next=%2Fadmin$/)
   const card = page.locator('section.login')
-  await expect(card.getByRole('note')).toHaveText(`Demo: sign in with the username demo and the password demo.`)
-  await expectValue(card.getByLabel(en.auth.admin.username), 'demo')
+  await expect(card.getByRole('note')).toHaveText(
+    `Demo: sign in as ${ADMINISTRATOR.email} with the password demo. ${ADMINISTRATOR.name}, the president, is also the administrator.`,
+  )
+  await expectValue(card.getByLabel(en.auth.email), ADMINISTRATOR.email)
   await expectValue(card.getByLabel(en.auth.password), 'demo')
-  await card.getByRole('button', { name: en.auth.admin.submit }).click()
+  await card.getByRole('button', { name: en.auth.login.submit }).click()
+  await expect(page).toHaveURL(/\/admin$/)
   await expect(adminNavigation(page)).toBeVisible()
   await expect(card).toHaveCount(0)
   await expectNoCrash(page)

@@ -57,9 +57,6 @@ def values(monkeypatch):
     monkeypatch.delenv("APP_LANGUAGE", raising=False)
     return {
         "database_url": "sqlite+aiosqlite:///:memory:",
-        "admin_username": "admin",
-        "admin_password": "admin",
-        "allow_insecure_local_admin": True,
         "auth_secret": secrets.token_urlsafe(32),
         "public_origin": "http://localhost:7778",
         "auth_cookie_secure": False,

@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from juntia.contracts import DwellingLayoutIn
 from juntia.db import State
+from tests.support import ADMINISTRATOR
 from tests.test_users import activate, database, dwelling, invite, login, visitor
 from tests.test_users import mailbox as mailbox
 
@@ -37,7 +38,7 @@ def test_layout_is_shared_private_and_admin_only(admin, config, mailbox):
         assert save(reader, layout(unit["id"])).status_code == 401
         assert login(reader).status_code == 200
         assert reader.get(READ).json() == initial
-        assert save(reader, layout(unit["id"])).status_code == 401
+        assert save(reader, layout(unit["id"])).status_code == 403
         saved = save(admin, layout(unit["id"], None))
         assert saved.status_code == 200, saved.text
         assert saved.json()["version"] == 1
@@ -135,10 +136,7 @@ def test_simultaneous_layout_saves_have_exactly_one_winner(admin, config, initia
     if initial_version:
         assert save(admin, layout(unit["id"])).status_code == 200
     with visitor(config) as other:
-        assert other.post("/api/admin/auth/login", json={
-            "username": config.admin_username,
-            "password": config.admin_password.get_secret_value(),
-        }).status_code == 200
+        assert login(other, ADMINISTRATOR["email"], ADMINISTRATOR["password"]).status_code == 200
         barrier = Barrier(2)
         def write(client, name):
             doc = layout(unit["id"])

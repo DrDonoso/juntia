@@ -1,4 +1,4 @@
-// Sign-in, password recovery and account activation (auth.tsx) and the administration sign-in (admin.tsx).
+// Sign-in, the first-run administration account, password recovery and account activation (auth.tsx).
 export const auth = {
   checkingSession: 'Checking session…',
   email: 'Email',
@@ -43,12 +43,14 @@ export const auth = {
     confirmationRequired: 'Repeat the password.',
     mismatch: 'The passwords do not match.',
   },
-  admin: {
-    eyebrow: 'RESTRICTED ACCESS',
-    title: 'Administration',
-    help: 'Sign in to import statements and manage their classification.',
-    username: 'Username',
-    submit: 'Sign in to administration',
-    submitting: 'Signing in…',
+  // Shown instead of the sign-in on a new installation, until its first account exists.
+  setup: {
+    eyebrow: 'NEW INSTALLATION',
+    title: 'Create the administration account',
+    help: 'Nobody has an account yet. The first account administers the community: with it you invite your neighbors and can make other people administrators.',
+    name: 'Your name',
+    passwordHelp: 'Use at least {min} characters. You will sign in with this email address and password.',
+    submit: 'Create the account and open the administration',
+    submitting: 'Creating…',
   },
 } as const

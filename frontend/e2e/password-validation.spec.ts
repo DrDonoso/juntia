@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
+import { signInAsAdministrator } from './support'
 
 async function expectPasswordError(page: Page, message: string, field: string) {
   const alert = page.getByRole('alert')
@@ -16,10 +17,7 @@ async function expectPasswordError(page: Page, message: string, field: string) {
 test('password forms use styled errors instead of native validation and accept ten characters', async ({ page, browser }) => {
   test.skip(Boolean(process.env.E2E_BASE_URL), 'Requires only the disposable server and synthetic mail')
   test.setTimeout(120_000)
-  await page.goto('/admin')
-  await page.getByLabel('Username', { exact: true }).fill('browser-test')
-  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-test-password')
-  await page.getByRole('button', { name: 'Sign in to administration', exact: true }).click()
+  await signInAsAdministrator(page)
   await expect(page.getByRole('heading', { name: 'Import statement', exact: true })).toBeVisible()
   const origin = new URL(page.url()).origin
   const headers = { Origin: origin, 'X-Juntia-Request': '1' }

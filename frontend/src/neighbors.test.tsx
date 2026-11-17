@@ -154,7 +154,7 @@ test('dwelling cards count neighbors with plural forms and explain empty states'
 
 test('the neighbors page renders in Spanish and follows a language switch', async () => {
   const session: UserAuthOut = {
-    ...signedOut, authenticated: true, kind: 'resident', name: 'Alex Morgan', email: 'alex@example.org',
+    ...signedOut, authenticated: true, name: 'Alex Morgan', email: 'alex@example.org',
     user_id: 1, dwelling_id: 1, expires_at: '2099-01-01T00:00:00Z',
   }
   const layout: DwellingLayoutOut = { version: 0, layout: null, limits: { zones: 50, rows: 100, columns: 24, cells: 10000 } }

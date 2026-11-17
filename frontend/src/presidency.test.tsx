@@ -13,17 +13,25 @@ const dwellings: DwellingOut[] = [
   { id: 1, label: '1 A', coefficient: null, version: 1, user_count: 3 },
   { id: 2, label: '2 B', coefficient: null, version: 1, user_count: 1 },
 ]
-const identities: Pick<UserOut, 'id' | 'name' | 'email' | 'dwelling_id' | 'dwelling_label' | 'status'>[] = [
+type Identity = Pick<UserOut, 'id' | 'name' | 'email' | 'status'> & { dwelling_id: number; dwelling_label: string }
+const identities: Identity[] = [
   { id: 1, name: 'Alice', email: 'alice@example.org', dwelling_id: 1, dwelling_label: '1 A', status: 'active' },
   { id: 2, name: 'Peter', email: 'peter@example.org', dwelling_id: 2, dwelling_label: '2 B', status: 'active' },
   { id: 3, name: 'Pending', email: 'pending@example.org', dwelling_id: 1, dwelling_label: '1 A', status: 'pending' },
   { id: 4, name: 'Disabled', email: 'disabled@example.org', dwelling_id: 1, dwelling_label: '1 A', status: 'disabled' },
 ]
-const residents: UserOut[] = identities.map(user => ({
-  phone: '', version: 1, coefficient: null, last_login_at: null,
+// An active administrator without a dwelling, who cannot hold the presidency.
+const administrator: UserOut = {
+  id: 5, name: 'Admin', email: 'admin@example.org', dwelling_id: null, dwelling_label: null, status: 'active',
+  administrator: true, phone: '', version: 1, coefficient: null, last_login_at: null,
+  invitation_status: 'none', invitation_expires_at: null, invitation_sent_at: null,
+  has_password: true, google_linked: false,
+}
+const residents: UserOut[] = [...identities.map((user): UserOut => ({
+  administrator: false, phone: '', version: 1, coefficient: null, last_login_at: null,
   invitation_status: 'none', invitation_expires_at: null, invitation_sent_at: null,
   has_password: true, google_linked: false, ...user,
-}))
+})), administrator]
 let saved: PresidencyOut
 let writes: PresidencyIn[]
 let failure: string
@@ -52,7 +60,7 @@ beforeEach(() => {
       const body: PresidencyIn = JSON.parse(String(init.body))
       writes.push(body)
       if (failure) return Response.json({ code: failure }, { status: failure === 'presidency_stale' ? 409 : 503 })
-      const person = residents.find(user => user.id === body.user_id)
+      const person = identities.find(user => user.id === body.user_id)
       if (body.user_id !== null && !person) throw new Error('Unexpected presidency holder')
       saved = { version: saved.version + 1, president: person ? {
         id: person.id, name: person.name, dwelling_id: person.dwelling_id, dwelling_label: person.dwelling_label,

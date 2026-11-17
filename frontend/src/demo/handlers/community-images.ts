@@ -3,9 +3,10 @@
  * the Markdown of actions, comments and events, and their files. Each section serves its own
  * images under its feature switch (404 `actions_disabled` / `events_disabled` while it is off).
  */
-import type { ActorOut, CommunityImageOut } from '../../api/schema.gen'
+import type { CommunityImageOut } from '../../api/schema.gen'
 import {
-  DemoApiError, HttpResponse, actorOf, fileDisposition, http, nowIso, readForm, route, type HttpHandler, type RouteContext,
+  DemoApiError, HttpResponse, actorOf, fileDisposition, http, nowIso, readForm, route, type DemoActor, type HttpHandler,
+  type RouteContext,
 } from '../core'
 import { communityStore } from '../store/community'
 import {
@@ -17,9 +18,9 @@ import { canonicalUuid } from '../store/community-text'
 import { checkAttachmentQuota } from '../store/storage'
 import { uuidParam } from './community-contracts'
 
-function author({ identity }: RouteContext): ActorOut {
-  if (!identity) throw new DemoApiError('authentication_required', 401)
-  return actorOf(identity)
+function author({ user }: RouteContext): DemoActor {
+  if (!user) throw new DemoApiError('authentication_required', 401)
+  return actorOf(user)
 }
 
 /** The file, inline, like the backend's FileResponse; 410 `image_purged` once purged. */

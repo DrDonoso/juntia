@@ -118,7 +118,7 @@ export const storage = {
     current: 'Current files',
     previous: 'Earlier versions',
     deleted: 'Deleted, not purged',
-    administrator: 'Uploaded by the administrator',
+    administrator: 'Uploaded by the technical administrator',
     uploads: 'Uploads in progress',
     files: { one: '{count} file', other: '{count} files' },
     versions: { one: '{count} version', other: '{count} versions' },

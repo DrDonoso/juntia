@@ -5,13 +5,18 @@
  *
  * ```ts
  * beforeEach(() => resetDemo({ now: () => new Date(2026, 9, 29, 12) }))
- * const { status, body } = await demoRequest('POST', '/api/auth/login', { body: { email, password: 'demo' } })
+ * await signInAdmin()  // James Okafor, the president, who is also the administrator
+ * const { status, body } = await demoRequest('GET', '/api/admin/users')
  * ```
  */
 import { getResponse } from 'msw'
 import { vi } from 'vitest'
-import { MUTATION_HEADER } from './core'
+import type { UserAuthOut } from '../api/schema.gen'
+import { ADMINISTRATOR_ID, castResident } from './cast'
+import { DEMO_PASSWORD } from './config'
+import { MUTATION_HEADER, signInResident, signOutResident } from './core'
 import { handlers } from './handlers'
+import { coreStore } from './store/core'
 
 export interface DemoRequestOptions {
   /** JSON body (sent with `Content-Type: application/json`). */
@@ -50,6 +55,31 @@ export async function demoRequest<T = unknown>(method: string, path: string, opt
   }))
   const text = await response.text()
   return { status: response.status, body: (text ? JSON.parse(text) : undefined) as T, headers: response.headers }
+}
+
+/** Signs a cast account in with the password `demo` (`POST /api/auth/login`), replacing the session. */
+export function signInAs(residentId: number): Promise<DemoAnswer<UserAuthOut>> {
+  return demoRequest<UserAuthOut>('POST', '/api/auth/login', { body: { email: castResident(residentId).email, password: DEMO_PASSWORD } })
+}
+
+/** Signs in as the administrator of the cast, James Okafor, the president, like "Open administration" does. */
+export function signInAdmin(): Promise<DemoAnswer<UserAuthOut>> {
+  return signInAs(ADMINISTRATOR_ID)
+}
+
+/**
+ * Runs `action` signed in as the administrator of the cast, then gives the session back to whoever
+ * had it (nobody included): what another browser of an administrator would do meanwhile.
+ */
+export async function asAdministrator<T>(action: () => Promise<T>): Promise<T> {
+  const previous = coreStore().session.residentId
+  await signInAdmin()
+  try {
+    return await action()
+  } finally {
+    if (previous === null) signOutResident()
+    else signInResident(previous)
+  }
 }
 
 /** Routes the app's own `fetch` calls (api/client.ts) to the demo handlers for this test. */

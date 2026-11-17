@@ -12,6 +12,7 @@ export const shell: Messages<typeof source> = {
   userMenuLabel: 'Menú de usuario, {initials}',
   userOptions: 'Opciones de usuario',
   defaultUserName: 'Usuario',
+  administration: 'Administración',
   myProfile: 'Mi perfil',
   signOut: 'Cerrar sesión',
   defaultCommunityName: 'Comunidad de vecinos',

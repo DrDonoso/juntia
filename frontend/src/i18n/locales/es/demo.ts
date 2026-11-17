@@ -19,7 +19,7 @@ export const demo: Messages<typeof source> = {
   },
   signIn: {
     resident: 'Demo: entra como <strong>{email}</strong> con la contraseña <strong>{password}</strong>. Todos los vecinos activos de la demo usan la misma contraseña.',
-    admin: 'Demo: entra con el usuario <strong>{username}</strong> y la contraseña <strong>{password}</strong>.',
+    admin: 'Demo: entra como <strong>{email}</strong> con la contraseña <strong>{password}</strong>. {name}, que ocupa la presidencia, también administra la comunidad.',
   },
   startError: {
     title: 'No se ha podido iniciar la demo',

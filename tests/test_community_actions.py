@@ -16,6 +16,7 @@ from juntia.contracts import (
 )
 from juntia.db import CommunityAction, State
 from juntia.errors import AppError
+from tests.support import ADMINISTRATOR
 from tests.test_api import commit, preview
 from tests.test_users import activate, current_user, database, dwelling, invite, login, visitor
 from tests.test_users import mailbox as mailbox
@@ -138,10 +139,10 @@ def test_shared_actions_record_changes_without_changing_financial_permissions(ac
     assert all(event["created_at"].endswith("Z") for event in events)
     for reader in (a, b):
         assert reader.get("/api/summary").status_code == 200
-        assert reader.get("/api/admin/statements").status_code == 401
-        assert reader.patch("/api/admin/account", json={"name": "Forbidden"}).status_code == 401
-        assert reader.post("/api/admin/imports/preview").status_code == 401
-        assert reader.post("/api/admin/users", json={}).status_code == 401
+        assert reader.get("/api/admin/statements").status_code == 403
+        assert reader.patch("/api/admin/account", json={"name": "Forbidden"}).status_code == 403
+        assert reader.post("/api/admin/imports/preview").status_code == 403
+        assert reader.post("/api/admin/users", json={}).status_code == 403
     assert admin.get(path).json() == saved
     assert a.request("DELETE", path, json={}).status_code == 405
     assert a.patch(path + "/history", json={}).status_code in {404, 405}
@@ -186,7 +187,11 @@ def test_comment_ownership_versions_retirement_and_author_snapshots(actors, admi
     assert admin.request("DELETE", path + f"/comments/{another['id']}", json={
         "version": another["version"],
     }).status_code == 204
-    assert a.get(path + "/history").json()["items"][0]["author"]["kind"] == "administrator"
+    # Administrators moderate as themselves.
+    assert a.get(path + "/history").json()["items"][0]["author"] == {
+        "kind": "resident", "user_id": admin.get("/api/auth/session").json()["user_id"],
+        "name": ADMINISTRATOR["name"],
+    }
 
 
 def test_comments_do_not_stale_metadata_edits_and_noops_do_not_add_events(admin):
@@ -357,7 +362,7 @@ def test_google_can_return_to_real_action_routes(path):
 
 @pytest.mark.parametrize("path", [
     "/actions/nope", "/actions/0", "/actions/1/extra", "//evil.example/actions",
-    "/actions\\evil", "/admin/actions", "/actions/1#fragment", "/actions/%2f%2fevil",
+    "/actions\\evil", "/admin/actions/1", "/actions/1#fragment", "/actions/%2f%2fevil",
 ])
 def test_google_action_return_paths_remain_restricted(path):
     with pytest.raises(ValidationError):

@@ -1,7 +1,8 @@
 /**
- * The people of the demo: the community "Maple Court", its dwellings and its neighbors. Every
- * domain builds its data on these ids and names (fees per dwelling, authors of actions, contacts…),
- * so they are the contract between the demo's modules: extend the cast here, never change an id.
+ * The people of the demo: the community "Maple Court", its dwellings and its neighbors, the
+ * president among them, whose account is also the only administrator. Every domain builds its data
+ * on these ids and names (fees per dwelling, authors of actions, contacts…), so they are the
+ * contract between the demo's modules: extend the cast here, never change an id.
  *
  * Everything is fictional: names, `@example.com` emails, UK fiction phone numbers (Ofcom's drama
  * range +44 20 7946 0000–0999, stored normalized like the API does) and an IBAN that is
@@ -30,7 +31,7 @@ export interface CastResident {
   /** Normalized like the API stores it (`+442079460123`), or `''` without a phone. */
   readonly phone: string
   readonly dwellingId: number
-  /** `pending`: invited, never activated; `disabled`: the administrator turned the account off. */
+  /** `pending`: invited, never activated; `disabled`: an administrator turned the account off. */
   readonly status: CastStatus
   /** Days before today of the last sign-in; null if the neighbor never signed in. */
   readonly lastSignInDaysAgo: number | null
@@ -87,10 +88,20 @@ export const RESIDENTS: readonly CastResident[] = [
 /** The community president (an active neighbor of 1A). */
 export const PRESIDENT_ID = 1
 
+/**
+ * The only administrator of the cast: the president's account also has the administrator role, so
+ * it opens the administration ("Open administration" in the welcome dialog signs it in).
+ */
+export const ADMINISTRATOR_ID = 1
+
 /** The neighbor the visitor is signed in as when the demo opens. */
 export const SAMPLE_NEIGHBOR_ID = 6
 
-/** Author name of everything the administrator writes (backend: `kind: 'administrator'`). */
+/**
+ * Fixed author name of what the technical administrator of earlier releases wrote (backend `kind:
+ * 'administrator'`, without an account). The demo has no such content: every account,
+ * administrators included, writes under its own name.
+ */
 export const ADMINISTRATOR_ACTOR_NAME = 'Technical administrator'
 
 export function castDwelling(id: number): CastDwelling {

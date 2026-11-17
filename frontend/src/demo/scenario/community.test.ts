@@ -149,22 +149,23 @@ describe('the community scenario', () => {
     expect(withdrawn(state.comments)).toBe(1)
     // The storage page's candidates for a purge: withdrawn PDFs of different authors.
     const withdrawnPdfs = state.attachments.filter(attachment => attachment.withdrawnAt !== null)
-    expect(withdrawnPdfs.map(attachment => attachment.author.name).sort()).toEqual(['Daniel Mensah', 'Grace Liu', 'Technical administrator'])
+    expect(withdrawnPdfs.map(attachment => attachment.author.name).sort()).toEqual(['Daniel Mensah', 'Grace Liu', 'James Okafor'])
     expect(state.comments.filter(comment => comment.version > 1 && comment.withdrawnAt === null).length).toBeGreaterThanOrEqual(3)
     expect(state.actionHistory.some(event => event.kind === 'attachment_renamed')).toBe(true)
     expect(state.actionHistory.some(event => event.changes.some(change => change.field === 'label_color'))).toBe(true)
   })
 
-  test('authors come from the cast, and the visitor owns some of the content', () => {
+  test('authors are accounts of the cast, the administrator under his own name, and the visitor owns some of the content', () => {
     const state = communityStore()
     const authors = [
       ...state.actions, ...state.comments, ...state.attachments, ...state.actionHistory, ...state.events, ...state.eventHistory,
       ...state.contactHistory,
     ].map(row => row.author)
+    // Only the author is stored, never the role: there is no technical administrator in the demo.
     for (const author of authors) {
-      if (author.kind === 'administrator') expect(author).toEqual({ kind: 'administrator', name: 'Technical administrator', user_id: null })
-      else expect(RESIDENTS.find(resident => resident.id === author.user_id)?.name).toBe(author.name)
+      expect(author).toEqual({ kind: 'resident', name: RESIDENTS.find(resident => resident.id === author.user_id)?.name, user_id: author.user_id })
     }
+    expect(authors.filter(author => author.user_id === 1).length).toBeGreaterThan(50)
     const visitor = (rows: readonly { author: { user_id: number | null } }[]) => rows.filter(row => row.author.user_id === 6).length
     expect(visitor(state.actions)).toBeGreaterThan(0)
     expect(visitor(state.comments)).toBeGreaterThanOrEqual(3)

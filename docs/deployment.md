@@ -16,8 +16,13 @@ deployment relies on are explained in the [security model](security-model.md).
 - [Several hostnames](#several-hostnames)
 - [Request limits](#request-limits)
 - [After the first start](#after-the-first-start)
+- [Administrators](#administrators)
+  - [The administration account](#the-administration-account)
+  - [The administrators command](#the-administrators-command)
+  - [Lost administrator access](#lost-administrator-access)
 - [Releases and image tags](#releases-and-image-tags)
 - [Updating](#updating)
+  - [Upgrading to administrator accounts](#upgrading-to-administrator-accounts)
   - [Rolling back](#rolling-back)
 - [Backup and restore](#backup-and-restore)
 - [Migration notes](#migration-notes)
@@ -56,13 +61,12 @@ deployment relies on are explained in the [security model](security-model.md).
    `juntia_uploads` and the network is `juntia_default`, whatever the directory is called.
 
 2. Edit `.env`. Generate `POSTGRES_PASSWORD` and `AUTH_SECRET` with `openssl rand -hex 32` (two
-   different values), choose `ADMIN_USERNAME` and an `ADMIN_PASSWORD` of at least 15 characters, and
-   set `APP_LANGUAGE` (`en` or `es`) and `TZ`. The default `PUBLIC_ORIGIN=http://localhost:7778`
-   with `AUTH_COOKIE_SECURE=false` serves the server itself. To open Juntia from other devices, set
-   `PUBLIC_ORIGIN` to the HTTPS address residents will open, `AUTH_COOKIE_SECURE=true` and
-   `APP_BIND_ADDRESS` (see [trusted proxies](#trusted-proxies)). Pin `IMAGE_TAG` to a
-   [release](#releases-and-image-tags) for controlled updates. Leave SMTP, Google and AI empty
-   until you need them.
+   different values), and set `APP_LANGUAGE` (`en` or `es`) and `TZ`. There are no administrator
+   credentials: you create the administration account in step 4. Keep the default
+   `PUBLIC_ORIGIN=http://localhost:7778`, `AUTH_COOKIE_SECURE=false` and
+   `APP_BIND_ADDRESS=127.0.0.1` for now: they serve only the server itself, which keeps Juntia out
+   of reach until that account exists. Pin `IMAGE_TAG` to a [release](#releases-and-image-tags) for
+   controlled updates. Leave SMTP, Google and AI empty until you need them.
 
 3. Start the stack and check it:
 
@@ -76,8 +80,19 @@ deployment relies on are explained in the [security model](security-model.md).
    `/health` answers `{"status":"ok"}` once the database is initialized, and `/api/version` returns
    the image tag and build date. Use the address and port you published if they differ.
 
-4. Open `http://localhost:7778` on the server, or configure the
-   [reverse proxy](#reverse-proxy-and-https) to open Juntia from other devices. Then follow
+4. Right away, create the administration account: open `http://localhost:7778` on the server, or on
+   your computer through an SSH tunnel (`ssh -L 7778:127.0.0.1:7778 <server>`), and fill in
+   **Create the administration account**. Then check that it is no longer offered (see
+   [the administration account](#the-administration-account)):
+
+   ```sh
+   curl -fsS http://127.0.0.1:7778/api/auth/setup    # {"available":false}
+   ```
+
+5. To open Juntia from other devices or the Internet, set `PUBLIC_ORIGIN` to the HTTPS address
+   residents will open, `AUTH_COOKIE_SECURE=true` and, if your proxy needs it, `APP_BIND_ADDRESS`
+   (see [trusted proxies](#trusted-proxies)), apply them with `docker compose up -d` and configure
+   the [reverse proxy](#reverse-proxy-and-https). Then follow
    [after the first start](#after-the-first-start).
 
 ## What happens at startup
@@ -87,8 +102,12 @@ restrictive `umask`, so the files it writes are private. On every start it:
 
 1. applies the database migrations (`alembic upgrade head`);
 2. on the first start of a new installation only, creates the default categories, tags and
-   community name in `APP_LANGUAGE` (existing data is never renamed);
-3. removes expired import previews and queues the shared documents whose text has never been read
+   community name in `APP_LANGUAGE` (existing data is never renamed) and offers its first visitor
+   the creation of the [administration account](#the-administration-account);
+3. logs a warning for each retired setting it still receives (`ADMIN_USERNAME`, `ADMIN_PASSWORD`,
+   `ALLOW_INSECURE_LOCAL_ADMIN`), and when accounts exist but none is an administrator (see
+   [lost administrator access](#lost-administrator-access));
+4. removes expired import previews and queues the shared documents whose text has never been read
    ([reading the text of documents](#reading-the-text-of-documents)), then serves the API and the
    web app with Uvicorn on port 7778, with access logs disabled, and reads those documents in the
    background.
@@ -238,15 +257,18 @@ Juntia bounds what it receives before doing any work:
   Declared lengths are checked first and bytes are counted while receiving, also without
   `Content-Length`.
 - **Early authorization:** changes to the administration, actions, events and documents check the
-  session (and the Actions, Events or Documents switch) before receiving the body.
+  session (the administrator role for the administration, and the Actions, Events or Documents
+  switch) before receiving the body.
 - **Temporary storage:** bodies above 64 KiB are spooled to a temporary file inside the container
   and replayed in 64 KiB chunks. Receiving a body must finish within 30 seconds.
 - **Concurrency:** the application admits at most 16 concurrent changes, 4 per client address and 4
   with a large body. Beyond that it answers `503 request_busy` with `Retry-After: 1` instead of
   queueing uploads. Reads are not limited this way.
-- **Sign-in throttling:** per client address and per account (for example 10 administrator attempts
-  per address and username and 50 per address in five minutes), stored in the database so they
-  survive restarts. See the [security model](security-model.md#administrator-credentials).
+- **Sign-in throttling:** per client address and per account: 10 sign-in attempts per email (for
+  an administrator, per address and email) and 50 per address in five minutes, and 5 attempts per
+  email and 20 per address in an hour to create the administration account. The counters are stored
+  in the database, so they survive restarts. See the
+  [security model](security-model.md#administrator-accounts).
 
 These are application safeguards, not protection against distributed denial of service. Size the
 proxy limits and the container's resources accordingly, and keep the client address trustworthy
@@ -254,21 +276,85 @@ with [trusted proxies](#trusted-proxies).
 
 ## After the first start
 
-1. Open `/admin` on your hostname and sign in with `ADMIN_USERNAME` and `ADMIN_PASSWORD`. The
-   administration is deliberately not linked from the residents' navigation.
+1. Sign in at `/login` on your hostname with the administration account, and open
+   **Administration** in the user menu (the avatar at the top right). The administration is not
+   linked from the residents' navigation.
 2. **Settings > General:** set the community name, shown in the header, the browser tab and on
    home screens.
 3. **Settings > Dwellings:** create the dwellings, then **Arrange dwellings** to lay them out like
    the building.
-4. **Settings > Users:** invite the residents (requires SMTP) and, if you like, assign the
-   presidency.
+4. **Settings > Users:** invite the residents (requires SMTP), tick **Administrator** for whoever
+   should administer too and, if you like, assign the presidency.
 5. **Finances > Import:** upload a statement PDF, confirm the detected IBAN, review and save. See
    [importing statements](importing-statements.md).
 6. **Settings > Features:** turn Events on (off by default), or turn Actions or the ownership
    coefficients off.
 
-The technical administrator can also open the residents' pages with the **Community portal** link,
-without a resident account.
+Administrators use the residents' pages too: **Community portal**, in the user menu or at the bottom
+of the administration's sidebar, opens them with the same session. The administration account has
+no dwelling, so it is not listed in Neighbors and cannot hold the presidency: if you live in the
+community, give it your dwelling in **Settings > Users**.
+
+## Administrators
+
+Administrators are accounts with the administrator role. They sign in at `/login` like everyone else
+and open the administration from the user menu; there are no administrator credentials in `.env`.
+In **Settings > Users**, administrators invite people and give or take the role with the
+**Administrator** checkbox (see [managing users](features.md#managing-users)); the change applies
+at once, without signing anyone out.
+
+### The administration account
+
+A new installation has no accounts. Until the first one exists, `/login` shows **Create the
+administration account** instead of the sign-in: your name, email and a password of at least 10
+characters, twice. It creates an active administrator without a dwelling, signs it in and opens the
+administration. It is offered only while the installation has no accounts, and never on an
+installation upgraded from a release with a technical administrator (see
+[upgrading to administrator accounts](#upgrading-to-administrator-accounts)).
+
+Until someone creates that account, **whoever reaches Juntia first can create it** and administer
+the community. Create it right after the first start, while Juntia is only reachable from the server
+itself (the default `PUBLIC_ORIGIN` and `APP_BIND_ADDRESS`; from another computer, through an SSH
+tunnel) and before you publish its hostname. Then check that it is no longer offered:
+`GET /api/auth/setup` must answer `{"available":false}`.
+
+### The administrators command
+
+`python -m juntia.admins` manages administrators from the server, with the application's settings
+and database. Run it inside the container:
+
+```sh
+docker compose exec api python -m juntia.admins list
+docker compose exec api python -m juntia.admins grant EMAIL
+docker compose exec api python -m juntia.admins revoke EMAIL
+docker compose exec api python -m juntia.admins invite EMAIL --name NAME
+docker compose exec api python -m juntia.admins password-link EMAIL
+```
+
+| Command | What it does |
+| --- | --- |
+| `list` | Lists the administrators: email, name, status (`active`, `pending` or `disabled`) and dwelling (`no dwelling` when it has none). |
+| `grant EMAIL` | Makes an existing **active** account an administrator. Its password and Google link are kept, so it also works for an account that signs in only with Google. |
+| `revoke EMAIL` | Takes the role away. Refused for the last active administrator, and for an account without a dwelling: assign one in **Settings > Users** first. |
+| `invite EMAIL --name NAME` | Creates a pending administrator without a dwelling and prints its activation link, valid for 72 hours, to choose a password (or to continue with Google, when it is configured). For an upgraded installation without accounts, or without SMTP. It also closes the first-run screen. |
+| `password-link EMAIL` | Prints a link to choose a new password: a recovery link, valid for one hour, for an active account, or a new activation link, valid for 72 hours, for a pending one. Refused for a deactivated account. For lost access without email. |
+
+Nothing is sent by email: the links are printed for every `PUBLIC_ORIGIN` entry, and each works
+once. Treat them like passwords until they are used. The command exits with status 1 when it refuses
+something (the reason is printed on standard error) and 2 when the settings are invalid.
+
+### Lost administrator access
+
+- An administrator who forgot their password uses **Forgot your password?** on the sign-in page,
+  like everyone, when email is configured.
+- If another administrator can still sign in, they give the role in **Settings > Users**.
+- Otherwise, on the server, with [the administrators command](#the-administrators-command):
+  `grant EMAIL` makes an existing active account an administrator, `invite EMAIL --name NAME`
+  creates a new administrator, and `password-link EMAIL` prints a link to choose a new password when
+  it was forgotten and email is not configured.
+
+While accounts exist but none is an administrator, every start logs "No account is an
+administrator: grant the role with `python -m juntia.admins grant EMAIL`".
 
 ## Releases and image tags
 
@@ -305,6 +391,51 @@ is not a rollback reference.
 
 The new image applies its migrations when it starts. An older image cannot undo them and refuses to
 start on a database migrated by a newer one, so the backup is your way back.
+
+### Upgrading to administrator accounts
+
+**For the release that introduces administrator accounts (migration `0024`), when you upgrade from
+an earlier one.** Earlier releases had a technical administrator, defined by `ADMIN_USERNAME` and
+`ADMIN_PASSWORD` in `.env`, with its own sign-in at `/admin`; administrators are now accounts with
+the administrator role:
+
+1. [Back up](#backup-and-restore) the database and the uploads volume first.
+2. Upgrade as usual, with the steps above: the container applies the migrations
+   (`alembic upgrade head`) when it starts. Migration `0024` makes nobody an administrator, ends the
+   technical administrator's sessions and never offers the first-run screen.
+3. Give the role to an existing active account, for example your own neighbor account, or one that
+   signs in only with Google:
+
+   ```sh
+   docker compose exec api python -m juntia.admins grant EMAIL
+   ```
+
+   If the installation has no accounts (only the technical administrator was used), create an
+   administrator instead, and open the activation link it prints to choose a password:
+
+   ```sh
+   docker compose exec api python -m juntia.admins invite EMAIL --name NAME
+   ```
+
+4. Sign in at `/login` with that account and open **Administration** in the user menu. The
+   technical administrator's sign-in at `/admin` and its `/api/admin/auth/*` endpoints are gone:
+   scripts that used them sign in with an administrator account through `/api/auth/login` instead.
+5. Remove `ADMIN_USERNAME`, `ADMIN_PASSWORD` and `ALLOW_INSECURE_LOCAL_ADMIN` from `.env`, and the
+   `ADMIN_USERNAME` and `ADMIN_PASSWORD` lines from your copy of `docker-compose.yml` (or download it
+   again): a Compose file that still contains `${ADMIN_USERNAME:?Set ADMIN_USERNAME}` refuses to
+   start once `.env` no longer sets it. Apply the change with `docker compose up -d`. As long as the
+   server receives these settings, it ignores them and logs a warning at every start.
+
+What the technical administrator wrote keeps its "Technical administrator" label, in each reader's
+language. Its uploads count only towards the community quotas, and **Settings > Storage** shows them
+apart while any remain. Administrators now write under their own names, and their uploads count
+towards the personal quotas like everyone else's. To go back, [roll back](#rolling-back) with the
+previous `.env`, which still has `ADMIN_USERNAME` and `ADMIN_PASSWORD`; downgrading migration
+`0024` with Alembic is refused while an account has no dwelling (assign one or delete those
+accounts first).
+
+More commands, such as `list`, `revoke` and `password-link`, are described in
+[the administrators command](#the-administrators-command).
 
 ### Rolling back
 
@@ -398,22 +529,24 @@ data. Before downgrading, handle the data they protect, or simply restore a back
 | `0021` | Images pasted into the Markdown of actions, comments and events | Refused while images exist, purged ones included. |
 | `0022` | Shared documents (switch off by default) | Refused while folders, documents, uploads or their history exist, purged ones included, or while Documents is on. |
 | `0023` | The text of shared documents, for their search | Discards the text read; upgrading again reads every document again. |
+| `0024` | Administrator accounts: the administrator role, accounts without a dwelling for administrators, and the end of the technical administrator's sessions (nobody becomes an administrator; see [upgrading](#upgrading-to-administrator-accounts)) | Refused while an account has no dwelling. Drops the role: earlier releases use `ADMIN_USERNAME` and `ADMIN_PASSWORD` again. |
 
 ## Storage quotas and purging
 
 Community action PDFs and the images pasted into descriptions and comments are limited by bytes
 stored, not only by the 20 active PDFs per action:
 
-- **Per resident** (`ACTION_STORAGE_USER_QUOTA_MB`, 250 MiB by default): the PDFs and images a
-  resident has uploaded.
+- **Per person** (`ACTION_STORAGE_USER_QUOTA_MB`, 250 MiB by default): the PDFs and images each
+  account has uploaded, administrators included.
 - **Community-wide** (`ACTION_STORAGE_COMMUNITY_QUOTA_MB`, 2048 MiB by default): every action PDF
-  and every image, the technical administrator's included.
+  and every image, including those the technical administrator of earlier releases uploaded, which
+  count only here.
 - **Free-disk reserve** (`MIN_FREE_DISK_MB`, 1024 MiB by default): uploads of PDFs and images and
   statement imports are refused when they would leave less free space on the uploads volume. With
   Docker's default volumes, the uploads and the database usually share a disk, so the reserve also
   leaves room for the database.
 
-Every stored PDF counts, **active or withdrawn**, until the administrator purges it: withdrawing a
+Every stored PDF counts, **active or withdrawn**, until an administrator purges it: withdrawing a
 PDF keeps its file, its bytes and its history. Every image counts too, also after it is removed
 from its text, because earlier versions in the history may still show it. Retrying an upload with
 the same upload ID is never counted twice. Checks run in this order and a refused upload writes
@@ -429,9 +562,10 @@ The server logs a warning whenever the community quota or the disk reserve refus
 Statement imports are subject to the disk reserve only; deleting a statement deletes its original.
 
 **Monitoring.** **Settings > Storage** (`/admin/storage`) shows the community total against its
-quota, the technical administrator's PDFs and images, the server disk's free space against the
-reserve, and each resident against the personal quota and the documents quota (accounts deleted
-since keep their totals), in a table that sorts by any column. **Housekeeping > Free up space**
+quota, the server disk's free space against the reserve, and each person, administrators included,
+against the personal quota and the documents quota (accounts deleted since keep their totals), in a
+table that sorts by any column; a **Technical administrator** card shows the PDFs and images of the
+technical administrator of earlier releases while any remain. **Housekeeping > Free up space**
 (`/admin/cleanup`) lists what can be purged: its **Withdrawn PDFs** list shows the withdrawn PDFs
 that still use space, the latest withdrawn first, 5 per page, each with its uploader, an eye to view
 it and a download button, also while Actions is turned off; its **Images in texts** list shows every
@@ -465,8 +599,8 @@ Purging again is harmless, and if the file cannot be deleted nothing changes
 ## Shared documents
 
 **Documents** (`/documents`) is off by default: turn it on in **Settings > Features**, where you
-also choose who can rename, move, replace and delete documents (whoever created them, only the
-technical administrator, or every neighbor). It has its own limits and quotas, separate from those
+also choose who can rename, move, replace and delete documents (whoever created them, only
+administrators, or every neighbor). It has its own limits and quotas, separate from those
 of actions. They are not environment variables: change them in **Settings > Storage > Shared
 documents limits**, with a slider or an exact size in whole MiB for each, and they apply at once.
 
@@ -486,14 +620,14 @@ documents limits**, with a slider or an exact size in whole MiB for each, and th
   least recently active one); expired ones are discarded when uploads start and at startup, which
   also removes partial files that no upload refers to. The type is checked once the file is
   complete, so a large video may show "Checking the file…" for a moment.
-- **Quotas.** Every stored version counts, current, earlier or deleted, until the administrator
-  purges it: towards the documents quota of whoever uploaded that version (2 GiB by default) and
-  towards the community documents quota (20 GiB), which also counts what the technical
-  administrator uploads; both are adjustable from 1 MiB to 10 TiB. Both are checked when an upload
-  starts and again when it completes, with the values saved at that moment. Lowering a quota below
-  the current usage is allowed: the page warns about it, and uploads are refused until enough is
-  purged. Unfinished uploads count towards neither, but each chunk must leave `MIN_FREE_DISK_MB`
-  free on the uploads volume.
+- **Quotas.** Every stored version counts, current, earlier or deleted, until an administrator
+  purges it: towards the documents quota of whoever uploaded that version, administrators included
+  (2 GiB by default), and towards the community documents quota (20 GiB), which also counts what
+  the technical administrator of earlier releases uploaded; both are adjustable from 1 MiB to
+  10 TiB. Both are checked when an upload starts and again when it completes, with the values saved
+  at that moment. Lowering a quota below the current usage is allowed: the page warns about it, and
+  uploads are refused until enough is purged. Unfinished uploads count towards neither, but each
+  chunk must leave `MIN_FREE_DISK_MB` free on the uploads volume.
 - **Folders.** Up to 10 levels of folders and 1000 items (files and folders) in each folder. Names
   have up to 200 characters without `/ \ : * ? " < > |`, are unique in their folder regardless of
   case, and are not names Windows reserves (such as `CON` or `NUL`), so that downloaded ZIP files
@@ -517,8 +651,8 @@ documents limits**, with a slider or an exact size in whole MiB for each, and th
 
 **Deleting and purging.** A deleted file or folder disappears for residents at once, with
 everything inside it, but keeps its files, its bytes and its history. **Deleted documents**
-(`/admin/deleted-documents`) lists each deletion with who made it and where it was. The
-administrator can:
+(`/admin/deleted-documents`) lists each deletion with who made it and where it was. Administrators
+can:
 
 - **restore** it, with everything deleted together with it, where it was, or at the top level when
   that folder no longer exists; a number is added to its name when the name is in use there;
@@ -530,9 +664,9 @@ administrator can:
   document_storage_error`).
 
 Replacing a file with a new version keeps the earlier versions, downloadable from **Info**.
-**Settings > Storage** shows the documents quotas, each neighbor's usage and unfinished uploads.
+**Settings > Storage** shows the documents quotas, each person's usage and unfinished uploads.
 **Housekeeping > Free up space** has an **Earlier versions of documents** list, the latest uploaded
-first, 5 per page and searchable by name, where the administrator can preview or download each
+first, 5 per page and searchable by name, where administrators can preview or download each
 earlier version and purge them one by one, also while Documents is turned off; the current version
 of a file is only purged with the file. Text and CSV files are previewed in Juntia's own viewer,
 which reads their first MiB as plain text (UTF-8, UTF-16 with a byte order mark, or Windows-1252).
@@ -583,4 +717,7 @@ Asking to read again a file whose text is never read, such as a video, answers
 | `503 request_busy` | Too many simultaneous changes; the client retries after a second. |
 | `507 storage_low_space` | Free space on the uploads volume is below `MIN_FREE_DISK_MB`. |
 | Invitations report that email is not configured | `SMTP_HOST` and `SMTP_FROM` are empty, or `.env` changed without recreating `api`. |
+| Nobody can open the administration | No account has the administrator role (every start then logs "No account is an administrator"), or no administrator can sign in: see [lost administrator access](#lost-administrator-access). |
+| The log says `ADMIN_USERNAME`, `ADMIN_PASSWORD` or `ALLOW_INSECURE_LOCAL_ADMIN` "is no longer used" | It belonged to the technical administrator of earlier releases: remove it from `.env` and from your Compose file (see [upgrading to administrator accounts](#upgrading-to-administrator-accounts)). |
+| `docker compose` refuses to start and asks to set `ADMIN_USERNAME` | Your copy of `docker-compose.yml` is older than administrator accounts: remove its `ADMIN_USERNAME` and `ADMIN_PASSWORD` lines, or download it again. |
 | A changed setting has no effect | The container was restarted instead of recreated: `docker compose up -d --no-deps --force-recreate api`. |

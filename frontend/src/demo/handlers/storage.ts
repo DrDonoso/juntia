@@ -1,18 +1,18 @@
 /**
  * Storage administration routes of the demo API (src/juntia/storage_admin.py): the storage the
- * action PDFs, the pasted images and the shared documents use, per resident and for the community,
+ * action PDFs, the pasted images and the shared documents use, per account and for the community,
  * with the synthetic upload volume; the withdrawn PDFs, the images and the earlier document
  * versions that still use it; and their purge, which deletes the file but keeps its record (and
- * the history of a PDF or a document). Administrator only; they keep working while the Actions,
- * Events and Documents features are off.
+ * the history of a PDF or a document, written under the administrator's own name). For
+ * administrators only; they keep working while the Actions, Events and Documents features are off.
  */
 import type {
-  ActionAttachmentOut, ActorOut, StorageOut, StoredAttachmentPage, StoredDocumentVersionOut, StoredDocumentVersionPage, StoredImageOut,
+  ActionAttachmentOut, StorageOut, StoredAttachmentPage, StoredDocumentVersionOut, StoredDocumentVersionPage, StoredImageOut,
   StoredImagePage,
 } from '../../api/schema.gen'
 import {
-  DemoApiError, actorOf, http, nowIso, pageParam, paginate, parseBody, pdfResponse, queryText, readJson, route, type HttpHandler,
-  type RouteContext,
+  DemoApiError, actorOf, http, nowIso, pageParam, paginate, parseBody, pdfResponse, queryText, readJson, route, type DemoActor,
+  type HttpHandler, type RouteContext,
 } from '../core'
 import { communityStore } from '../store/community'
 import { attachmentName, attachmentOut, findAction, purgeAttachment } from '../store/community-actions'
@@ -24,9 +24,9 @@ import {
 import { uuidParam, version } from './community-contracts'
 import { imageResponse } from './community-images'
 
-function administrator({ identity }: RouteContext): ActorOut {
-  if (!identity) throw new DemoApiError('authentication_required', 401)
-  return actorOf(identity)
+function administrator({ user }: RouteContext): DemoActor {
+  if (!user) throw new DemoApiError('authentication_required', 401)
+  return actorOf(user)
 }
 
 function storedPdf({ params }: RouteContext, disposition: 'attachment' | 'inline'): Response {
@@ -52,7 +52,7 @@ export const storageHandlers: HttpHandler[] = [
       })),
     }
   })),
-  // The administrator's copy of a stored PDF, withdrawn or not, also while Actions is turned off.
+  // The administration's copy of a stored PDF, withdrawn or not, also while Actions is turned off.
   http.get('/api/admin/storage/attachments/:attachmentId/preview', route('admin', context => storedPdf(context, 'inline'))),
   http.get('/api/admin/storage/attachments/:attachmentId/download', route('admin', context => storedPdf(context, 'attachment'))),
   // Purging again answers the purged PDF unchanged; otherwise the version must match and the PDF be withdrawn.

@@ -11,8 +11,8 @@ from sqlalchemy import BigInteger, func, literal, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from .auth import Actor
 from .config import Settings
-from .contracts import ActionActorOut
 from .db import ActionAttachment, CommunityImage, State
 from .errors import AppError
 
@@ -63,8 +63,8 @@ async def lock_attachment_storage(db: AsyncSession) -> None:
 
 
 async def stored_bytes(db: AsyncSession, user_id: int | None = None) -> int:
-    """Bytes still on disk, of one resident when `user_id` is set: active and withdrawn PDFs
-    and images, until the administrator purges them."""
+    """Bytes still on disk, of one account's uploads when `user_id` is set: active and withdrawn
+    PDFs and images, until an administrator purges them."""
     total = 0
     for table in (ActionAttachment, CommunityImage):
         where: list[ColumnElement[bool]] = [table.purged_at.is_(None)]
@@ -77,13 +77,12 @@ async def stored_bytes(db: AsyncSession, user_id: int | None = None) -> int:
 
 
 async def check_attachment_quota(
-    db: AsyncSession, config: Settings, actor: ActionActorOut, size: int,
+    db: AsyncSession, config: Settings, actor: Actor, size: int,
 ) -> None:
-    """Check both byte budgets for a new PDF or image; callers hold lock_attachment_storage()."""
-    if actor.kind == "resident" and actor.user_id is not None:
-        used = await stored_bytes(db, actor.user_id)
-        if used + size > config.action_storage_user_quota_mb * MIB:
-            raise AppError("action_storage_user_quota", 409)
+    """Check both byte budgets for a new PDF or image, the author's own also for administrators;
+    callers hold lock_attachment_storage()."""
+    if await stored_bytes(db, actor.user_id) + size > config.action_storage_user_quota_mb * MIB:
+        raise AppError("action_storage_user_quota", 409)
     used = await stored_bytes(db)
     if used + size > config.action_storage_community_quota_mb * MIB:
         log.warning("An upload was refused by the community storage quota")

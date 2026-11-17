@@ -4,7 +4,7 @@ import { DWELLINGS, PRESIDENT_ID, castResident } from '../cast'
 import { resetDemo } from '../store'
 import { findResident, type DemoResident } from '../store/core'
 import { clearPresidency, peopleStore, residentPasswordMatches, setResidentPassword } from '../store/people'
-import { demoRequest } from '../testing'
+import { demoRequest, signInAdmin } from '../testing'
 import { floorName, mapleCourtLayout, peopleScenario } from './people'
 
 // Thursday 29 October 2026, midday (local time).
@@ -47,7 +47,7 @@ describe('the people scenario', () => {
   test('the layout is the one the directory serves, and the API accepts it back unchanged', async () => {
     const { body } = await demoRequest<DwellingLayoutOut>('GET', '/api/neighbors/layout')
     expect(body).toEqual({ version: 1, layout: mapleCourtLayout(), limits: { zones: 50, rows: 100, columns: 24, cells: 10000 } })
-    await demoRequest('POST', '/api/admin/auth/login', { body: { username: 'demo', password: 'demo' } })
+    await signInAdmin()
     expect(await demoRequest('PUT', '/api/admin/dwellings/layout', { body: { version: 1, layout: body.layout } }))
       .toMatchObject({ status: 200, body: { version: 2, layout: mapleCourtLayout() } })
   })

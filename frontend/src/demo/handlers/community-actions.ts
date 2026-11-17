@@ -1,14 +1,15 @@
 /**
  * Community action routes of the demo API (src/juntia/community_actions.py): the board and the
  * list, items, comments, PDF attachments with downloads and previews, history and labels, and the
- * administrator's label catalogue. Every reader may edit any action; only the author (or the
+ * administrators' label catalogue. Every reader may edit any action; only the author (or an
  * administrator) may edit or withdraw a comment or a PDF. All routes but the catalogue answer 404
  * `actions_disabled` while the feature is off.
  */
 import type { ActionAttachmentOut, ActionBoardOut, ActionOut, ActorOut } from '../../api/schema.gen'
 import {
   DemoApiError, actorOf, displayName, http, idParam, looksLikePdf, nowIso, pageCount, pageParam, paginate, parseBody, pdfResponse,
-  queryBool, queryChoice, queryText, readForm, readJson, route, type Body, type HttpHandler, type PathParams, type RouteContext,
+  queryBool, queryChoice, queryText, readForm, readJson, route, type Body, type DemoActor, type HttpHandler, type PathParams,
+  type RouteContext,
 } from '../core'
 import { communityStore, type CommunityState } from '../store/community'
 import {
@@ -25,9 +26,9 @@ import { MODEL, idList, tagColor, tagFields, tagName, uuidParam, valid, version 
 
 const ACTIONS = { feature: 'actions' } as const
 
-function author({ identity }: RouteContext): ActorOut {
-  if (!identity) throw new DemoApiError('authentication_required', 401)
-  return actorOf(identity)
+function author({ user }: RouteContext): DemoActor {
+  if (!user) throw new DemoApiError('authentication_required', 401)
+  return actorOf(user)
 }
 
 function itemOf(state: CommunityState, id: number): DemoAction {
@@ -48,15 +49,15 @@ function attachmentOf(state: CommunityState, action: DemoAction, id: string): De
   return attachment
 }
 
-/** `require_owner`: residents only change their own comments and PDFs; the administrator any. */
-function requireOwner(content: { author: ActorOut }, actor: ActorOut): void {
-  if (actor.kind !== 'administrator' && (content.author.kind !== actor.kind || content.author.user_id !== actor.user_id)) {
+/** `require_owner`: comments and PDFs change only by their authors and administrators. */
+function requireOwner(content: { author: ActorOut }, actor: DemoActor): void {
+  if (!actor.administrator && (content.author.kind !== actor.kind || content.author.user_id !== actor.user_id)) {
     throw new DemoApiError('action_owner_required', 403)
   }
 }
 
 /** Checks shared by the edits and withdrawals of comments and PDFs, in the backend's order. */
-function editable(content: { author: ActorOut; version: number; withdrawnAt: string | null }, actor: ActorOut, expected: number): void {
+function editable(content: { author: ActorOut; version: number; withdrawnAt: string | null }, actor: DemoActor, expected: number): void {
   requireOwner(content, actor)
   if (content.version !== expected) throw new DemoApiError('action_stale', 409)
   if (content.withdrawnAt !== null) throw new DemoApiError('action_content_withdrawn', 409)

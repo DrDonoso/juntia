@@ -7,14 +7,14 @@ async function mockSession(page: Page, { administrator = false, actions = true, 
 } = {}) {
   const state = { authenticated: true, logoutFails: false, logoutRequests: 0 }
   const identity: UserAuthOut = {
-    authenticated: true, kind: administrator ? 'administrator' : 'resident',
+    authenticated: true, administrator,
     name: administrator ? 'Administrator' : 'Test Neighbor',
-    email: administrator ? null : 'neighbor@example.org',
-    user_id: administrator ? null : 1, dwelling_id: administrator ? null : 1,
+    email: administrator ? 'administrator@example.org' : 'neighbor@example.org',
+    user_id: 1, dwelling_id: administrator ? null : 1,
     expires_at: '2099-01-01T00:00:00Z',
   }
   const profile: ProfileOut = {
-    id: 1, name: 'Test Neighbor', email: 'neighbor@example.org', phone: '',
+    id: 1, name: 'Test Neighbor', email: 'neighbor@example.org', phone: '', administrator: false,
     dwelling_id: 1, dwelling_label: '1 A', coefficient: '5.00',
     google_linked: false, has_password: true, last_login_at: null, version: 1,
   }
@@ -26,13 +26,11 @@ async function mockSession(page: Page, { administrator = false, actions = true, 
   await page.route(url => url.pathname.startsWith('/api/'), async route => {
     const path = new URL(route.request().url()).pathname
     const json = (value: unknown) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(value) })
-    if (path === '/api/admin/auth/session') return json({
-      authenticated: state.authenticated && administrator, username: administrator ? 'admin' : null,
-    })
     if (path === '/api/auth/session') return json(state.authenticated ? identity : {
-      authenticated: false, kind: null, name: null, email: null,
+      authenticated: false, administrator: false, name: null, email: null,
       user_id: null, dwelling_id: null, expires_at: null,
     })
+    if (path === '/api/auth/setup') return json({ available: false })
     if (path === '/api/settings/general') return json({
       community_name: 'Residential community of Park Avenue and Market Square',
     })
@@ -408,8 +406,8 @@ test.describe('Spanish browser', () => {
     await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible()
     await expect(page.getByRole('textbox', { name: 'Email', exact: true })).toBeVisible()
     await page.goto('/admin')
-    await expect(page.getByRole('heading', { name: 'Administration', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Sign in to administration', exact: true })).toBeVisible()
+    await expect(page).toHaveURL(/\/login\?next=%2Fadmin$/)
+    await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible()
     await expect(page.getByRole('combobox', { name: 'Language', exact: true })).toHaveValue('en')
     await page.setViewportSize({ width: 320, height: 640 })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)

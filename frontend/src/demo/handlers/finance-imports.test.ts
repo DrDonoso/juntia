@@ -6,7 +6,7 @@ import { resetDemo } from '../store'
 import { coreStore } from '../store/core'
 import { financeStore } from '../store/finance'
 import { money } from '../store/finance-ledger'
-import { demoFetch, demoRequest, demoUrl } from '../testing'
+import { demoFetch, demoRequest, demoUrl, signInAdmin } from '../testing'
 import { MAX_UPLOAD_BYTES, fingerprint } from './finance-imports'
 
 // Thursday 29 October 2026, midday (local time).
@@ -14,7 +14,7 @@ const NOW = new Date(2026, 9, 29, 12, 0)
 
 beforeEach(async () => {
   resetDemo({ now: () => NOW })
-  expect((await demoRequest('POST', '/api/admin/auth/login', { body: { username: 'demo', password: 'demo' } })).status).toBe(200)
+  expect((await signInAdmin()).status).toBe(200)
 })
 afterEach(() => resetDemo())
 
@@ -206,7 +206,7 @@ describe('importing a statement', () => {
     expect(await confirm(preview)).toMatchObject({ status: 409, body: { code: 'preview_stale' } })
     const later = (await upload(pdf('Later'))).body
     setClock(() => new Date(NOW.getTime() + 25 * 3_600_000))
-    expect((await demoRequest('GET', '/api/admin/auth/session')).body).toMatchObject({ authenticated: true })
+    expect((await demoRequest('GET', '/api/auth/session')).body).toMatchObject({ authenticated: true, administrator: true })
     expect(await demoRequest('GET', `/api/admin/imports/${later.id}`)).toMatchObject({ status: 410, body: { code: 'preview_expired' } })
     expect(await confirm(later)).toMatchObject({ status: 410, body: { code: 'preview_expired' } })
     // The next upload forgets expired previews.
@@ -289,12 +289,25 @@ describe('importing a statement', () => {
     expect(financeStore().previews.size).toBe(0)
     // Directories and control characters never reach the stored name.
     expect((await upload(pdf(), 'folder/sub/state\u0007ment.pdf')).body.filename).toBe('statement.pdf')
-    await demoRequest('POST', '/api/admin/auth/logout')
+    await demoRequest('POST', '/api/auth/logout')
     expect(await upload(pdf())).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
   })
 
   test('fingerprints tell files apart', () => {
     expect(fingerprint(pdf('One'))).toBe(fingerprint(pdf('One')))
     expect(fingerprint(pdf('One'))).not.toBe(fingerprint(pdf('Two')))
+  })
+
+  test('a preview belongs to the administrator who uploaded it', async () => {
+    const preview = (await upload(pdf())).body
+    // James makes Priya an administrator too: his preview is not hers.
+    expect(await demoRequest('PATCH', '/api/admin/users/2', {
+      body: { name: 'Priya Sharma', email: 'priya.sharma@example.com', phone: '+442079460563', dwelling_id: 1, administrator: true, version: 1 },
+    })).toMatchObject({ status: 200, body: { administrator: true } })
+    await demoRequest('POST', '/api/auth/login', { body: { email: 'priya.sharma@example.com', password: 'demo' } })
+    expect(await demoRequest('GET', `/api/admin/imports/${preview.id}`)).toMatchObject({ status: 404, body: { code: 'preview_not_found' } })
+    expect(await confirm(preview)).toMatchObject({ status: 404, body: { code: 'preview_not_found' } })
+    await signInAdmin()
+    expect(await confirm(preview)).toMatchObject({ status: 200, body: { id: preview.id } })
   })
 })

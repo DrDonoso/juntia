@@ -1,9 +1,9 @@
 import { Component, Suspense, lazy, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router'
+import { BrowserRouter, Link, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router'
 import { api, cache, clearPrivateData, errorMessage, signedOut } from './api/client'
-import { ForgotPassword, LoginNoticeProvider, PasswordLink, ReaderGate, ResidentLogin, useAdminAuth, useReaderAuth, useSessionLifecycle } from './auth'
+import { ForgotPassword, Login, LoginNoticeProvider, PasswordLink, ReaderGate, useReaderAuth, useSessionLifecycle } from './auth'
 import { Notice, profileInitials, useAction, useFeatureLifecycle, useFeatures, useGeneralSettings } from './shared'
 import { Icon } from './icons'
 import { PrivacyContext, storedPrivacy } from './privacy'
@@ -13,7 +13,6 @@ import './styles/app.css'
 const Overview = lazy(() => import('./reader').then(m => ({ default: m.Overview })))
 const Transactions = lazy(() => import('./reader').then(m => ({ default: m.Transactions })))
 const Statements = lazy(() => import('./reader').then(m => ({ default: m.Statements })))
-const Login = lazy(() => import('./admin').then(m => ({ default: m.Login })))
 const ImportPage = lazy(() => import('./admin').then(m => ({ default: m.ImportPage })))
 const RulesPage = lazy(() => import('./admin').then(m => ({ default: m.RulesPage })))
 const CatalogPage = lazy(() => import('./admin').then(m => ({ default: m.CatalogPage })))
@@ -62,8 +61,10 @@ function storedSidebarCollapsed() {
 }
 export function Shell() {
   const { t } = useI18n()
-  const auth = useAdminAuth(), reader = useReaderAuth(), action = useAction()
-  useSessionLifecycle(reader.data, auth.data?.authenticated)
+  const reader = useReaderAuth(), action = useAction()
+  useSessionLifecycle(reader.data)
+  const signedIn = reader.data?.authenticated === true
+  const administrator = signedIn && reader.data?.administrator === true
   const general = useGeneralSettings()
   const features = useFeatures(true)
   useFeatureLifecycle(features.data)
@@ -96,7 +97,7 @@ export function Shell() {
   }, [theme])
   useEffect(() => {
     setOpenMenu(null)
-  }, [location, auth.data?.authenticated, reader.data?.authenticated])
+  }, [location, reader.data?.authenticated, reader.data?.administrator])
   useEffect(() => {
     const query = window.matchMedia(compactNavigationQuery)
     function resize() {
@@ -150,7 +151,7 @@ export function Shell() {
     closeMenu()
     void action.run(async () => {
       await api('/auth/logout', 'POST'); await clearPrivateData(true)
-      cache.setQueryData(['auth'], { authenticated: false, username: null }); cache.setQueryData(['reader-auth'], signedOut)
+      cache.setQueryData(['reader-auth'], signedOut)
     })
   }
   function toggleTheme() {
@@ -165,22 +166,25 @@ export function Shell() {
     try { localStorage.setItem('juntia_hide_values', next ? '1' : '0') }
     catch { console.warn('Privacy preference could not be stored.') }
   }
-  const initials = profileInitials(reader.data?.name || auth.data?.username || t('shell.defaultUserName'))
+  const initials = profileInitials(reader.data?.name || t('shell.defaultUserName'))
   return <PrivacyContext value={privateValues}><a className="skip-link" href="#content">{t('shell.skipToContent')}</a>
     <header className="topbar">
       <button ref={navigationButton} type="button" className="quiet icon-button navigation-toggle" title={t('shell.navigationMenu')} aria-label={t('shell.navigationMenu')} aria-controls="site-navigation" aria-expanded={sidebarExpanded} onClick={toggleNavigation}><Icon name={compactNavigation && sidebarExpanded ? 'close' : 'menu'} /></button>
       <span className="community-title" title={communityName}>{communityName}</span>
       <div className="topbar-actions">
-        {isFinanceView && reader.data?.authenticated && <button className="quiet icon-button" title={hideValues ? t('shell.showAmounts') : t('shell.hideAmounts')} aria-label={hideValues ? t('shell.showAmounts') : t('shell.hideAmounts')} aria-pressed={hideValues} onClick={togglePrivacy}><Icon name={hideValues ? 'eye-off' : 'eye'} /></button>}
+        {isFinanceView && signedIn && <button className="quiet icon-button" title={hideValues ? t('shell.showAmounts') : t('shell.hideAmounts')} aria-label={hideValues ? t('shell.showAmounts') : t('shell.hideAmounts')} aria-pressed={hideValues} onClick={togglePrivacy}><Icon name={hideValues ? 'eye-off' : 'eye'} /></button>}
         <button className="quiet icon-button" title={theme === 'dark' ? t('shell.lightMode') : t('shell.darkMode')} aria-label={theme === 'dark' ? t('shell.lightMode') : t('shell.darkMode')} aria-pressed={theme === 'dark'} onClick={toggleTheme}><Icon name={theme === 'dark' ? 'sun' : 'moon'} /></button>
-        {(auth.data?.authenticated || reader.data?.authenticated) && <div className="user-controls">
+        {signedIn && <div className="user-controls">
           <button ref={userButton} type="button" className="quiet icon-button profile-button" title={t('shell.userMenu')} aria-label={t('shell.userMenuLabel', { initials })} aria-controls="user-menu" aria-expanded={openMenu === 'user'} onClick={() => setOpenMenu(previous => previous === 'user' ? null : 'user')}>
             <span className="profile-avatar" aria-hidden="true">{initials}</span>
           </button>
           <nav ref={userMenu} id="user-menu" className="user-menu" aria-label={t('shell.userOptions')} hidden={openMenu !== 'user'}>
-            {reader.data?.authenticated && <NavLink to="/profile" onClick={closeMenu}>{t('shell.myProfile')}</NavLink>}
+            {administrator && (isAdmin
+              ? <Link to="/" onClick={closeMenu}>{t('shell.links.communityPortal')}</Link>
+              : <Link to="/admin" onClick={closeMenu}>{t('shell.administration')}</Link>)}
+            <NavLink to="/profile" onClick={closeMenu}>{t('shell.myProfile')}</NavLink>
             <LanguageSelect className="user-menu-language" />
-            <button type="button" className="quiet" disabled={action.busy} onClick={logout}>{t('shell.signOut')}</button>
+            <button type="button" className="quiet sign-out" disabled={action.busy} onClick={logout}>{t('shell.signOut')}</button>
           </nav>
         </div>}
       </div>
@@ -191,7 +195,7 @@ export function Shell() {
     }}><NavLink to={isAdmin ? '/admin' : '/'} className="brand"><img src="/icon.svg" alt="" width="38" height="38" /><span>Juntia<strong>{t('shell.brandTagline')}</strong></span></NavLink>
       <span className="nav-label">{isAdmin ? t('shell.adminLabel') : t('shell.portalLabel')}</span>
       {isAdmin ? <>
-        {auth.data?.authenticated && <nav aria-label={t('shell.navigation.admin')}>
+        {administrator && <nav aria-label={t('shell.navigation.admin')}>
           <NavigationGroup title={t('shell.groups.finances')}>
             <NavLink to="/admin" end><Icon name="upload" />{t('shell.links.import')}</NavLink>
             <NavLink to="/admin/transactions"><Icon name="receipt" />{t('shell.links.classifyTransactions')}</NavLink>
@@ -214,7 +218,7 @@ export function Shell() {
             <NavLink to="/admin/deleted-contacts"><Icon name="file-text" />{t('shell.links.deletedContacts')}</NavLink>
           </NavigationGroup>
         </nav>}
-      </> : reader.data?.authenticated && <nav aria-label={t('shell.navigation.main')}>
+      </> : signedIn && <nav aria-label={t('shell.navigation.main')}>
         <NavigationGroup title={t('shell.groups.finances')}>
           <NavLink to="/" end><Icon name="dashboard" />{t('shell.links.overview')}</NavLink>
           <NavLink to="/transactions"><Icon name="receipt" />{t('shell.links.transactions')}</NavLink>
@@ -239,14 +243,16 @@ export function Shell() {
     </div>
   </PrivacyContext>
 }
+/** The administration: for signed-in administrators; anyone else finds no such page. */
 function AdminGate() {
   const { t } = useI18n()
-  const query = useAdminAuth(), reader = useReaderAuth()
-  if (query.isPending) return <Notice>{t('auth.checkingSession')}</Notice>
-  if (query.error) return <Notice error>{errorMessage(query.error)}</Notice>
-  if (!query.data?.authenticated) return <Login />
+  const reader = useReaderAuth(), location = useLocation()
+  if (reader.isPending) return <Notice>{t('auth.checkingSession')}</Notice>
   if (reader.error) return <Notice error>{errorMessage(reader.error)}</Notice>
-  if (reader.data?.kind !== 'administrator') return <Notice>{t('auth.checkingSession')}</Notice>
+  if (!reader.data?.authenticated) {
+    return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
+  }
+  if (!reader.data.administrator) return <NotFound />
   return <Outlet />
 }
 
@@ -269,7 +275,7 @@ function NotFound() {
 function App() {
   useI18n()
   return <I18nRoot><QueryClientProvider client={cache}><LoginNoticeProvider><BrowserRouter><Routes><Route element={<Shell />}>
-    <Route path="login" element={<ResidentLogin />} />
+    <Route path="login" element={<Login />} />
     <Route path="forgot-password" element={<ForgotPassword />} />
     <Route path="activate" element={<PasswordLink key="invitation" invitation />} />
     <Route path="reset-password" element={<PasswordLink key="recovery" invitation={false} />} />

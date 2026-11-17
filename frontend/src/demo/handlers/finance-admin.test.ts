@@ -3,14 +3,14 @@ import type { CatalogOut, RuleImpact, RuleOut, TransactionOut } from '../../api/
 import { resetDemo } from '../store'
 import { coreStore } from '../store/core'
 import { financeStore } from '../store/finance'
-import { demoRequest } from '../testing'
+import { demoRequest, signInAdmin, signInAs } from '../testing'
 
 // Thursday 29 October 2026, midday (local time).
 const NOW = new Date(2026, 9, 29, 12, 0)
 
 beforeEach(async () => {
   resetDemo({ now: () => NOW })
-  expect((await demoRequest('POST', '/api/admin/auth/login', { body: { username: 'demo', password: 'demo' } })).status).toBe(200)
+  expect((await signInAdmin()).status).toBe(200)
 })
 afterEach(() => resetDemo())
 
@@ -19,18 +19,20 @@ const revision = () => financeStore().revision
 const tags = async () => (await demoRequest<CatalogOut[]>('GET', '/api/catalog/tags')).body
 
 describe('finance administration access', () => {
-  test('needs the administrator session and the write header', async () => {
-    await demoRequest('POST', '/api/admin/auth/logout')
+  test('needs an administrator and the write header', async () => {
+    await signInAs(6)
     for (const [method, path, body] of [
       ['GET', '/api/admin/rules'], ['POST', '/api/admin/rules', {}], ['PUT', '/api/admin/rules/1', {}], ['DELETE', '/api/admin/rules/1'],
       ['POST', '/api/admin/rules/preview', {}], ['POST', '/api/admin/rules/apply', {}], ['PATCH', '/api/admin/account', {}],
       ['POST', '/api/admin/catalog/tags', {}], ['PATCH', '/api/admin/catalog/tags/1', {}], ['DELETE', '/api/admin/catalog/tags/1'],
       ['PATCH', '/api/admin/transactions/1', {}],
     ] as const) {
-      // The sample neighbor is signed in: neighbors get the administrator's 401 too.
-      expect(await demoRequest(method, path, { body }), `${method} ${path}`).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
+      // The sample neighbor is signed in: a neighbor is no administrator.
+      expect(await demoRequest(method, path, { body }), `${method} ${path}`).toMatchObject({ status: 403, body: { code: 'administrator_required' } })
     }
-    await demoRequest('POST', '/api/admin/auth/login', { body: { username: 'demo', password: 'demo' } })
+    await demoRequest('POST', '/api/auth/logout')
+    expect(await demoRequest('GET', '/api/admin/rules')).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
+    await signInAdmin()
     expect(await demoRequest('PATCH', '/api/admin/account', { body: { name: 'X' }, mutationHeader: false }))
       .toMatchObject({ status: 403, body: { code: 'invalid_origin' } })
   })

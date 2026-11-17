@@ -6,11 +6,12 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr, ValidationError
 
+from juntia import auth
 from juntia.app import create_app
 from juntia.config import Settings
 from juntia.middleware import SecurityMiddleware
 from juntia.parser import MAX_BYTES
-from tests.support import ROWS, statement_pdf
+from tests.support import ADMINISTRATOR, ROWS, statement_pdf
 from tests.test_api import commit, preview
 
 
@@ -27,45 +28,55 @@ def test_same_day_refresh_uses_known_bank_order_for_current_balance(admin):
 
 
 def test_credential_rotation_invalidates_old_cookies(admin, config):
-    cookie = admin.cookies.get("juntia_admin")
+    cookie = admin.cookies.get(auth.USER_COOKIE)
     rotated = config.model_copy(update={"auth_secret": SecretStr(secrets.token_urlsafe(32))})
     with TestClient(create_app(rotated)) as other:
-        other.cookies.set("juntia_admin", cookie, domain="testserver.local", path="/api/admin")
-        assert other.get("/api/admin/auth/session").json()["authenticated"] is False
+        other.cookies.set(auth.USER_COOKIE, cookie, domain="testserver.local", path="/api")
+        assert other.get("/api/auth/session").json()["authenticated"] is False
         assert other.get("/api/admin/rules").status_code == 401
 
 
-def test_local_default_credentials_authenticate_with_normal_session_protection(config):
+def create_administrator(config):
+    """The first-run administration account, created from another browser."""
+    origin = config.public_origins[0]
+    with TestClient(create_app(config), base_url=origin) as browser:
+        response = browser.post("/api/auth/setup", json=ADMINISTRATOR, headers={
+            "origin": origin, "x-juntia-request": "1",
+        })
+        assert response.status_code == 201, response.text
+
+
+def sign_in(client, origin):
+    return client.post(f"{origin}/api/auth/login", headers={
+        "origin": origin, "x-juntia-request": "1",
+    }, json={"email": ADMINISTRATOR["email"], "password": ADMINISTRATOR["password"]})
+
+
+def test_a_local_first_run_signs_in_with_normal_session_protection(config):
     local = Settings(
-        _env_file=None,
-        **{
-            **config.model_dump(),
-            "admin_username": "admin",
-            "admin_password": "admin",
-            "allow_insecure_local_admin": True,
-            "public_origin": "http://localhost:7778",
-        },
+        _env_file=None, **{**config.model_dump(), "public_origin": "http://localhost:7778"},
     )
     with TestClient(create_app(local), base_url=local.public_origin) as client:
         client.headers.update({"origin": local.public_origin, "x-juntia-request": "1"})
         assert client.get("/api/admin/rules").status_code == 401
-        response = client.post(
-            "/api/admin/auth/login", json={"username": "admin", "password": "admin"}
+        response = client.post("/api/auth/setup", json=ADMINISTRATOR)
+        assert response.status_code == 201
+        cookie = next(
+            header for header in response.headers.get_list("set-cookie")
+            if header.startswith(auth.USER_COOKIE + "=")
         )
-        assert response.status_code == 200
-        assert "httponly" in response.headers["set-cookie"].lower()
+        assert "httponly" in cookie.lower() and "samesite=strict" in cookie.lower()
         assert client.get("/api/admin/rules").status_code == 200
-        assert client.post("/api/admin/auth/logout").status_code == 204
+        assert client.post("/api/auth/logout").status_code == 204
         assert client.get("/api/admin/rules").status_code == 401
 
 
-def test_blank_credentials_are_rejected_without_echoing_secrets(config):
+def test_blank_secrets_are_rejected_without_echoing_them(config):
     values = config.model_dump()
-    values["admin_password"] = " " * 20
+    values["auth_secret"] = " " * 40
     with pytest.raises(ValidationError):
         Settings.model_validate(values)
-    values["admin_password"] = "short-private-value"
-    values["auth_secret"] = " " * 40
+    values["auth_secret"] = "short-private-value"
     with pytest.raises(ValidationError) as error:
         Settings.model_validate(values)
     assert "short-private-value" not in str(error.value)
@@ -102,13 +113,14 @@ def test_both_origins_share_state_with_separate_host_only_sessions(
 ):
     client = multi_origin_client
     origins = multi_origin_config.public_origins
+    create_administrator(multi_origin_config)
     rules = []
     cookies = {}
     for index, origin in enumerate(origins):
         headers = {"origin": origin, "x-juntia-request": "1"}
         assert client.get(f"{origin}/health").json() == {"status": "ok"}
         assert client.get(f"{origin}/api/summary").status_code == 401
-        session = client.get(f"{origin}/api/admin/auth/session")
+        session = client.get(f"{origin}/api/auth/session")
         assert session.json()["authenticated"] is False
         assert "cookie" not in session.request.headers
         assert client.get(f"{origin}/api/admin/rules").status_code == 401
@@ -116,20 +128,12 @@ def test_both_origins_share_state_with_separate_host_only_sessions(
         assert (
             client.post(f"{origin}/api/admin/rules", json=body, headers=headers).status_code == 401
         )
-        response = client.post(
-            f"{origin}/api/admin/auth/login",
-            headers=headers,
-            json={
-                "username": multi_origin_config.admin_username,
-                "password": multi_origin_config.admin_password.get_secret_value(),
-            },
-        )
+        response = sign_in(client, origin)
         assert response.status_code == 200, response.text
         cookie = next(
-            parsed["juntia_admin"]
+            parsed[auth.USER_COOKIE]
             for header in response.headers.get_list("set-cookie")
-            if "juntia_admin" in (parsed := SimpleCookie(header))
-            and parsed["juntia_admin"]["path"] == "/api"
+            if auth.USER_COOKIE in (parsed := SimpleCookie(header))
         )
         assert not cookie["domain"]
         assert cookie["path"] == "/api"
@@ -137,7 +141,7 @@ def test_both_origins_share_state_with_separate_host_only_sessions(
         assert cookie["samesite"].lower() == "strict"
         assert 0 < int(cookie["max-age"]) <= multi_origin_config.session_hours * 3600
         cookies[origin] = cookie.value
-        assert client.get(f"{origin}/api/admin/auth/session").json()["authenticated"] is True
+        assert client.get(f"{origin}/api/auth/session").json()["administrator"] is True
         assert client.get(f"{origin}/api/admin/rules").json() == rules
         response = client.post(f"{origin}/api/admin/rules", json=body, headers=headers)
         assert response.status_code == 201, response.text
@@ -160,7 +164,7 @@ def test_both_origins_share_state_with_separate_host_only_sessions(
         assert client.get(f"{other_origin}/api/settings/general").json() == general
         summary = client.get(f"{origin}/api/summary")
         assert summary.status_code == 200
-        assert "juntia_admin=" in summary.request.headers["cookie"]
+        assert auth.USER_COOKIE + "=" in summary.request.headers["cookie"]
         manifest = client.get(f"{origin}/manifest.webmanifest").json()
         assert manifest["id"] == manifest["start_url"] == manifest["scope"] == "/"
         assert all(icon["src"].startswith("/") for icon in manifest["icons"])
@@ -176,13 +180,13 @@ def test_both_origins_share_state_with_separate_host_only_sessions(
             ).status_code
             == 204
         )
-        assert client.post(f"{origin}/api/admin/auth/logout", headers=headers).status_code == 204
+        assert client.post(f"{origin}/api/auth/logout", headers=headers).status_code == 204
         assert client.get(f"{origin}/api/summary").status_code == 401
         assert client.get(f"{origin}/api/admin/rules").status_code == 401
         assert (
             client.get(
                 f"{origin}/api/admin/rules",
-                headers={"cookie": f"juntia_admin={cookies[origin]}"},
+                headers={"cookie": f"{auth.USER_COOKIE}={cookies[origin]}"},
             ).status_code
             == 401
         )
@@ -229,17 +233,8 @@ def test_invalid_mutation_headers_cannot_change_shared_state(
     client = multi_origin_client
     origin, other_origin = multi_origin_config.public_origins
     valid_headers = {"origin": origin, "x-juntia-request": "1"}
-    assert (
-        client.post(
-            "/api/admin/auth/login",
-            headers=valid_headers,
-            json={
-                "username": multi_origin_config.admin_username,
-                "password": multi_origin_config.admin_password.get_secret_value(),
-            },
-        ).status_code
-        == 200
-    )
+    create_administrator(multi_origin_config)
+    assert sign_in(client, origin).status_code == 200
     body = {"name": "Unchanged rule", "description_value": "Synthetic"}
     response = client.post("/api/admin/rules", headers=valid_headers, json=body)
     assert response.status_code == 201
@@ -335,21 +330,12 @@ def test_adding_an_origin_preserves_existing_sessions(multi_origin_config):
     original = Settings(
         _env_file=None, **{**multi_origin_config.model_dump(), "public_origin": origin}
     )
+    create_administrator(original)
     with TestClient(create_app(original), base_url=origin) as client:
-        assert (
-            client.post(
-                "/api/admin/auth/login",
-                headers={"origin": origin, "x-juntia-request": "1"},
-                json={
-                    "username": original.admin_username,
-                    "password": original.admin_password.get_secret_value(),
-                },
-            ).status_code
-            == 200
-        )
+        assert sign_in(client, origin).status_code == 200
         cookies = client.cookies
     with TestClient(create_app(multi_origin_config), base_url=origin, cookies=cookies) as client:
-        assert client.get("/api/admin/auth/session").json()["authenticated"] is True
+        assert client.get("/api/auth/session").json()["administrator"] is True
         assert client.get("/api/admin/rules").status_code == 200
         other_origin = multi_origin_config.public_origins[1]
         assert client.get(f"{other_origin}/api/admin/rules").status_code == 401

@@ -8,7 +8,7 @@ const ORIGIN = 'https://demo.example.com'
 const base: DemoEvent = {
   id: 7, calendarUid: '0f8fad5b-d9cb-469f-a165-70867728950e', title: '', description: '', location: '', allDay: false,
   startsAt: null, endsAt: null, startsOn: null, endsOn: null, actionId: null,
-  author: { kind: 'administrator', name: 'Technical administrator', user_id: null }, version: 1,
+  author: { kind: 'resident', name: 'James Okafor', user_id: 1 }, version: 1,
   createdAt: '2026-10-01T08:00:00.000Z', updatedAt: '2026-10-20T09:15:30.123Z', deletedAt: null,
 }
 

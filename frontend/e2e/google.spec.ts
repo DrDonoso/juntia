@@ -1,6 +1,7 @@
 import { test, expect, type Page, type BrowserContext } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import type { UserOut } from '../src/api/schema.gen'
+import { signInAsAdministrator } from './support'
 
 const password = 'synthetic google resident password'
 const googleName = 'Synthetic Google Resident'
@@ -41,11 +42,7 @@ test('Google remains invitation-only and supports passwordless profiles and link
   test.setTimeout(120_000)
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
-  await page.goto('/admin')
-  await expect(page.getByRole('button', { name: 'Continue with Google', exact: true })).toHaveCount(0)
-  await page.getByLabel('Username', { exact: true }).fill('browser-test')
-  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-test-password')
-  await page.getByRole('button', { name: 'Sign in to administration', exact: true }).click()
+  await signInAsAdministrator(page)
   await expect(page.getByRole('heading', { name: 'Import statement', exact: true })).toBeVisible()
   const email = 'google-resident@example.org'
   const link = await invite(page, 'Google 1 A', email)
@@ -67,7 +64,7 @@ test('Google remains invitation-only and supports passwordless profiles and link
     await resident.goto(link)
     await resident.getByRole('button', { name: 'Continue with Google', exact: true }).click()
     await expect(resident.getByRole('heading', { name: 'Community finances', exact: true })).toBeVisible()
-    expect((await resident.request.get('/api/admin/users')).status()).toBe(401)
+    expect((await resident.request.get('/api/admin/users')).status()).toBe(403)
     await resident.getByRole('button', { name: 'User menu' }).click()
     await resident.getByRole('link', { name: /My profile/ }).click()
     await expect(resident.getByLabel('Name', { exact: true })).toHaveValue(googleName)

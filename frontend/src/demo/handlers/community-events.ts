@@ -118,9 +118,9 @@ function linkedAction(state: CommunityState, input: EventInput): number | null |
   return input.actionId
 }
 
-function author({ identity }: RouteContext) {
-  if (!identity) throw new DemoApiError('authentication_required', 401)
-  return actorOf(identity)
+function author({ user }: RouteContext) {
+  if (!user) throw new DemoApiError('authentication_required', 401)
+  return actorOf(user)
 }
 
 function links(): boolean {

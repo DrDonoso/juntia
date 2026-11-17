@@ -24,11 +24,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse
 
-from .auth import DB, mutation_session, reader_session, settings
-from .community_actions import author, authorship, require_actions_enabled, session_actor
+from .auth import DB, Actor, actor_of, mutation_session, reader_session, settings
+from .community_actions import author, authorship, require_actions_enabled
 from .community_events import require_events_enabled
 from .config import Language
-from .contracts import ActionActorOut, CommunityImageOut, StoredImageOut
+from .contracts import CommunityImageOut, StoredImageOut
 from .db import CommunityImage, aware
 from .errors import AppError
 from .storage import (
@@ -37,7 +37,6 @@ from .storage import (
     lock_attachment_storage,
     out_of_space,
 )
-from .texts import ServerLanguage
 
 log = logging.getLogger(__name__)
 ImageScope = Literal["actions", "events"]
@@ -271,11 +270,9 @@ async def require_scope(scope: ImageScope, db: AsyncSession) -> None:
         await require_events_enabled(db)
 
 
-async def upload_actor(
-    scope: ImageScope, request: Request, db: AsyncSession, language: Language,
-) -> ActionActorOut:
+async def upload_actor(scope: ImageScope, request: Request, db: AsyncSession) -> Actor:
     await require_scope(scope, db)
-    return session_actor(await mutation_session(request, db), language)
+    return actor_of(await mutation_session(request, db))
 
 
 async def cleanup_upload(request: Request, staged: StagedImage) -> None:
@@ -294,8 +291,7 @@ async def cleanup_upload(request: Request, staged: StagedImage) -> None:
 
 
 async def upload_image(
-    scope: ImageScope, db: AsyncSession, request: Request, language: Language,
-    file: UploadFile, upload_id: UUID,
+    scope: ImageScope, db: AsyncSession, request: Request, file: UploadFile, upload_id: UUID,
 ) -> CommunityImageOut:
     config = settings(request)
     if file.size is not None and file.size > MAX_IMAGE_BYTES:
@@ -309,7 +305,7 @@ async def upload_image(
         # A retry of the requester's own stored upload goes on: it is answered from the
         # database below. Anyone else is refused before anything is written.
         stored = await db.get(CommunityImage, str(upload_id))
-        requester = await upload_actor(scope, request, db, language)
+        requester = await upload_actor(scope, request, db)
         if (
             stored is None or stored.scope != scope or stored.purged_at is not None
             or stored.author_kind != requester.kind
@@ -320,7 +316,7 @@ async def upload_image(
     staged = await run_in_threadpool(stage_image, file.file, file.filename, config.upload_dir)
     committed = False
     try:
-        actor = await upload_actor(scope, request, db, language)
+        actor = await upload_actor(scope, request, db)
         # The PDF lock: images and PDFs share the byte budgets, so one check sees both.
         await lock_attachment_storage(db)
         existing = await db.get(CommunityImage, str(upload_id), populate_existing=True)
@@ -388,9 +384,9 @@ events_router = APIRouter(
 
 @actions_router.post("", response_model=CommunityImageOut, status_code=201)
 async def upload_action_image(
-    db: DB, request: Request, language: ServerLanguage, file: UploadFile, upload_id: UploadId,
+    db: DB, request: Request, file: UploadFile, upload_id: UploadId,
 ) -> CommunityImageOut:
-    return await upload_image("actions", db, request, language, file, upload_id)
+    return await upload_image("actions", db, request, file, upload_id)
 
 
 @actions_router.get("/{image_id}", response_class=FileResponse)
@@ -400,9 +396,9 @@ async def action_image(image_id: UUID, db: DB, request: Request) -> FileResponse
 
 @events_router.post("", response_model=CommunityImageOut, status_code=201)
 async def upload_event_image(
-    db: DB, request: Request, language: ServerLanguage, file: UploadFile, upload_id: UploadId,
+    db: DB, request: Request, file: UploadFile, upload_id: UploadId,
 ) -> CommunityImageOut:
-    return await upload_image("events", db, request, language, file, upload_id)
+    return await upload_image("events", db, request, file, upload_id)
 
 
 @events_router.get("/{image_id}", response_class=FileResponse)

@@ -52,12 +52,13 @@ time for it.
 
 **In scope:**
 
-- Authentication and session handling: resident passwords and Google sign-in,
-  invitations, password recovery, the administrator session, cookies and login
-  throttling.
-- Authorization between residents and the administrator: a resident reaching
-  administrator-only data or operations (statements, original PDFs, imports,
-  user management, settings), or changing data they should not be able to.
+- Authentication and session handling: passwords and Google sign-in,
+  invitations, password recovery, the first-run creation of the administration
+  account, sessions, cookies and login throttling.
+- Authorization between neighbors and administrators: an account without the
+  administrator role reaching administrator-only data or operations (statements,
+  original PDFs, imports, user and role management, settings), or changing data
+  it should not be able to.
 - Cross-site request forgery and origin checks.
 - Uploads and PDF handling: statement imports and action attachments, file
   storage and downloads, parser abuse and storage limits.
@@ -71,8 +72,9 @@ time for it.
 
 - Deployments that ignore the documented setup: served without HTTPS, with the
   application or PostgreSQL ports exposed contrary to the documentation, with
-  default or weak secrets, or exposing the local Compose stack (`admin` /
-  `admin`) beyond the local machine.
+  default or weak secrets, exposing the local Compose stack beyond the local
+  machine, or publishing a new installation before creating its administration
+  account.
 - Denial of service that requires very large resources, such as volumetric
   attacks or floods of requests.
 - Social engineering, phishing and physical access.

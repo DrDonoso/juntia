@@ -17,7 +17,7 @@ export const demo = {
   },
   signIn: {
     resident: 'Demo: sign in as <strong>{email}</strong> with the password <strong>{password}</strong>. Every active neighbor of the demo uses the same password.',
-    admin: 'Demo: sign in with the username <strong>{username}</strong> and the password <strong>{password}</strong>.',
+    admin: 'Demo: sign in as <strong>{email}</strong> with the password <strong>{password}</strong>. {name}, the president, is also the administrator.',
   },
   startError: {
     title: 'The demo could not start',

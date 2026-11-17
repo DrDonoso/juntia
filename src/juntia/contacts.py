@@ -13,7 +13,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
-from .auth import DB, Admin, administrator, mutation_session, reader_session
+from .auth import (
+    DB,
+    Actor,
+    Admin,
+    actor_of,
+    administrator,
+    mutation_session,
+    reader_session,
+)
 from .config import Language
 from .contracts import (
     ActorOut,
@@ -28,13 +36,12 @@ from .contracts import (
     ContactTagIn,
     ContactTagOut,
     ContactTagPage,
-    UserAuthOut,
     VersionIn,
 )
 from .db import Contact, ContactEvent, ContactTag, ContactTagLink, aware, utcnow
 from .errors import AppError
 from .query_sql import binary_text, contains_text, fold_sql, fold_text
-from .texts import ServerLanguage, author_name, public_actor
+from .texts import ServerLanguage, author_name
 
 router = APIRouter(
     prefix="/api", tags=["Contacts"], dependencies=[Depends(reader_session)],
@@ -111,7 +118,7 @@ def snapshot(value: ContactOut) -> ContactSnapshot:
 
 
 def add_event(
-    db: AsyncSession, actor: UserAuthOut, kind: Literal["created", "updated", "deleted"],
+    db: AsyncSession, actor: Actor, kind: Literal["created", "updated", "deleted"],
     before: ContactSnapshot | ContactTagIn | None,
     after: ContactSnapshot | ContactTagIn | None,
     *, contact_id: int | None = None, tag_id: int | None = None,
@@ -161,7 +168,7 @@ async def replace_tags(db: AsyncSession, contact_id: int, ids: list[int]) -> Non
 
 
 async def resolve_new_tags(
-    db: AsyncSession, values: list[ContactTagIn], actor: UserAuthOut,
+    db: AsyncSession, values: list[ContactTagIn], actor: Actor,
 ) -> list[int]:
     dialect = db.get_bind().dialect.name
     if dialect not in {"postgresql", "sqlite"}:
@@ -266,9 +273,9 @@ async def contact(contact_id: ItemId, db: DB) -> ContactOut:
 
 @router.post("/contacts", response_model=ContactOut, status_code=201)
 async def create_contact(
-    body: ContactIn, db: DB, request: Request, language: ServerLanguage,
+    body: ContactIn, db: DB, request: Request,
 ) -> ContactOut:
-    actor = public_actor(await mutation_session(request, db), language)
+    actor = actor_of(await mutation_session(request, db))
     value = Contact(**body.model_dump(exclude={"tags", "new_tags"}))
     db.add(value)
     await db.flush()
@@ -283,9 +290,9 @@ async def create_contact(
 
 @router.patch("/contacts/{contact_id}", response_model=ContactOut)
 async def edit_contact(
-    contact_id: ItemId, body: ContactEdit, db: DB, request: Request, language: ServerLanguage,
+    contact_id: ItemId, body: ContactEdit, db: DB, request: Request,
 ) -> ContactOut:
-    actor = public_actor(await mutation_session(request, db), language)
+    actor = actor_of(await mutation_session(request, db))
     value = await get_contact(db, contact_id, lock=True)
     check_version(value.version, body.version)
     previous_tags = await tag_ids(db, contact_id)
@@ -310,9 +317,9 @@ async def edit_contact(
 
 @router.delete("/contacts/{contact_id}", status_code=204)
 async def delete_contact(
-    contact_id: ItemId, body: VersionIn, db: DB, request: Request, language: ServerLanguage,
+    contact_id: ItemId, body: VersionIn, db: DB, request: Request,
 ) -> None:
-    actor = public_actor(await mutation_session(request, db), language)
+    actor = actor_of(await mutation_session(request, db))
     value = await get_contact(db, contact_id, lock=True)
     check_version(value.version, body.version)
     await lock_tags(db, await tag_ids(db, contact_id))
@@ -364,7 +371,7 @@ async def read_admin_tag(tag_id: ItemId, db: DB, admin: Admin) -> ContactTagOut:
 
 
 async def save_tag(
-    db: AsyncSession, value: ContactTag, actor: UserAuthOut, before: ContactTagIn | None,
+    db: AsyncSession, value: ContactTag, actor: Actor, before: ContactTagIn | None,
 ) -> ContactTagOut:
     after = ContactTagIn.model_validate(value)
     try:
@@ -382,9 +389,9 @@ async def save_tag(
 
 @router.post("/contact-tags", response_model=ContactTagOut, status_code=201)
 async def create_tag(
-    body: ContactTagIn, db: DB, request: Request, language: ServerLanguage,
+    body: ContactTagIn, db: DB, request: Request,
 ) -> ContactTagOut:
-    actor = public_actor(await mutation_session(request, db), language)
+    actor = actor_of(await mutation_session(request, db))
     value = ContactTag(
         name=body.name, normalized_name=unicodedata.normalize("NFKC", body.name).casefold(),
         color=body.color,
@@ -399,9 +406,9 @@ async def create_tag(
 )
 @router.patch("/contact-tags/{tag_id}", response_model=ContactTagOut)
 async def edit_tag(
-    tag_id: ItemId, body: ContactTagEdit, db: DB, request: Request, language: ServerLanguage,
+    tag_id: ItemId, body: ContactTagEdit, db: DB, request: Request,
 ) -> ContactTagOut:
-    actor = public_actor(await mutation_session(request, db), language)
+    actor = actor_of(await mutation_session(request, db))
     await lock_tags(db, [tag_id])
     value = await db.get(ContactTag, tag_id, populate_existing=True)
     assert value is not None

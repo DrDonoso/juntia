@@ -2,8 +2,8 @@
  * People endpoints of the demo API (the routes ../README.md assigns to people), after
  * src/juntia/users.py, api.py and queries.py: the Neighbors directory and its layout, dwellings,
  * the presidency and the general settings and feature flags here; the users administration in
- * people-users.ts; the neighbor's own account (profile, password, sessions, invitation and recovery
- * links, Google) in people-account.ts.
+ * people-users.ts; the signed-in account's own data (profile, password, sessions, invitation and
+ * recovery links, Google) in people-account.ts.
  */
 import type {
   DwellingLayout, DwellingLayoutLimits, DwellingLayoutOut, DwellingLayoutRow, DwellingLayoutZone, DwellingNeighborsOut,
@@ -76,7 +76,7 @@ function sortedDwellings(): DemoDwelling[] {
 
 // --- Neighbors directory and layout ---
 
-/** `GET /api/neighbors`: every dwelling with its active neighbors (name order), the president marked. */
+/** `GET /api/neighbors`: every dwelling with its active neighbors (name order), the president marked; accounts without a dwelling are no one's neighbors. */
 function neighborDirectory(): DwellingNeighborsOut[] {
   const { residents } = coreStore()
   const { presidentId } = peopleStore().presidency
@@ -231,7 +231,7 @@ function requireFreeLabel(label: string, self?: DemoDwelling): void {
 function presidencyOut(): PresidencyOut {
   const { presidentId, version } = peopleStore().presidency
   const president = presidentId === null ? undefined : findResident(presidentId)
-  const dwelling = president && findDwelling(president.dwellingId)
+  const dwelling = president && president.dwellingId !== null ? findDwelling(president.dwellingId) : undefined
   return {
     president: president && dwelling
       ? { id: president.id, name: president.name, dwelling_id: dwelling.id, dwelling_label: dwelling.label }
@@ -291,7 +291,8 @@ const structureHandlers: HttpHandler[] = [
     if (input.userId !== null) {
       const candidate = findResident(input.userId)
       if (!candidate) throw new DemoApiError('user_not_found', 404)
-      if (candidate.disabled || !candidate.activated) throw new DemoApiError('presidency_inactive', 409)
+      // Only an active neighbor, an account with a dwelling, can hold the presidency.
+      if (candidate.disabled || !candidate.activated || candidate.dwellingId === null) throw new DemoApiError('presidency_inactive', 409)
     }
     const { presidency } = peopleStore()
     if (presidency.version !== input.version) throw new DemoApiError('presidency_stale', 409)

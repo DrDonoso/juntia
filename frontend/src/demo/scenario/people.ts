@@ -11,9 +11,9 @@ import { demoRandom } from '../core/random'
 export interface PeopleScenario {
   /** The saved layout of the Neighbors directory and its optimistic version (backend `state.dwelling_layout*`). */
   layout: { version: number; layout: DwellingLayout | null }
-  /** Holder of the presidency (an active neighbor, or null) and its optimistic version. */
+  /** Holder of the presidency (an active neighbor, with a dwelling, or null) and its optimistic version. */
   presidency: { presidentId: number | null; version: number }
-  /** Passwords changed in My profile during this visit, by neighbor id; everybody else signs in with `demo`. */
+  /** Passwords changed in My profile during this visit, by account id; everybody else signs in with `demo`. */
   passwords: Map<number, string>
 }
 
@@ -58,7 +58,7 @@ export function mapleCourtLayout(dwellings: readonly CastDwelling[] = DWELLINGS)
 
 export function peopleScenario(): PeopleScenario {
   return {
-    // The administrator saved the layout once and elected James Okafor once: both versions are 1.
+    // The layout was saved once and James Okafor elected once: both versions are 1.
     layout: { version: 1, layout: mapleCourtLayout() },
     presidency: { presidentId: PRESIDENT_ID, version: 1 },
     passwords: new Map(),

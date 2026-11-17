@@ -6,7 +6,7 @@ import { activeResidents, castResidentsOf } from '../cast'
 import { MUTATION_HEADER } from '../core'
 import { resetDemo } from '../store'
 import { coreStore } from '../store/core'
-import { demoFetch, demoRequest, demoUrl } from '../testing'
+import { demoFetch, demoRequest, demoUrl, signInAdmin, signInAs } from '../testing'
 import { peopleHandlers } from './people'
 
 // Thursday 29 October 2026, midday (local time).
@@ -15,7 +15,6 @@ const NOW = new Date(2026, 9, 29, 12, 0)
 beforeEach(() => resetDemo({ now: () => NOW }))
 afterEach(() => resetDemo())
 
-const signInAdmin = () => demoRequest('POST', '/api/admin/auth/login', { body: { username: 'demo', password: 'demo' } })
 const signOut = () => demoRequest('POST', '/api/auth/logout')
 
 /** The operations ../README.md assigns to the people module, in MSW syntax. */
@@ -103,7 +102,7 @@ describe('the dwelling layout', () => {
     expect(saved.body.version).toBe(2)
     expect(saved.body.layout?.zones[0]).toMatchObject({ name: 'Main building', rows: [{ name: 'Top floor' }, { name: '' }] })
     expect(saved.body.layout?.zones[1]).toEqual({ id: 'garden', name: 'Garden houses', columns: 2, rows: [{ id: 'garden-row', name: '', cells: [10, null] }] })
-    await demoRequest('POST', '/api/admin/auth/logout')
+    await signInAs(6)
     expect((await demoRequest<DwellingLayoutOut>('GET', '/api/neighbors/layout')).body).toEqual(saved.body)
   })
 
@@ -154,7 +153,7 @@ describe('the dwelling layout', () => {
   test('unknown dwellings, outdated versions and missing permissions are refused', async () => {
     const layout = twoZones()
     expect(await demoRequest('PUT', '/api/admin/dwellings/layout', { body: { version: 1, layout } }))
-      .toMatchObject({ status: 401, body: { code: 'authentication_required' } })
+      .toMatchObject({ status: 403, body: { code: 'administrator_required' } })
     await signInAdmin()
     expect(await demoRequest('PUT', '/api/admin/dwellings/layout', { body: { version: 1, layout }, mutationHeader: false }))
       .toMatchObject({ status: 403, body: { code: 'invalid_origin' } })
@@ -182,7 +181,9 @@ describe('dwellings', () => {
     expect(body.find(dwelling => dwelling.label === '3B')?.user_count).toBe(castResidentsOf(8).length)
     expect(body.find(dwelling => dwelling.label === '4C')?.user_count).toBe(castResidentsOf(12).length)
     expect(body.reduce((cents, dwelling) => cents + Math.round(Number(dwelling.coefficient) * 100), 0)).toBe(10_000)
-    await demoRequest('POST', '/api/admin/auth/logout')
+    await signInAs(6)
+    expect(await demoRequest('GET', '/api/admin/dwellings')).toMatchObject({ status: 403, body: { code: 'administrator_required' } })
+    await signOut()
     expect(await demoRequest('GET', '/api/admin/dwellings')).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
   })
 
@@ -279,7 +280,7 @@ describe('the presidency', () => {
       .toMatchObject({ status: 200, body: { president: null, version: 3 } })
   })
 
-  test('only active neighbors can hold it, and the request follows the contract', async () => {
+  test('only active neighbors with a dwelling can hold it, and the request follows the contract', async () => {
     await signInAdmin()
     // Eligibility is checked before the version.
     expect(await demoRequest('PUT', '/api/admin/presidency', { body: { user_id: 15, version: 0 } }))
@@ -288,13 +289,23 @@ describe('the presidency', () => {
       .toMatchObject({ status: 409, body: { code: 'presidency_inactive' } })
     expect(await demoRequest('PUT', '/api/admin/presidency', { body: { user_id: 99, version: 1 } }))
       .toMatchObject({ status: 404, body: { code: 'user_not_found' } })
+    // An administrator without a dwelling is no one's neighbor.
+    expect(await demoRequest('PATCH', '/api/admin/users/2', {
+      body: { name: 'Priya Sharma', email: 'priya.sharma@example.com', dwelling_id: null, administrator: true, version: 1 },
+    })).toMatchObject({ status: 200, body: { status: 'active', dwelling_id: null } })
+    expect(await demoRequest('PUT', '/api/admin/presidency', { body: { user_id: 2, version: 1 } }))
+      .toMatchObject({ status: 409, body: { code: 'presidency_inactive' } })
     for (const body of [{ version: 1 }, { user_id: '6', version: 1 }, { user_id: 0, version: 1 }, { user_id: 6, version: -1 }, { user_id: 6 }, { user_id: 6, version: 1, note: '' }]) {
       expect(await demoRequest('PUT', '/api/admin/presidency', { body }), JSON.stringify(body)).toMatchObject({ status: 422, body: { code: 'invalid_request' } })
     }
     expect((await demoRequest<PresidencyOut>('GET', '/api/admin/presidency')).body.version).toBe(1)
   })
 
-  test('is for the administrator only', async () => {
+  test('is for administrators only', async () => {
+    expect(await demoRequest('GET', '/api/admin/presidency')).toMatchObject({ status: 403, body: { code: 'administrator_required' } })
+    expect(await demoRequest('PUT', '/api/admin/presidency', { body: { user_id: 6, version: 1 } }))
+      .toMatchObject({ status: 403, body: { code: 'administrator_required' } })
+    await signOut()
     expect(await demoRequest('GET', '/api/admin/presidency')).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
     expect(await demoRequest('PUT', '/api/admin/presidency', { body: { user_id: 6, version: 1 } }))
       .toMatchObject({ status: 401, body: { code: 'authentication_required' } })
@@ -332,11 +343,11 @@ describe('general settings and features', () => {
       .toMatchObject({ status: 200, body: { events: true } })
   })
 
-  test('only known features, strict booleans and the administrator', async () => {
+  test('only known features, strict booleans and administrators', async () => {
     expect(await demoRequest('PATCH', '/api/admin/settings/features/actions', { body: { enabled: false } }))
-      .toMatchObject({ status: 401, body: { code: 'authentication_required' } })
+      .toMatchObject({ status: 403, body: { code: 'administrator_required' } })
     expect(await demoRequest('PATCH', '/api/admin/settings/general', { body: { community_name: 'Elm Court' } }))
-      .toMatchObject({ status: 401, body: { code: 'authentication_required' } })
+      .toMatchObject({ status: 403, body: { code: 'administrator_required' } })
     await signInAdmin()
     expect(await demoRequest('PATCH', '/api/admin/settings/features/actions', { body: { enabled: false }, mutationHeader: false }))
       .toMatchObject({ status: 403, body: { code: 'invalid_origin' } })

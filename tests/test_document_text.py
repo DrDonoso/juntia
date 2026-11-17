@@ -445,7 +445,7 @@ def test_the_administrator_follows_the_reading(actors, enabled, config):
     )
     refused(enabled.get("/api/admin/documents/text/files", params={"status": "x"}), 422,
             "invalid_request")
-    refused(a.get("/api/admin/documents/text"), 401, "authentication_required")
+    refused(a.get("/api/admin/documents/text"), 403, "administrator_required")
     # It keeps working while Documents is turned off.
     set_flag(enabled, "documents", False)
     assert summary(enabled)["counts"]["files"] == 3

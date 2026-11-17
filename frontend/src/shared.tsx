@@ -18,8 +18,9 @@ export const coefficientPercent = (value: string | null) => value === null ? t('
 export const connectionTime = (value: string | null) => value
   ? dateTimeFormat({ year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' }).format(new Date(value))
   : t('common.never')
-// The server names every administrator author with a fixed label in its own language, never with
-// their login: show that label in the reader's language instead. Residents keep their names.
+// What the technical administrator of earlier releases wrote has a fixed label in the server's
+// language, never its login: show that label in the reader's language instead. Accounts, administrators
+// included, keep their names.
 export const authorName = (author: Pick<ActorOut, 'kind' | 'name'>, translate: Translate = t) =>
   author.kind === 'administrator' ? translate('common.technicalAdministrator') : author.name
 export const profileInitials = (name: string) => upperCase(name.trim().split(/\s+/).slice(0, 2).map(word => [...word][0]).join(''))

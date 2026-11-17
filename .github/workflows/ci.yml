@@ -181,8 +181,6 @@ jobs:
       contents: read
     env:
       POSTGRES_PASSWORD: ci-postgres-only
-      ADMIN_USERNAME: ci-admin
-      ADMIN_PASSWORD: ci-password-for-container-tests
       AUTH_SECRET: ci-secret-only-not-a-production-secret-12345
       PUBLIC_ORIGIN: http://localhost:7778
       AUTH_COOKIE_SECURE: "false"
@@ -210,14 +208,19 @@ jobs:
           done
           curl -fsS http://localhost:7778/health
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:7778/api/summary)" = "401"
+          # A new installation: the first visitor creates the administration account, once.
+          curl -fsS http://localhost:7778/api/auth/setup | jq -e '.available == true'
           curl -fsS -c "$RUNNER_TEMP/juntia-ci-cookies" \
             -H 'Origin: http://localhost:7778' -H 'X-Juntia-Request: 1' \
-            --json '{"username":"ci-admin","password":"ci-password-for-container-tests"}' \
-            http://localhost:7778/api/admin/auth/login
+            --json '{"name":"CI Administrator","email":"ci-admin@example.org","password":"ci-password-for-container-tests"}' \
+            http://localhost:7778/api/auth/setup | jq -e '.administrator == true'
+          curl -fsS http://localhost:7778/api/auth/setup | jq -e '.available == false'
           curl -fsS -b "$RUNNER_TEMP/juntia-ci-cookies" http://localhost:7778/api/summary
           # The running server found Tesseract with the model of its language.
           curl -fsS -b "$RUNNER_TEMP/juntia-ci-cookies" http://localhost:7778/api/admin/documents/text | jq -e '.engine.available'
           rm "$RUNNER_TEMP/juntia-ci-cookies"
+          # The administrators command runs in the container, with its settings.
+          docker compose -p juntia-ci exec -T api python -m juntia.admins list | grep -F 'ci-admin@example.org'
           curl -fsS http://localhost:7778/admin | grep '<div id="root">'
       - name: Stop the isolated stack
         if: always()

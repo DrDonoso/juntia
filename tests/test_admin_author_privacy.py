@@ -10,6 +10,7 @@ from juntia.db import (
     CommunityEventHistory,
     ContactEvent,
 )
+from tests.support import ADMINISTRATOR
 from tests.test_action_pdfs import upload
 from tests.test_community_actions import actors as actors
 from tests.test_community_actions import create_item, item_path
@@ -23,18 +24,13 @@ from tests.test_feature_flags import set_flag
 from tests.test_users import database
 from tests.test_users import mailbox as mailbox
 
+# The login name that releases before accounts could administer stored in some snapshots.
 OPERATOR = "synthetic-operator-4821"
 LABELS = {"en": "Technical administrator", "es": "Administrador técnico"}
 AUTHORED = (
     CommunityAction, ActionComment, ActionAttachment, ActionEvent,
     CommunityEvent, CommunityEventHistory, ContactEvent,
 )
-
-
-@pytest.fixture
-def config(config):
-    config.admin_username = OPERATOR
-    return config
 
 
 def authors(value):
@@ -54,7 +50,7 @@ def ok(response, status=200):
 
 
 def administrator_content(admin):
-    """Create every kind of administrator-authored record and return the routes that show them."""
+    """Create every kind of record an administrator writes and return the routes that show them."""
     set_flag(admin, "events", True)
     action = create_item(admin, labels=["Lifts"])
     path = item_path(action)
@@ -108,48 +104,50 @@ def read_all(client, routes):
     return found
 
 
-@pytest.mark.parametrize("language", ["en", "es"])
-def test_residents_never_receive_the_administrator_login_name(actors, admin, config, language):
+def test_administrators_write_as_their_own_accounts(actors, admin, config):
     a, _, first, _ = actors
+    administrator = admin.get("/api/auth/session").json()
     routes = administrator_content(admin)
     resident_action = create_item(a, title="Resident report")
     routes.append(item_path(resident_action) + "/history")
-    administrator = {"kind": "administrator", "user_id": None, "name": LABELS[language]}
 
-    async def stored_administrator_names(db):
-        names = set()
+    async def stored_authors(db):
+        found = set()
         for model in AUTHORED:
-            names.update((await db.scalars(
-                select(model.author_name).where(model.author_kind == "administrator")
+            found.update(tuple(row) for row in (await db.execute(
+                select(model.author_kind, model.author_user_id, model.author_name)
             )).all())
-        return names
+        return found
 
-    assert database(config, stored_administrator_names) == {LABELS[language]}
-    found = read_all(a, routes)
-    assert {author["kind"] for author in found} == {"administrator", "resident"}
-    assert all(author == administrator for author in found if author["kind"] == "administrator")
-    assert {"kind": "resident", "user_id": first["id"], "name": first["name"]} in found
-    assert ok(admin.get("/api/admin/auth/session")) == {
-        "authenticated": True, "username": OPERATOR,
+    assert database(config, stored_authors) == {
+        ("resident", administrator["user_id"], ADMINISTRATOR["name"]),
+        ("resident", first["id"], first["name"]),
     }
-    assert ok(admin.get("/api/auth/session"))["name"] == OPERATOR
-    assert OPERATOR not in a.get("/api/auth/session").text
+    found = read_all(a, routes)
+    assert {author["kind"] for author in found} == {"resident"}
+    assert {
+        "kind": "resident", "user_id": administrator["user_id"], "name": ADMINISTRATOR["name"],
+    } in found
+    assert {"kind": "resident", "user_id": first["id"], "name": first["name"]} in found
 
 
-def test_records_saved_with_the_login_name_are_hidden_when_read(actors, admin, config):
+@pytest.mark.parametrize("language", ["en", "es"])
+def test_the_technical_administrators_records_keep_a_fixed_label(actors, admin, config, language):
     a, _, _, _ = actors
     routes = administrator_content(admin)
 
     async def legacy(db):
-        # Releases before the fix stored the administrator's login name in every snapshot.
+        # Releases before accounts could administer wrote as the technical administrator, with
+        # no account; some stored its login name.
         for model in AUTHORED:
-            await db.execute(update(model).where(model.author_kind == "administrator").values(
-                author_name=OPERATOR,
+            await db.execute(update(model).values(
+                author_kind="administrator", author_user_id=None, author_name=OPERATOR,
             ))
 
     database(config, legacy)
     for reader in (a, admin):
         found = read_all(reader, routes)
-        assert {author["name"] for author in found if author["kind"] == "administrator"} == {
-            LABELS["en"],
-        }
+        assert found
+        assert all(author == {
+            "kind": "administrator", "user_id": None, "name": LABELS[language],
+        } for author in found)

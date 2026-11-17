@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
+import { signInAsAdministrator } from './support'
 
 test.afterEach(async ({ page }) => {
   if (process.env.E2E_BASE_URL || page.url() === 'about:blank') return
@@ -10,10 +11,7 @@ test.afterEach(async ({ page }) => {
 
 test('disabled actions hide navigation and block direct pages and APIs for both account types', async ({ page, browser }) => {
   test.skip(Boolean(process.env.E2E_BASE_URL), 'Requires the disposable synthetic application')
-  await page.goto('/admin/features')
-  await page.getByLabel('Username', { exact: true }).fill('browser-test')
-  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-test-password')
-  await page.getByRole('button', { name: 'Sign in to administration' }).click()
+  await signInAsAdministrator(page, '/admin/features')
   const toggle = page.getByRole('switch', { name: 'Actions', exact: true })
   await expect(toggle).toHaveAttribute('aria-checked', 'true')
   await toggle.click()
@@ -56,7 +54,7 @@ test('disabled actions hide navigation and block direct pages and APIs for both 
     }
     expect((await resident.request.get('/api/actions/items/1/history')).status()).toBe(404)
     expect((await resident.request.get('/api/summary')).status()).toBe(200)
-    expect((await resident.request.get('/api/admin/users')).status()).toBe(401)
+    expect((await resident.request.get('/api/admin/users')).status()).toBe(403)
     expect((await new AxeBuilder({ page: resident }).analyze()).violations).toEqual([])
     await resident.getByRole('link', { name: 'Neighbors', exact: true }).click()
     await expect(resident.getByRole('heading', { name: 'Neighbors', exact: true })).toBeVisible()

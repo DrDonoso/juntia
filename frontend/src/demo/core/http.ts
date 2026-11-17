@@ -3,10 +3,10 @@
  * request pipeline of src/juntia/middleware.py (`route`) and FastAPI's parameter validation.
  */
 import { HttpResponse, type JsonBodyType, type PathParams } from 'msw'
-import { coreStore } from '../store/core'
+import { coreStore, type DemoResident } from '../store/core'
 import { isDay } from './clock'
 import { DEMO_UNAVAILABLE, DEMO_UNAVAILABLE_STATUS, DemoApiError } from './errors'
-import { readerIdentity, requireAdmin, requireAnySession, requireResident, type Identity } from './session'
+import { requireAdmin, requireAnySession, signedInResident } from './session'
 import { MAX_ID } from './validation'
 
 /** Header every write must carry (the backend answers 403 `invalid_origin` without it). */
@@ -26,11 +26,11 @@ export function demoUnavailable(): Response {
 }
 
 /**
- * Who may call a route, like the backend's dependencies: `public` (anyone), `session` (a neighbor
- * or the administrator: finance, neighbors, contacts, actions, events, documents), `resident` (a
- * neighbor's own data: the profile) and `admin` (`/api/admin/*`).
+ * Who may call a route, like the backend's dependencies: `public` (anyone), `session` (any
+ * signed-in account: finance, neighbors, contacts, actions, events, documents, the own profile) and
+ * `admin` (a signed-in administrator: `/api/admin/*`).
  */
-export type Access = 'public' | 'session' | 'resident' | 'admin'
+export type Access = 'public' | 'session' | 'admin'
 
 export interface RouteOptions {
   /** Success status: 201 for creations, 204 answers without a body. */
@@ -39,22 +39,25 @@ export interface RouteOptions {
   feature?: 'actions' | 'events' | 'documents'
 }
 
-export interface RouteContext {
+export interface RouteContext<A extends Access = Access> {
   request: Request
   params: PathParams
   url: URL
-  /** The caller; null only on `public` routes when nobody is signed in. */
-  identity: Identity | null
+  /**
+   * The signed-in account (`user.id` is its user id, `user.administrator` its role), read for this
+   * request: always there on `session` and `admin` routes, null on `public` ones when nobody is
+   * signed in.
+   */
+  user: A extends 'public' ? DemoResident | null : DemoResident
 }
 
 /** What a route resolver returns: a value answered as JSON (`null` included), or a Response as is. */
 export type RouteResult = unknown
 
-function checkAccess(access: Access): Identity | null {
+function checkAccess(access: Access): DemoResident | null {
   if (access === 'admin') return requireAdmin()
-  if (access === 'resident') return { kind: 'resident', resident: requireResident() }
   if (access === 'session') return requireAnySession()
-  return readerIdentity()
+  return signedInResident()
 }
 
 /**
@@ -64,16 +67,16 @@ function checkAccess(access: Access): Identity | null {
  * {@link DemoApiError} becomes the error response, and any other error a logged 500
  * `internal_error` (a bug in the demo).
  */
-export function route(access: Access, resolve: (context: RouteContext) => RouteResult | Promise<RouteResult>, options: RouteOptions = {}) {
+export function route<A extends Access>(access: A, resolve: (context: RouteContext<A>) => RouteResult | Promise<RouteResult>, options: RouteOptions = {}) {
   return async ({ request, params }: { request: Request; params: PathParams }): Promise<Response> => {
     const url = new URL(request.url)
     try {
       if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) && request.headers.get(MUTATION_HEADER) !== '1') {
         throw new DemoApiError('invalid_origin', 403)
       }
-      const identity = checkAccess(access)
+      const user = checkAccess(access) as RouteContext<A>['user']
       if (options.feature && !coreStore().features[options.feature]) throw new DemoApiError(`${options.feature}_disabled`, 404)
-      const result = await resolve({ request, params, url, identity })
+      const result = await resolve({ request, params, url, user })
       if (result instanceof Response) return result
       const status = options.status ?? 200
       if (status === 204) return new HttpResponse(null, { status })

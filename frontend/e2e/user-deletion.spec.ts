@@ -1,13 +1,11 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import type { UserOut } from '../src/api/schema.gen'
+import { signInAsAdministrator } from './support'
 
 test('deletion requires explicit email confirmation and permits a fresh invitation', async ({ page, browser }) => {
   test.skip(Boolean(process.env.E2E_BASE_URL), 'Uses only the disposable server and synthetic accounts')
-  await page.goto('/admin')
-  await page.getByLabel('Username', { exact: true }).fill('browser-test')
-  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-test-password')
-  await page.getByRole('button', { name: 'Sign in to administration', exact: true }).click()
+  await signInAsAdministrator(page)
   await expect(page.getByRole('heading', { name: 'Import statement', exact: true })).toBeVisible()
   const origin = new URL(page.url()).origin
   const headers = { Origin: origin, 'X-Juntia-Request': '1' }

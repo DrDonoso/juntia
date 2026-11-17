@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
+import { signInAsAdministrator } from './support'
 
 test.afterEach(async ({ page }) => {
   if (process.env.E2E_BASE_URL || page.url() === 'about:blank') return
@@ -11,10 +12,7 @@ test.afterEach(async ({ page }) => {
 test('disabled coefficient feature removes every control and requirement', async ({ page, browser }) => {
   test.skip(Boolean(process.env.E2E_BASE_URL), 'Requires the disposable synthetic application')
   test.setTimeout(120_000)
-  await page.goto('/admin/features')
-  await page.getByLabel('Username', { exact: true }).fill('browser-test')
-  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-test-password')
-  await page.getByRole('button', { name: 'Sign in to administration' }).click()
+  await signInAsAdministrator(page, '/admin/features')
   const toggle = page.getByRole('switch', { name: 'Ownership coefficients' })
   await expect(toggle).toHaveAttribute('aria-checked', 'true')
   await toggle.click()

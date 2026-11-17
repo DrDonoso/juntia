@@ -10,6 +10,7 @@ from juntia import contacts
 from juntia.contracts import ContactIn, ContactTagIn, GoogleStartIn
 from juntia.db import Contact, State
 from juntia.errors import AppError
+from tests.support import ADMINISTRATOR
 from tests.test_action_migration import migrate
 from tests.test_community_actions import actors as actors
 from tests.test_community_actions import create_item, item_path
@@ -87,10 +88,13 @@ def test_every_member_can_edit_delete_and_see_retained_history(actors, admin):
     assert history(admin)["total"] == 4
     assert a.patch("/api/contact-history", json={}).status_code in {404, 405}
     assert a.delete("/api/contact-history").status_code in {404, 405}
-    assert a.post("/api/admin/catalog/tags", json={"name": "Forbidden"}).status_code == 401
-    assert a.get("/api/admin/users").status_code == 401
-    technical = create(admin, "Administrador")
-    assert history(b, technical)["items"][0]["author"]["kind"] == "administrator"
+    assert a.post("/api/admin/catalog/tags", json={"name": "Forbidden"}).status_code == 403
+    assert a.get("/api/admin/users").status_code == 403
+    by_administrator = create(admin, "Administrador")
+    assert history(b, by_administrator)["items"][0]["author"] == {
+        "kind": "resident", "user_id": admin.get("/api/auth/session").json()["user_id"],
+        "name": ADMINISTRATOR["name"],
+    }
 
 
 def test_tags_are_shared_versioned_audited_and_do_not_rewrite_snapshots(actors, admin):
@@ -445,7 +449,7 @@ def test_only_administration_can_list_deleted_contacts(actors, admin, config):
     endpoint = "/api/admin/contacts/deleted"
     with visitor(config) as anonymous:
         assert anonymous.get(endpoint).status_code == 401
-    assert a.get(endpoint).status_code == 401
+    assert a.get(endpoint).status_code == 403
     response = admin.get(endpoint)
     assert response.status_code == 200
     items = response.json()["items"]

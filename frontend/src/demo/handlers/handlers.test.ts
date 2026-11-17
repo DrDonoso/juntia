@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { RESIDENTS } from '../cast'
 import { SIGNED_OUT } from '../core'
 import { resetDemo } from '../store'
 import { coreStore, findResident } from '../store/core'
-import { demoRequest } from '../testing'
+import { demoRequest, signInAdmin } from '../testing'
 import { communityHandlers } from './community'
 import { coreHandlers } from './core'
 import { financeHandlers } from './finance'
@@ -19,7 +20,6 @@ beforeEach(() => resetDemo({ now: () => NOW }))
 afterEach(() => resetDemo())
 
 const login = (email: string, password = 'demo') => demoRequest('POST', '/api/auth/login', { body: { email, password } })
-const adminLogin = (password = 'demo') => demoRequest('POST', '/api/admin/auth/login', { body: { username: 'demo', password } })
 
 describe('the demo API modules', () => {
   test('every module exports an array of handlers, gathered before the catch-all', () => {
@@ -44,18 +44,23 @@ describe('the demo API modules', () => {
 describe('sessions and sign-in', () => {
   test('the visitor starts signed in as the sample neighbor', async () => {
     expect((await demoRequest('GET', '/api/auth/session')).body).toEqual({
-      authenticated: true, kind: 'resident', name: 'Olivia Bennett', email: 'olivia.bennett@example.com',
+      authenticated: true, administrator: false, name: 'Olivia Bennett', email: 'olivia.bennett@example.com',
       user_id: 6, dwelling_id: 5, expires_at: SESSION_END,
     })
-    expect((await demoRequest('GET', '/api/admin/auth/session')).body).toEqual({ authenticated: false, username: null })
   })
 
-  test('any active neighbor signs in with the password demo', async () => {
+  test('every active account signs in with the password demo, the administrator too, replacing the session', async () => {
     expect(await login('James.Okafor@Example.com')).toMatchObject({
-      status: 200, body: { authenticated: true, kind: 'resident', name: 'James Okafor', user_id: 1, dwelling_id: 1, expires_at: SESSION_END },
+      status: 200,
+      body: {
+        authenticated: true, administrator: true, name: 'James Okafor', email: 'james.okafor@example.com', user_id: 1,
+        dwelling_id: 1, expires_at: SESSION_END,
+      },
     })
-    expect((await demoRequest('GET', '/api/auth/session')).body).toMatchObject({ user_id: 1 })
+    expect((await demoRequest('GET', '/api/auth/session')).body).toMatchObject({ user_id: 1, administrator: true })
     expect(findResident(1)?.lastLoginAt).toBe(NOW.toISOString())
+    expect(await login('grace.liu@example.com')).toMatchObject({ status: 200, body: { user_id: 7, administrator: false } })
+    expect((await demoRequest('GET', '/api/auth/session')).body).toMatchObject({ user_id: 7, administrator: false })
   })
 
   test('wrong passwords, pending, disabled and unknown accounts get invalid_credentials', async () => {
@@ -84,12 +89,12 @@ describe('sessions and sign-in', () => {
     expect(await login('olivia.bennett@example.com')).toMatchObject({ status: 200, body: { user_id: 6 } })
   })
 
-  test('an email changed by the administrator removes the password: the neighbor is invited again', async () => {
-    await adminLogin()
-    expect(await demoRequest('PATCH', '/api/admin/users/1', {
-      body: { name: 'James Okafor', email: 'james.okafor@example.org', phone: '+442079460418', dwelling_id: 1, version: 1 },
+  test('an email changed by an administrator removes the password: the account is invited again', async () => {
+    await signInAdmin()
+    expect(await demoRequest('PATCH', '/api/admin/users/2', {
+      body: { name: 'Priya Sharma', email: 'priya.sharma@example.org', phone: '+442079460563', dwelling_id: 1, version: 1 },
     })).toMatchObject({ status: 200, body: { status: 'pending' } })
-    for (const email of ['james.okafor@example.com', 'james.okafor@example.org']) {
+    for (const email of ['priya.sharma@example.com', 'priya.sharma@example.org']) {
       expect(await login(email)).toMatchObject({ status: 401, body: { code: 'invalid_credentials' } })
     }
   })
@@ -100,30 +105,58 @@ describe('sessions and sign-in', () => {
       .toMatchObject({ status: 422, body: { code: 'invalid_request' } })
     expect(await demoRequest('POST', '/api/auth/login', { body: { email: 'james.okafor@example.com', password: 'demo' }, mutationHeader: false }))
       .toMatchObject({ status: 403, body: { code: 'invalid_origin' } })
-    expect(await demoRequest('POST', '/api/admin/auth/login', { body: { username: 'demo' } })).toMatchObject({ status: 422 })
+    // Administrators sign in with their email, like everyone: there is no username.
+    expect(await demoRequest('POST', '/api/auth/login', { body: { username: 'demo', password: 'demo' } })).toMatchObject({ status: 422 })
   })
 
-  test('the administrator signs in with demo / demo and takes over the reader session', async () => {
-    expect(await adminLogin('nope')).toMatchObject({ status: 401, body: { code: 'invalid_credentials' } })
-    expect(await demoRequest('POST', '/api/admin/auth/logout')).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
-    expect(await adminLogin()).toMatchObject({ status: 200, body: { authenticated: true, username: 'demo' } })
-    expect((await demoRequest('GET', '/api/admin/auth/session')).body).toEqual({ authenticated: true, username: 'demo' })
-    expect((await demoRequest('GET', '/api/auth/session')).body).toEqual({
-      authenticated: true, kind: 'administrator', name: 'demo', email: null, user_id: null, dwelling_id: null, expires_at: SESSION_END,
-    })
-    expect(await demoRequest('POST', '/api/admin/auth/logout')).toMatchObject({ status: 204, body: undefined })
-    expect((await demoRequest('GET', '/api/auth/session')).body).toMatchObject({ kind: 'resident', user_id: 6 })
+  test('the administration is for administrators: a neighbor gets 403 administrator_required', async () => {
+    const requests: [string, string, unknown?][] = [
+      ['GET', '/api/admin/users'], ['GET', '/api/admin/presidency'], ['GET', '/api/admin/storage'], ['GET', '/api/admin/statements'],
+      ['PATCH', '/api/admin/settings/general', { community_name: 'Elm Court' }], ['GET', '/api/admin/documents/deleted'],
+    ]
+    for (const [method, path, body] of requests) {
+      expect(await demoRequest(method, path, { body }), `${method} ${path}`).toMatchObject({ status: 403, body: { code: 'administrator_required' } })
+    }
+    await signInAdmin()
+    for (const [method, path] of requests.filter(([method]) => method === 'GET')) {
+      expect((await demoRequest(method, path)).status, path).toBe(200)
+    }
   })
 
-  test('signing out of the portal ends both sessions, and a reset starts again', async () => {
-    await adminLogin()
+  test('signing out ends the session, and a reset starts again', async () => {
+    await signInAdmin()
     expect(await demoRequest('POST', '/api/auth/logout')).toMatchObject({ status: 204, body: undefined })
     expect((await demoRequest('GET', '/api/auth/session')).body).toEqual(SIGNED_OUT)
-    expect((await demoRequest('GET', '/api/admin/auth/session')).body).toEqual({ authenticated: false, username: null })
     expect(await demoRequest('GET', '/api/account')).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
+    expect(await demoRequest('GET', '/api/admin/users')).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
 
     resetDemo({ now: () => NOW })
     expect((await demoRequest('GET', '/api/auth/session')).body).toMatchObject({ authenticated: true, user_id: 6 })
+  })
+})
+
+describe('the first-run setup', () => {
+  const account = { name: 'Ada Morgan', email: 'ada.morgan@example.com', password: 'a-long-enough-password' }
+
+  test('is never available: the demo always has accounts', async () => {
+    expect(await demoRequest('GET', '/api/auth/setup')).toMatchObject({ status: 200, body: { available: false } })
+    await demoRequest('POST', '/api/auth/logout')
+    expect(await demoRequest('GET', '/api/auth/setup')).toMatchObject({ status: 200, body: { available: false } })
+    expect(await demoRequest('POST', '/api/auth/setup', { body: account })).toMatchObject({ status: 409, body: { code: 'setup_unavailable' } })
+    expect((await demoRequest('GET', '/api/auth/session')).body).toEqual(SIGNED_OUT)
+    expect(coreStore().residents).toHaveLength(RESIDENTS.length)
+  })
+
+  test('checks the new account like the backend before refusing it', async () => {
+    for (const body of [
+      { ...account, name: '   ' }, { ...account, email: 'ada.morgan' }, { ...account, password: 'too-short' },
+      { ...account, password: ' '.repeat(12) }, { ...account, password: '\u{1F600}'.repeat(19) },
+      { name: account.name, email: account.email }, { ...account, administrator: true },
+    ]) {
+      expect(await demoRequest('POST', '/api/auth/setup', { body }), JSON.stringify(body)).toMatchObject({ status: 422, body: { code: 'invalid_request' } })
+    }
+    expect(await demoRequest('POST', '/api/auth/setup', { body: account, mutationHeader: false }))
+      .toMatchObject({ status: 403, body: { code: 'invalid_origin' } })
   })
 })
 

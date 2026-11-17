@@ -71,7 +71,7 @@ export function NeighborsPage() {
   })
   return <><div className="page-heading"><div><p className="eyebrow">{t('neighbors.page.eyebrow')}</p><h1>{t('neighbors.page.title')}</h1>
     <p className="muted">{t('neighbors.page.description')}</p></div>
-    {session.data?.kind === 'resident' && <Link to="/profile" className="button secondary">{t('neighbors.page.updatePhone')}</Link>}
+    {session.data?.authenticated && session.data.dwelling_id !== null && <Link to="/profile" className="button secondary">{t('neighbors.page.updatePhone')}</Link>}
   </div>
     {(query.isPending || layoutQuery.isPending) && <Notice>{t('neighbors.page.loading')}</Notice>}
     {query.error && <Notice error>{errorMessage(query.error)}</Notice>}

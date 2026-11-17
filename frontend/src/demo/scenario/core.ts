@@ -1,8 +1,9 @@
 /**
  * Initial core data: the visitor opens the demo signed in as the sample neighbor, every feature is
- * on, and the dwellings and neighbors come from the cast with their dates relative to today.
+ * on, and the dwellings and accounts come from the cast with their dates relative to today (the
+ * president's account is also the administrator's).
  */
-import { COMMUNITY, DWELLINGS, RESIDENTS, SAMPLE_NEIGHBOR_ID, type CastResident } from '../cast'
+import { ADMINISTRATOR_ID, COMMUNITY, DWELLINGS, RESIDENTS, SAMPLE_NEIGHBOR_ID, type CastResident } from '../cast'
 import { DEMO_SESSION_HOURS } from '../config'
 import { daysAgo, hoursFromNow, instant, nowIso } from '../core/clock'
 import { sequenceAfter } from '../core/ids'
@@ -30,6 +31,7 @@ function resident(cast: CastResident): DemoResident {
     email: cast.email,
     phone: cast.phone,
     dwellingId: cast.dwellingId,
+    administrator: cast.id === ADMINISTRATOR_ID,
     activated: !pending,
     disabled: cast.status === 'disabled',
     hasPassword: !pending,
@@ -48,7 +50,7 @@ export function coreScenario(): CoreState {
   }))
   const residents = RESIDENTS.map(resident)
   return {
-    session: { residentId: SAMPLE_NEIGHBOR_ID, residentExpiresAt: hoursFromNow(DEMO_SESSION_HOURS), adminExpiresAt: null },
+    session: { residentId: SAMPLE_NEIGHBOR_ID, expiresAt: hoursFromNow(DEMO_SESSION_HOURS) },
     features: { coefficient: true, actions: true, events: true, documents: true },
     general: { community_name: COMMUNITY.name },
     account: { iban: COMMUNITY.account.iban, name: COMMUNITY.account.name },

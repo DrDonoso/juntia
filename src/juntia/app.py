@@ -4,11 +4,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 
-import bcrypt
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from starlette.responses import FileResponse, JSONResponse
 from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp
@@ -28,9 +27,9 @@ from . import (
     storage_admin,
     users,
 )
-from .config import Settings
+from .config import Settings, retired_settings
 from .contracts import Contract, reader_route
-from .db import State
+from .db import State, User
 from .errors import AppError
 from .imports import clean_expired
 from .middleware import SecurityMiddleware
@@ -53,6 +52,18 @@ class VersionOut(Contract):
     build_date: str
 
 
+async def warn_without_administrators(db: AsyncSession) -> None:
+    if await db.scalar(select(User.id).limit(1)) is None:
+        return
+    if await db.scalar(select(User.id).where(
+        User.administrator.is_(True), User.disabled.is_(False),
+    ).limit(1)) is None:
+        log.warning(
+            "No account is an administrator: grant the role with "
+            "`python -m juntia.admins grant EMAIL` (docs/deployment.md)"
+        )
+
+
 def create_app(config: Settings | None = None, *, text_worker: bool = True) -> FastAPI:
     """`text_worker=False` leaves the shared documents' text unread until tests read it."""
 
@@ -60,13 +71,16 @@ def create_app(config: Settings | None = None, *, text_worker: bool = True) -> F
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         current = config or Settings()
         application.state.settings = current
+        for name in retired_settings():
+            log.warning(
+                "%s is no longer used and is ignored: remove it. Accounts with the "
+                "administrator role replace the technical administrator (docs/deployment.md)",
+                name,
+            )
         current.upload_dir.mkdir(parents=True, exist_ok=True)
         # SQL parameters can hold personal data: keep them out of error messages and logs.
         engine = create_async_engine(current.database_url, pool_pre_ping=True, hide_parameters=True)
         application.state.sessions = async_sessionmaker(engine, expire_on_commit=False)
-        application.state.password_hash = bcrypt.hashpw(
-            current.admin_password.get_secret_value().encode(), bcrypt.gensalt()
-        )
         application.state.google_provider = google_auth.GoogleProvider(current)
         reader = document_index.DocumentReader(application.state.sessions, current)
         application.state.document_reader = reader
@@ -74,6 +88,7 @@ def create_app(config: Settings | None = None, *, text_worker: bool = True) -> F
             async with application.state.sessions() as db:
                 if await db.get(State, 1) is None:
                     raise RuntimeError("Run migrations and seed before starting the application")
+                await warn_without_administrators(db)
                 await clean_expired(db, current.upload_dir)
                 await auth.clean_user_access(db)
                 await community_documents.clean_uploads(db, current.upload_dir)
@@ -135,7 +150,6 @@ def create_app(config: Settings | None = None, *, text_worker: bool = True) -> F
         return JSONResponse({"code": "internal_error"}, status_code=500)
 
     application.include_router(auth.router)
-    application.include_router(auth.user_router)
     application.include_router(google_auth.router)
     application.include_router(users.router)
     application.include_router(users.public_router)

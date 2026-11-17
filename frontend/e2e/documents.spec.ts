@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
+import { signInAsAdministrator } from './support'
 
 const password = 'synthetic documents resident password'
 
@@ -59,10 +60,7 @@ test('neighbors share folders and files, preview PDFs, follow their history and 
   test.setTimeout(180_000)
   const errors: string[] = []
   admin.on('pageerror', error => errors.push(error.message))
-  await admin.goto('/admin/features')
-  await admin.getByLabel('Username', { exact: true }).fill('browser-test')
-  await admin.getByLabel('Password', { exact: true }).fill('synthetic-browser-test-password')
-  await admin.getByRole('button', { name: 'Sign in to administration' }).click()
+  await signInAsAdministrator(admin, '/admin/features')
   const toggle = admin.getByRole('switch', { name: 'Documents', exact: true })
   await expect(toggle).toHaveAttribute('aria-checked', 'false')
   await expect(admin.getByRole('heading', { name: 'Who can change shared documents' })).toHaveCount(0)

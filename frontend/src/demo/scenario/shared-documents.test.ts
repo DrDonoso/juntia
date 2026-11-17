@@ -72,7 +72,7 @@ describe('the shared documents scenario', () => {
     }
   })
 
-  test('shows every kind of change: renames, a move, earlier versions and deletions for the administrator', () => {
+  test('shows every kind of change: renames, a move, earlier versions and deletions for administrators', () => {
     const state = sharedDocumentsStore()
     const kinds = new Set(state.events.map(event => event.kind))
     expect([...kinds].sort()).toEqual(['created', 'deleted', 'moved', 'renamed', 'version_added'])
@@ -81,16 +81,20 @@ describe('the shared documents scenario', () => {
       ['Roof claim photos', 'folder', 'Chloe Dubois'], ['Parking spaces - draft.pdf', 'file', 'Daniel Mensah'],
     ])
     const earlier = state.documents.filter(document => document.currentNumber > 1)
-    expect(earlier.map(document => [document.name, document.author.kind])).toEqual([['House rules.pdf', 'administrator'], ['Claims log.csv', 'resident']])
+    expect(earlier.map(document => [document.name, document.author.name])).toEqual([['House rules.pdf', 'James Okafor'], ['Claims log.csv', 'Emily Clarke']])
+    // The administrator renamed the insurance folder Emily Clarke created.
+    const insurance = state.folders.find(folder => folder.name === 'Insurance')
+    expect(insurance?.author.name).toBe('Emily Clarke')
+    expect(state.events.filter(event => event.folderId === insurance?.id && event.kind === 'renamed').map(event => event.author.name)).toEqual(['James Okafor'])
     expect(state.settings).toEqual({ manage_policy: 'creator', max_file_mb: 50, max_video_mb: 1024, user_quota_mb: 2048, community_quota_mb: 20480 })
     expect(state.uploads).toEqual([])
   })
 
-  test('authors come from the cast, the visitor owns a folder, and it is written in English', async () => {
+  test('authors are accounts of the cast, the visitor owns a folder, and it is written in English', async () => {
     const state = sharedDocumentsStore()
+    // Only the author is stored, never the role: there is no technical administrator in the demo.
     for (const { author } of [...state.folders, ...state.documents, ...state.versions, ...state.events, ...state.deletions]) {
-      if (author.kind === 'administrator') expect(author).toEqual({ kind: 'administrator', name: 'Technical administrator', user_id: null })
-      else expect(RESIDENTS.find(resident => resident.id === author.user_id)?.name).toBe(author.name)
+      expect(author).toEqual({ kind: 'resident', name: RESIDENTS.find(resident => resident.id === author.user_id)?.name, user_id: author.user_id })
     }
     const visitor = state.folders.filter(folder => folder.author.user_id === 6)
     expect(visitor.map(folder => folder.name)).toEqual(['Garden'])

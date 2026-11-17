@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from juntia.config import Settings
 from juntia.db import Dwelling, State
+from tests.support import ADMINISTRATOR
 from tests.test_action_migration import migrate
 from tests.test_api import commit, preview
 from tests.test_users import (
@@ -94,7 +95,7 @@ def test_only_administrators_can_change_flags(admin, config, mailbox):
         for feature in ("coefficient", "actions", "events", "documents"):
             assert reader.patch(
                 f"/api/admin/settings/features/{feature}", json={"enabled": False},
-            ).status_code == 401
+            ).status_code == 403
     for headers in ({"origin": "https://other.invalid"}, {"x-juntia-request": ""}):
         assert admin.patch(
             "/api/admin/settings/features/actions", json={"enabled": False}, headers=headers,
@@ -145,10 +146,8 @@ def test_independent_concurrent_flag_updates_do_not_overwrite_each_other(admin, 
     }
 
 
-def admin_login(client, config):
-    response = client.post("/api/admin/auth/login", json={
-        "username": config.admin_username, "password": config.admin_password.get_secret_value(),
-    })
+def admin_login(client):
+    response = login(client, ADMINISTRATOR["email"], ADMINISTRATOR["password"])
     assert response.status_code == 200, response.text
 
 
@@ -162,9 +161,9 @@ def test_disabled_coefficients_are_hidden_without_erasing_existing_values(admin,
             "coefficient": False, "google_login": False, "actions": True, "events": False,
             "documents": False,
         }
-        admin_login(operator, config)
+        admin_login(operator)
         assert operator.get("/api/admin/dwellings").json()[0]["coefficient"] is None
-        assert operator.get("/api/admin/users").json()[0]["coefficient"] is None
+        assert current_user(operator, user["id"])["coefficient"] is None
         assert login(resident).status_code == 200
         profile = resident.get("/api/auth/profile").json()
         assert profile["coefficient"] is None

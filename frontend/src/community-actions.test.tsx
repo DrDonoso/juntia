@@ -12,7 +12,7 @@ import { PDF_BYTES, actionDraft, actionRequestParams, actionStatuses, attachment
 import { paletteColor, tagTextColor } from './contact-tags'
 import { setLanguage, translate } from './i18n'
 
-const reader: UserAuthOut = { ...signedOut, authenticated: true, kind: 'resident', user_id: 7, name: 'Alice' }
+const reader: UserAuthOut = { ...signedOut, authenticated: true, user_id: 7, name: 'Alice' }
 const actor = { kind: 'resident' as const, user_id: 7, name: 'Alice' }
 // Whatever name arrives for an administrator author (here a login), the UI must never show it.
 const administrator = { kind: 'administrator' as const, user_id: null, name: 'ops-admin' }
@@ -270,10 +270,12 @@ test('custom label colors survive filtered suggestions and labels outside the fi
   expect(screen.getByText(custom.name).closest('.tag')).toHaveStyle({ backgroundColor: custom.color })
 })
 
-test('moderation is limited to the author and technical administrator', () => {
+test('moderation is limited to the author and administrators', () => {
   expect(canModerate(actor, reader)).toBe(true)
   expect(canModerate(actor, { ...reader, user_id: 8 })).toBe(false)
-  expect(canModerate(actor, { ...reader, kind: 'administrator', user_id: null })).toBe(true)
+  expect(canModerate(actor, { ...reader, user_id: 8, administrator: true })).toBe(true)
+  // What the technical administrator of earlier releases wrote belongs to no account.
+  expect(canModerate({ kind: 'administrator', user_id: null, name: 'Technical administrator' }, reader)).toBe(false)
   expect(canModerate(actor, signedOut)).toBe(false)
 })
 

@@ -17,9 +17,8 @@ export { pageCount, paginate, type Page } from './pagination'
 export { demoPdf, fileDisposition, looksLikePdf, pdfResponse } from './pdf'
 export { Random, demoRandom, hashText } from './random'
 export {
-  SIGNED_OUT, actorOf, adminSession, adminSignedIn, readerIdentity, readerSession, requireAdmin, requireAnySession,
-  requireResident, residentAuth, revokeResidentSessions, signInAdmin, signInResident, signOutAdmin, signOutResident,
-  signedInResident, type Identity,
+  SIGNED_OUT, actorOf, readerSession, requireAdmin, requireAnySession, residentAuth, revokeResidentSessions, signInResident,
+  signOutResident, signedInResident, type DemoActor,
 } from './session'
 export {
   Body, DemoValidationError, MAX_ID, characterCount, displayName, hasControlCharacters, normalizePhone, parseBody,

@@ -71,9 +71,11 @@ function CommunityCard({ usage }: { usage: CommunityStorageOut }) {
   </section>
 }
 
+/** Files of the technical administrator of earlier releases, which count only towards the community quota. */
 function AdministratorCard({ usage }: { usage: StorageUsageOut }) {
   const { t } = useI18n()
   const heading = useId()
+  if (usage.stored_bytes === 0) return null
   return <section className="card storage-card" aria-labelledby={heading}>
     <h2 id={heading}>{t('storage.administrator.title')}</h2>
     <p className="storage-figure">{t('storage.administrator.stored', { size: byteSize(usage.stored_bytes) })}</p>

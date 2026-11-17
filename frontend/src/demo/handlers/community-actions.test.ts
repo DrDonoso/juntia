@@ -8,18 +8,18 @@ import { resetDemo } from '../store'
 import { communityStore } from '../store/community'
 import { ACTION_STATUSES } from '../store/community-actions'
 import { coreStore } from '../store/core'
-import { demoFetch, demoRequest, demoUrl } from '../testing'
+import { demoFetch, demoRequest, demoUrl, signInAdmin } from '../testing'
 
 // Thursday 29 October 2026, midday (local time), like the other demo tests.
 const NOW = new Date(2026, 9, 29, 12)
 const OLIVIA = { kind: 'resident', name: 'Olivia Bennett', user_id: 6 }
-const ADMIN = { kind: 'administrator', name: 'Technical administrator', user_id: null }
+// The administrator of the cast, the president: administrators write under their own name.
+const JAMES = { kind: 'resident', name: 'James Okafor', user_id: 1 }
 
 beforeEach(() => resetDemo({ now: () => NOW }))
 afterEach(() => resetDemo())
 
 const get = <T = unknown>(path: string) => demoRequest<T>('GET', path)
-const adminLogin = () => demoRequest('POST', '/api/admin/auth/login', { body: { username: 'demo', password: 'demo' } })
 const signOut = () => demoRequest('POST', '/api/auth/logout')
 
 function actionId(title: string): number {
@@ -65,7 +65,7 @@ describe('the board and the list', () => {
     expect(roof?.comment_count).toBeGreaterThan(5)
     expect(roof?.attachment_count).toBe(6)
     const tiles = body.items.find(item => item.title.startsWith('Cracked tiles'))
-    expect(tiles).toMatchObject({ author: ADMIN, labels: [], comment_count: 0, attachment_count: 0 })
+    expect(tiles).toMatchObject({ author: JAMES, labels: [], comment_count: 0, attachment_count: 0 })
     expect('description' in (tiles ?? {})).toBe(false)
   })
 
@@ -162,7 +162,7 @@ describe('actions', () => {
     expect((await get('/api/actions/items/abc')).status).toBe(422)
   })
 
-  test('residents and the administrator need a session, and the feature flag gates every route', async () => {
+  test('readers and administrators need a session, and the feature flag gates every route', async () => {
     const id = actionId('Roof leak')
     const routes = [
       '/api/actions/board', '/api/actions/items', '/api/actions/labels', `/api/actions/items/${id}`,
@@ -174,9 +174,9 @@ describe('actions', () => {
     coreStore().features.actions = true
     await signOut()
     for (const route of routes) expect(await get(route), route).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
-    await adminLogin()
-    const created = await demoRequest<ActionOut>('POST', '/api/actions/items', { body: { title: 'Checked by the administrator' } })
-    expect(created).toMatchObject({ status: 201, body: { author: ADMIN } })
+    await signInAdmin()
+    const created = await demoRequest<ActionOut>('POST', '/api/actions/items', { body: { title: 'Checked by an administrator' } })
+    expect(created).toMatchObject({ status: 201, body: { author: JAMES } })
   })
 })
 
@@ -212,15 +212,15 @@ describe('comments', () => {
     expect(after).toMatchObject({ version: action.version, comment_count: action.comment_count - 1, updated_at: NOW.toISOString() })
   })
 
-  test("only the administrator changes someone else's comment", async () => {
+  test("only its author and administrators change a comment; an administrator writes under their own name", async () => {
     const path = `/api/actions/items/${actionId('Lift modernisation')}`
-    const james = (await get<ActionCommentPage>(`${path}/comments`)).body.items.find(comment => comment.author.user_id === 1)
-    if (!james) throw new Error('James has a comment on the lift')
-    expect(await demoRequest('PATCH', `${path}/comments/${james.id}`, { body: { version: james.version, body: 'Mine now' } })).toMatchObject({ status: 403, body: { code: 'action_owner_required' } })
-    expect(await demoRequest('DELETE', `${path}/comments/${james.id}`, { body: { version: james.version } })).toMatchObject({ status: 403 })
-    await adminLogin()
-    expect((await demoRequest('DELETE', `${path}/comments/${james.id}`, { body: { version: james.version } })).status).toBe(204)
-    expect((await get<ActionHistoryPage>(`${path}/history`)).body.items[0]).toMatchObject({ kind: 'comment_withdrawn', author: ADMIN })
+    const priya = (await get<ActionCommentPage>(`${path}/comments`)).body.items.find(comment => comment.author.user_id === 2)
+    if (!priya) throw new Error('Priya has a comment on the lift')
+    expect(await demoRequest('PATCH', `${path}/comments/${priya.id}`, { body: { version: priya.version, body: 'Mine now' } })).toMatchObject({ status: 403, body: { code: 'action_owner_required' } })
+    expect(await demoRequest('DELETE', `${path}/comments/${priya.id}`, { body: { version: priya.version } })).toMatchObject({ status: 403 })
+    await signInAdmin()
+    expect((await demoRequest('DELETE', `${path}/comments/${priya.id}`, { body: { version: priya.version } })).status).toBe(204)
+    expect((await get<ActionHistoryPage>(`${path}/history`)).body.items[0]).toMatchObject({ kind: 'comment_withdrawn', author: JAMES })
   })
 
   test('posting checks the text and the parent action', async () => {
@@ -293,11 +293,15 @@ describe('PDF attachments', () => {
     })
   })
 
-  test("residents cannot rename or withdraw someone else's PDF", async () => {
+  test("only its author and administrators rename or withdraw a PDF", async () => {
     const path = `/api/actions/items/${actionId('Roof leak')}/attachments`
-    const [latest] = (await get<ActionAttachmentPage>(path)).body.items
-    expect(await demoRequest('PATCH', `${path}/${latest.id}`, { body: { version: latest.version, filename: 'Mine.pdf' } })).toMatchObject({ status: 403, body: { code: 'action_owner_required' } })
-    expect(await demoRequest('DELETE', `${path}/${latest.id}`, { body: { version: latest.version } })).toMatchObject({ status: 403 })
+    const other = (await get<ActionAttachmentPage>(path)).body.items.find(item => item.author.user_id !== 1 && item.author.user_id !== 6)
+    if (!other) throw new Error('A neighbor attached a PDF to the roof leak')
+    expect(await demoRequest('PATCH', `${path}/${other.id}`, { body: { version: other.version, filename: 'Mine.pdf' } })).toMatchObject({ status: 403, body: { code: 'action_owner_required' } })
+    expect(await demoRequest('DELETE', `${path}/${other.id}`, { body: { version: other.version } })).toMatchObject({ status: 403 })
+    await signInAdmin()
+    expect(await demoRequest('PATCH', `${path}/${other.id}`, { body: { version: other.version, filename: 'Checked.pdf' } }))
+      .toMatchObject({ status: 200, body: { filename: 'Checked.pdf', author: other.author } })
   })
 })
 
@@ -325,10 +329,10 @@ describe('labels', () => {
     expect((await get(`/api/actions/labels?q=${'a'.repeat(101)}`)).status).toBe(422)
   })
 
-  test('the administrator renames or recolours a label for every action', async () => {
+  test('an administrator renames or recolours a label for every action', async () => {
     const id = labelId('Lift')
-    expect(await get(`/api/admin/action-labels/${id}`)).toMatchObject({ status: 401 })
-    await adminLogin()
+    expect(await get(`/api/admin/action-labels/${id}`)).toMatchObject({ status: 403, body: { code: 'administrator_required' } })
+    await signInAdmin()
     const label = (await get<ActionLabelOut>(`/api/admin/action-labels/${id}`)).body
     const linked = communityStore().actions.filter(action => action.labelIds.includes(id)).map(action => ({ id: action.id, version: action.version }))
     const saved = await demoRequest<ActionLabelOut>('PATCH', `/api/admin/action-labels/${id}`, { body: { name: '  Elevator ', color: '#AABBCC', version: label.version } })
@@ -337,7 +341,7 @@ describe('labels', () => {
       const current = (await get<ActionOut>(`/api/actions/items/${action.id}`)).body
       expect(current.version).toBe(action.version + 1)
       expect((await get<ActionHistoryPage>(`/api/actions/items/${action.id}/history`)).body.items[0]).toMatchObject({
-        kind: 'updated', author: ADMIN,
+        kind: 'updated', author: JAMES,
         changes: [
           { field: 'labels', before: expect.arrayContaining(['Lift']), after: expect.arrayContaining(['Elevator']) },
           { field: 'label_color', before: 'Lift: #4963de', after: 'Elevator: #aabbcc' },
@@ -354,8 +358,8 @@ describe('labels', () => {
     expect((await get<ActionLabelPage>('/api/admin/action-labels?q=elev')).body.items).toEqual([saved.body])
   })
 
-  test('the catalogue stays available to the administrator while actions are off', async () => {
-    await adminLogin()
+  test('the catalogue stays available to administrators while actions are off', async () => {
+    await signInAdmin()
     coreStore().features.actions = false
     expect((await get<ActionLabelPage>('/api/admin/action-labels')).body.total).toBe(9)
     expect(await get('/api/actions/labels')).toMatchObject({ status: 404, body: { code: 'actions_disabled' } })

@@ -1,6 +1,7 @@
 import { expect, test, type Locator } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import type { ActionOut, ContactOut, ContactTagOut } from '../src/api/schema.gen'
+import { signInAsAdministrator } from './support'
 
 test.use({ actionTimeout: 15_000 })
 
@@ -20,10 +21,7 @@ test('administration edits independent label catalogs and redirects community vi
   test.setTimeout(120_000)
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
-  await page.goto('/admin/labels')
-  await page.getByLabel('Username', { exact: true }).fill('browser-test')
-  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-test-password')
-  await page.getByRole('button', { name: 'Sign in to administration' }).click()
+  await signInAsAdministrator(page, '/admin/labels')
   await expect(page.getByRole('heading', { name: 'Community labels', exact: true })).toBeVisible()
   const origin = new URL(page.url()).origin
   const headers = { Origin: origin, 'X-Juntia-Request': '1' }
@@ -126,7 +124,8 @@ test('administration edits independent label catalogs and redirects community vi
   try {
     const visitor = await anonymous.newPage()
     await visitor.goto('/admin/labels')
-    await expect(visitor.getByRole('button', { name: 'Sign in to administration' })).toBeVisible()
+    await expect(visitor).toHaveURL(/\/login\?next=%2Fadmin%2Flabels$/)
+    await expect(visitor.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible()
     await expect(visitor.getByRole('heading', { name: 'Community labels', exact: true })).toHaveCount(0)
   } finally {
     await anonymous.close()

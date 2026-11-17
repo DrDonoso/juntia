@@ -199,11 +199,6 @@ export interface ApplyRule {
   rule: RuleIn
 }
 
-export interface AuthOut {
-  authenticated: boolean
-  username: string | null
-}
-
 export interface Body_upload_action_image_api_actions_images_post {
   file: Blob
   upload_id: string
@@ -961,11 +956,6 @@ export interface ImportOut {
   start_date: string
 }
 
-export interface LoginIn {
-  password: string
-  username: string
-}
-
 export interface MerchantBreakdown {
   amount: string
   color: string
@@ -1045,9 +1035,10 @@ export interface ProfileEdit {
 }
 
 export interface ProfileOut {
+  administrator: boolean
   coefficient: string | null
-  dwelling_id: number
-  dwelling_label: string
+  dwelling_id: number | null
+  dwelling_label: string | null
   email: string
   google_linked: boolean
   has_password: boolean
@@ -1135,6 +1126,16 @@ export interface RuleOut {
 export interface SetPasswordIn {
   password: string
   token: string
+}
+
+export interface SetupIn {
+  email: string
+  name: string
+  password: string
+}
+
+export interface SetupOut {
+  available: boolean
 }
 
 export interface StorageOut {
@@ -1264,11 +1265,11 @@ export interface TransactionPage {
 }
 
 export interface UserAuthOut {
+  administrator: boolean
   authenticated: boolean
   dwelling_id: number | null
   email: string | null
   expires_at: string | null
-  kind: 'resident' | 'administrator' | null
   name: string | null
   user_id: number | null
 }
@@ -1279,7 +1280,8 @@ export interface UserDeleteIn {
 }
 
 export interface UserEdit {
-  dwelling_id: number
+  administrator?: boolean
+  dwelling_id?: number | null
   email: string
   name: string
   phone?: string
@@ -1287,7 +1289,8 @@ export interface UserEdit {
 }
 
 export interface UserIn {
-  dwelling_id: number
+  administrator?: boolean
+  dwelling_id?: number | null
   email: string
   name: string
   phone?: string
@@ -1299,9 +1302,10 @@ export interface UserLoginIn {
 }
 
 export interface UserOut {
+  administrator: boolean
   coefficient: string | null
-  dwelling_id: number
-  dwelling_label: string
+  dwelling_id: number | null
+  dwelling_label: string | null
   email: string
   google_linked: boolean
   has_password: boolean

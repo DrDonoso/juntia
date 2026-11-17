@@ -1,11 +1,12 @@
 /**
  * Contacts and their tags (src/juntia/contacts.py): the operations that change them and leave the
  * shared history, the API views, and the list, search and tag queries. Every reader can change
- * contacts and tags; deleted contacts stay in the history and in the administrator's archive.
+ * contacts and tags; deleted contacts stay in the history and in the administrators' archive.
  */
 import type { ActorOut, ContactEventOut, ContactOut, ContactSnapshot, ContactTagIn, ContactTagOut } from '../../api/schema.gen'
 import {
-  actorOut, compareText, sameJson, type ChangeKind, type CommunityState, type DemoContact, type DemoContactChange, type DemoContactTag,
+  actorOut, authorship, compareText, sameJson, type ChangeKind, type CommunityState, type DemoContact, type DemoContactChange,
+  type DemoContactTag,
 } from './community-model'
 import { casefold, foldText, labelKey } from './community-text'
 
@@ -76,7 +77,7 @@ function record(
 ): void {
   state.contactHistory.push({
     id: state.sequences.contactHistory.next(), contactId: 'contactId' in target ? target.contactId : null,
-    tagId: 'tagId' in target ? target.tagId : null, kind, author: { ...actor }, createdAt: at, before, after,
+    tagId: 'tagId' in target ? target.tagId : null, kind, author: authorship(actor), createdAt: at, before, after,
   })
 }
 

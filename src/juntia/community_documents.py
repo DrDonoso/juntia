@@ -1,10 +1,10 @@
 """Shared documents: folders and files that every member reads and downloads.
 
-Every active resident and the technical administrator can create folders and upload files into any
-folder. Who may rename, move, replace (upload a new version of) and delete an item follows the
-administrator's policy: whoever created it, only the administrator, or everyone; the administrator
-always may. Deleting hides an item, and everything inside a folder, from residents: only the
-administrator can see, restore or permanently delete (purge) it. Every item keeps a history of
+Every active account can create folders and upload files into any folder. Who may rename, move,
+replace (upload a new version of) and delete an item follows the administrators' policy: whoever
+created it, only administrators, or everyone; administrators always may. Deleting hides an item,
+and everything inside a folder, from the portal: only administrators can see, restore or
+permanently delete (purge) it. Every item keeps a history of
 who created, uploaded, renamed, moved, deleted and restored it, never of what changed inside.
 
 Files arrive in chunks of at most 4 MiB, so large phone videos also work behind proxies with
@@ -32,7 +32,15 @@ from starlette.responses import FileResponse, StreamingResponse
 from starlette.types import Receive, Scope, Send
 
 from . import document_index, queries
-from .auth import DB, administrator, mutation_session, reader_session, settings
+from .auth import (
+    DB,
+    Actor,
+    actor_of,
+    administrator,
+    mutation_session,
+    reader_session,
+    settings,
+)
 from .config import Language
 from .contracts import (
     ActorOut,
@@ -143,17 +151,6 @@ settings_router = APIRouter(
 )
 
 
-def actor_of(identity: UserAuthOut, language: Language) -> ActorOut:
-    return ActorOut.model_validate({
-        "kind": "administrator" if identity.kind == "administrator" else "resident",
-        "user_id": identity.user_id, "name": author_name(identity.kind, identity.name, language),
-    })
-
-
-def administrator_actor(language: Language) -> ActorOut:
-    return ActorOut(kind="administrator", user_id=None, name=texts(language).administrator)
-
-
 def author(value: Authorship, language: Language) -> ActorOut:
     return ActorOut.model_validate({
         "kind": value.author_kind, "user_id": value.author_user_id,
@@ -161,18 +158,18 @@ def author(value: Authorship, language: Language) -> ActorOut:
     })
 
 
-def authorship(actor: ActorOut) -> dict[str, str | int | None]:
+def authorship(actor: Actor) -> dict[str, str | int | None]:
     return {"author_kind": actor.kind, "author_user_id": actor.user_id, "author_name": actor.name}
 
 
-def owns(value: Authorship, actor: ActorOut) -> bool:
+def owns(value: Authorship, actor: Actor) -> bool:
     return value.author_kind == actor.kind and value.author_user_id == actor.user_id
 
 
-async def mutation_actor(request: Request, db: AsyncSession, language: Language) -> ActorOut:
+async def mutation_actor(request: Request, db: AsyncSession) -> Actor:
     identity = await mutation_session(request, db)
     await require_documents_enabled(db)
-    return actor_of(identity, language)
+    return actor_of(identity)
 
 
 async def lock_documents(db: AsyncSession) -> None:
@@ -212,13 +209,13 @@ async def document_settings(db: AsyncSession) -> DocumentSettings:
     return DocumentSettings(**values)
 
 
-def may_manage(value: Authorship, actor: ActorOut, policy: DocumentPolicy) -> bool:
-    if actor.kind == "administrator" or policy == "everyone":
+def may_manage(value: Authorship, actor: Actor, policy: DocumentPolicy) -> bool:
+    if actor.administrator or policy == "everyone":
         return True
     return policy == "creator" and owns(value, actor)
 
 
-def require_manage(value: Authorship, actor: ActorOut, policy: DocumentPolicy) -> None:
+def require_manage(value: Authorship, actor: Actor, policy: DocumentPolicy) -> None:
     if not may_manage(value, actor, policy):
         raise AppError("document_permission_required", 403)
 
@@ -307,7 +304,7 @@ async def load_tree(db: AsyncSession) -> Tree:
     return Tree(folders, children, files)
 
 
-def folder_stats(tree: Tree, actor: ActorOut) -> dict[int, Stats]:
+def folder_stats(tree: Tree, actor: Actor) -> dict[int, Stats]:
     stats: dict[int, Stats] = {}
     for start in tree.folders:
         stack: list[tuple[int, bool]] = [(start, False)]
@@ -382,7 +379,7 @@ def limits(stored: DocumentSettings) -> DocumentLimitsOut:
 
 
 def folder_out(
-    value: DocumentFolder, stats: Stats, actor: ActorOut, policy: DocumentPolicy,
+    value: DocumentFolder, stats: Stats, actor: Actor, policy: DocumentPolicy,
     language: Language,
 ) -> DocumentFolderOut:
     manage = may_manage(value, actor, policy)
@@ -392,7 +389,7 @@ def folder_out(
         updated_at=aware(value.updated_at), file_count=stats.files,
         folder_count=stats.folders, size=stats.size, can_manage=manage,
         can_delete=manage and (
-            actor.kind == "administrator" or policy != "creator" or stats.owned
+            actor.administrator or policy != "creator" or stats.owned
         ),
     )
 
@@ -407,7 +404,7 @@ def version_out(value: DocumentVersion, language: Language) -> DocumentVersionOu
 
 
 def document_out(
-    value: Document, current: DocumentVersion, actor: ActorOut, policy: DocumentPolicy,
+    value: Document, current: DocumentVersion, actor: Actor, policy: DocumentPolicy,
     language: Language,
 ) -> DocumentOut:
     return DocumentOut.model_validate({
@@ -432,7 +429,7 @@ async def deleted_by(
 
 
 async def document_info(
-    db: AsyncSession, value: Document, actor: ActorOut, policy: DocumentPolicy,
+    db: AsyncSession, value: Document, actor: Actor, policy: DocumentPolicy,
     language: Language,
 ) -> DocumentInfoOut:
     versions = list(await db.scalars(
@@ -556,7 +553,7 @@ def target(value: DocumentFolder | Document) -> dict[str, int | None]:
 
 
 def record(
-    db: AsyncSession, actor: ActorOut, kind: DocumentEventKind, item: DocumentFolder | Document,
+    db: AsyncSession, actor: Actor, kind: DocumentEventKind, item: DocumentFolder | Document,
     now: datetime, **details: str | int | list[str] | None,
 ) -> None:
     db.add(DocumentEvent(
@@ -589,7 +586,7 @@ async def history_page(
 
 
 async def stored_document_bytes(db: AsyncSession, user_id: int | None = None) -> int:
-    """Bytes of every stored version, of one resident's uploads when `user_id` is set."""
+    """Bytes of every stored version, of one account's uploads when `user_id` is set."""
     where: list[ColumnElement[bool]] = [DocumentVersion.purged_at.is_(None)]
     if user_id is not None:
         where += [
@@ -601,13 +598,12 @@ async def stored_document_bytes(db: AsyncSession, user_id: int | None = None) ->
 
 
 async def check_quota(
-    db: AsyncSession, stored: DocumentSettings, actor: ActorOut, size: int,
+    db: AsyncSession, stored: DocumentSettings, actor: Actor, size: int,
 ) -> None:
-    """Both byte budgets of the documents; callers hold lock_documents()."""
-    if actor.kind == "resident" and actor.user_id is not None:
-        used = await stored_document_bytes(db, actor.user_id)
-        if used + size > stored.user_quota_mb * MIB:
-            raise AppError("document_storage_user_quota", 409)
+    """Both byte budgets of the documents, the uploader's own also for administrators; callers
+    hold lock_documents()."""
+    if await stored_document_bytes(db, actor.user_id) + size > stored.user_quota_mb * MIB:
+        raise AppError("document_storage_user_quota", 409)
     if await stored_document_bytes(db) + size > stored.community_quota_mb * MIB:
         log.warning("A document upload was refused by the community storage quota")
         raise AppError("document_storage_community_quota", 409)
@@ -618,7 +614,7 @@ async def browse(
     db: DB, language: ServerLanguage, identity: Reader,
     folder: Annotated[int | None, Query(ge=1, le=2147483647)] = None,
 ) -> DocumentBrowseOut:
-    actor = actor_of(identity, language)
+    actor = actor_of(identity)
     stored = await document_settings(db)
     policy = stored.manage_policy
     tree = await load_tree(db)
@@ -661,7 +657,7 @@ async def search(
 ) -> DocumentSearchPage:
     """Folders and files anywhere in Documents whose name contains the text, ignoring case and
     accents, and then the files whose text contains it, with the words around the first place."""
-    actor = actor_of(identity, language)
+    actor = actor_of(identity)
     needle = fold_text(q.strip())
     # The text is kept on one line with single spaces.
     words = fold_text(" ".join(q.split()))
@@ -729,7 +725,7 @@ async def folder_tree(db: DB) -> list[DocumentTreeFolderOut]:
 async def create_folder(
     body: DocumentFolderIn, request: Request, db: DB, language: ServerLanguage,
 ) -> DocumentFolderOut:
-    actor = await mutation_actor(request, db, language)
+    actor = await mutation_actor(request, db)
     name = checked_name(body.name)
     await lock_documents(db)
     above: list[DocumentFolder] = []
@@ -757,7 +753,7 @@ async def create_folder(
 async def folder_details(
     folder_id: ItemId, db: DB, language: ServerLanguage, identity: Reader,
 ) -> DocumentFolderInfoOut:
-    actor = actor_of(identity, language)
+    actor = actor_of(identity)
     tree = await load_tree(db)
     if folder_id not in tree.folders:
         raise AppError("document_folder_not_found", 404)
@@ -776,7 +772,7 @@ async def edit_folder(
     folder_id: ItemId, body: DocumentItemEdit, request: Request, db: DB,
     language: ServerLanguage,
 ) -> DocumentFolderOut:
-    actor = await mutation_actor(request, db, language)
+    actor = await mutation_actor(request, db)
     await lock_documents(db)
     value = await active_folder(db, folder_id)
     if value.version != body.version:
@@ -818,10 +814,10 @@ async def edit_folder(
 
 
 async def delete_items(
-    db: AsyncSession, actor: ActorOut, root: DocumentFolder | Document,
+    db: AsyncSession, actor: Actor, root: DocumentFolder | Document,
     folders: list[DocumentFolder], documents: list[Document],
 ) -> None:
-    """Hide the item and everything in it as one deletion, which the administrator can undo."""
+    """Hide the item and everything in it as one deletion, which administrators can undo."""
     now = utcnow()
     parent = root.parent_id if isinstance(root, DocumentFolder) else root.folder_id
     location = names(await chain(db, parent))
@@ -844,9 +840,9 @@ async def delete_items(
 
 @router.delete("/folders/{folder_id}", status_code=204)
 async def delete_folder(
-    folder_id: ItemId, body: VersionIn, request: Request, db: DB, language: ServerLanguage,
+    folder_id: ItemId, body: VersionIn, request: Request, db: DB,
 ) -> None:
-    actor = await mutation_actor(request, db, language)
+    actor = await mutation_actor(request, db)
     await lock_documents(db)
     value = await active_folder(db, folder_id)
     if value.version != body.version:
@@ -855,7 +851,7 @@ async def delete_folder(
     require_manage(value, actor, policy)
     folders, documents, _ = await subtree(db, value)
     items: list[DocumentFolder | Document] = [*folders, *documents]
-    if actor.kind != "administrator" and policy == "creator" and not all(
+    if not actor.administrator and policy == "creator" and not all(
         owns(item, actor) for item in items
     ):
         raise AppError("document_folder_not_owned", 403)
@@ -877,7 +873,7 @@ async def file_details(
 ) -> DocumentInfoOut:
     value = await active_document(db, document_id)
     return await document_info(
-        db, value, actor_of(identity, language), await manage_policy(db), language,
+        db, value, actor_of(identity), await manage_policy(db), language,
     )
 
 
@@ -886,7 +882,7 @@ async def edit_file(
     document_id: ItemId, body: DocumentItemEdit, request: Request, db: DB,
     language: ServerLanguage,
 ) -> DocumentOut:
-    actor = await mutation_actor(request, db, language)
+    actor = await mutation_actor(request, db)
     await lock_documents(db)
     value = await active_document(db, document_id)
     if value.version != body.version:
@@ -924,9 +920,9 @@ async def edit_file(
 
 @router.delete("/files/{document_id}", status_code=204)
 async def delete_file(
-    document_id: ItemId, body: VersionIn, request: Request, db: DB, language: ServerLanguage,
+    document_id: ItemId, body: VersionIn, request: Request, db: DB,
 ) -> None:
-    actor = await mutation_actor(request, db, language)
+    actor = await mutation_actor(request, db)
     await lock_documents(db)
     value = await active_document(db, document_id)
     if value.version != body.version:
@@ -1134,7 +1130,7 @@ def upload_out(value: DocumentUpload) -> DocumentUploadOut:
     )
 
 
-def authored_by(actor: ActorOut) -> list[ColumnElement[bool]]:
+def authored_by(actor: Actor) -> list[ColumnElement[bool]]:
     return [
         DocumentUpload.author_kind == actor.kind,
         DocumentUpload.author_user_id.is_(None) if actor.user_id is None
@@ -1192,11 +1188,11 @@ async def clean_uploads(db: AsyncSession, directory: FilePath) -> None:
 
 @router.post("/uploads", response_model=DocumentUploadOut, status_code=201)
 async def create_upload(
-    body: DocumentUploadIn, request: Request, db: DB, language: ServerLanguage,
+    body: DocumentUploadIn, request: Request, db: DB,
 ) -> DocumentUploadOut:
     """Start an upload (or find the one already started with this ID); chunks follow."""
     config = settings(request)
-    actor = await mutation_actor(request, db, language)
+    actor = await mutation_actor(request, db)
     name, extension = upload_name(body.name)
     file_type = TYPES[extension]
     if body.size == 0:
@@ -1259,7 +1255,7 @@ async def create_upload(
     return upload_out(value)
 
 
-async def own_upload(db: AsyncSession, upload_id: UUID, actor: ActorOut) -> DocumentUpload:
+async def own_upload(db: AsyncSession, upload_id: UUID, actor: Actor) -> DocumentUpload:
     value = await lock_upload(db, str(upload_id))
     if value is None or not owns(value, actor) or aware(value.expires_at) <= utcnow():
         raise AppError("document_upload_not_found", 404)
@@ -1268,12 +1264,12 @@ async def own_upload(db: AsyncSession, upload_id: UUID, actor: ActorOut) -> Docu
 
 @router.get("/uploads/{upload_id}", response_model=DocumentUploadOut)
 async def upload_status(
-    upload_id: UUID, db: DB, language: ServerLanguage, identity: Reader,
+    upload_id: UUID, db: DB, identity: Reader,
 ) -> DocumentUploadOut:
     """How much of an upload arrived, to resume it after an interruption."""
     value = await db.get(DocumentUpload, str(upload_id))
     if (
-        value is None or not owns(value, actor_of(identity, language))
+        value is None or not owns(value, actor_of(identity))
         or aware(value.expires_at) <= utcnow()
     ):
         raise AppError("document_upload_not_found", 404)
@@ -1287,7 +1283,7 @@ async def upload_status(
     }}},
 )
 async def upload_chunk(
-    upload_id: UUID, request: Request, db: DB, language: ServerLanguage,
+    upload_id: UUID, request: Request, db: DB,
     offset: Annotated[int, Query(ge=0, le=9007199254740991)],
 ) -> DocumentUploadOut:
     """The next bytes of an upload, at most 4 MiB, starting where the received ones end."""
@@ -1295,7 +1291,7 @@ async def upload_chunk(
     data = await request.body()
     if not data or len(data) > CHUNK_BYTES:
         raise AppError("document_upload_size", 422)
-    actor = await mutation_actor(request, db, language)
+    actor = await mutation_actor(request, db)
     value = await own_upload(db, upload_id, actor)
     if offset != value.received:
         raise AppError("document_upload_offset", 409)
@@ -1317,9 +1313,9 @@ async def upload_chunk(
 
 @router.delete("/uploads/{upload_id}", status_code=204)
 async def cancel_upload(
-    upload_id: UUID, request: Request, db: DB, language: ServerLanguage,
+    upload_id: UUID, request: Request, db: DB,
 ) -> None:
-    actor = await mutation_actor(request, db, language)
+    actor = await mutation_actor(request, db)
     value = await lock_upload(db, str(upload_id))
     if value is None:
         return
@@ -1329,7 +1325,7 @@ async def cancel_upload(
 
 
 async def completed(
-    db: AsyncSession, upload_id: str, actor: ActorOut, language: Language,
+    db: AsyncSession, upload_id: str, actor: Actor, language: Language,
 ) -> DocumentOut:
     """A completion retried after it succeeded is answered from the stored version."""
     version = await db.get(DocumentVersion, upload_id)
@@ -1380,7 +1376,7 @@ async def complete_upload(
     """Check the received file and add it as a new document or a new version."""
     config = settings(request)
     key = str(upload_id)
-    actor = await mutation_actor(request, db, language)
+    actor = await mutation_actor(request, db)
     value = await db.get(DocumentUpload, key)
     if value is None or not owns(value, actor):
         return await completed(db, key, actor, language)
@@ -1400,7 +1396,7 @@ async def complete_upload(
     destination = stored_path(config.upload_dir, storage_key, extension)
     published = committed = False
     try:
-        actor = await mutation_actor(request, db, language)
+        actor = await mutation_actor(request, db)
         await lock_documents(db)
         upload = await db.get(DocumentUpload, key, populate_existing=True)
         if upload is None or not owns(upload, actor) or upload.storage_key != storage_key:
@@ -1506,7 +1502,7 @@ async def deletion_items(
 async def deleted_documents(
     db: DB, language: ServerLanguage, page: PageNumber = 1,
 ) -> DocumentDeletionPage:
-    """What residents deleted and the administrator can still restore or purge, newest first."""
+    """What was deleted and administrators can still restore or purge, newest first."""
     where = [DocumentDeletion.restored_at.is_(None), DocumentDeletion.purged_at.is_(None)]
     total = await db.scalar(select(func.count()).select_from(DocumentDeletion).where(*where)) or 0
     rows = list(await db.scalars(
@@ -1545,13 +1541,13 @@ async def deleted_documents(
 
 @admin_router.get("/files/{document_id}", response_model=DocumentInfoOut)
 async def admin_file_details(
-    document_id: ItemId, db: DB, language: ServerLanguage,
+    document_id: ItemId, db: DB, language: ServerLanguage, identity: Reader,
 ) -> DocumentInfoOut:
     value = await db.get(Document, document_id)
     if value is None:
         raise AppError("document_not_found", 404)
     return await document_info(
-        db, value, administrator_actor(language), await manage_policy(db), language,
+        db, value, actor_of(identity), await manage_policy(db), language,
     )
 
 
@@ -1599,11 +1595,11 @@ async def open_deletion(db: AsyncSession, deletion_id: UUID) -> DocumentDeletion
 
 @admin_router.post("/deletions/{deletion_id}/restore", status_code=204)
 async def restore_deletion(
-    deletion_id: UUID, request: Request, db: DB, language: ServerLanguage,
+    deletion_id: UUID, request: Request, db: DB,
 ) -> None:
     """Bring back everything deleted together, where it was, or at the top level if that folder
     is gone; a name already in use gets a number."""
-    actor = actor_of(await mutation_session(request, db), language)
+    actor = actor_of(await mutation_session(request, db))
     await lock_documents(db)
     deletion = await open_deletion(db, deletion_id)
     if deletion.restored_at is not None or deletion.purged_at is not None:
@@ -1654,10 +1650,10 @@ async def restore_deletion(
 
 @admin_router.post("/deletions/{deletion_id}/purge", status_code=204)
 async def purge_deletion(
-    deletion_id: UUID, request: Request, db: DB, language: ServerLanguage,
+    deletion_id: UUID, request: Request, db: DB,
 ) -> None:
     """Delete the files of everything deleted together, for good; records and history remain."""
-    actor = actor_of(await mutation_session(request, db), language)
+    actor = actor_of(await mutation_session(request, db))
     await lock_documents(db)
     deletion = await open_deletion(db, deletion_id)
     if deletion.restored_at is not None:

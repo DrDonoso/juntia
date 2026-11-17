@@ -67,6 +67,8 @@ uv run --no-sync python scripts/audit_dependencies.py
 
 Without `TEST_DATABASE_URL`, every test uses its own temporary SQLite database, and the few tests
 that need PostgreSQL (mainly concurrency) are skipped. Every API test runs the whole migration chain.
+The `admin` fixture (`tests/conftest.py`) creates its administrator through `POST /api/auth/setup`,
+like the first visitor of a new installation.
 
 The test of OCR needs [Tesseract](https://github.com/tesseract-ocr/tesseract) with its English
 model, as in CI and the image (`sudo apt install tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa`
@@ -131,33 +133,39 @@ building.
 
 ### Browser tests
 
-`npm run e2e` tests the output of the last `npm run build`. Playwright starts the
-[synthetic test server](#the-synthetic-test-server) from the repository's `.venv` on port 7889, with
-its own temporary SQLite database, and runs the specs in Chromium with one worker, in British
-English. Run one file with `npm run e2e -- events.spec.ts`.
+`npm run e2e` tests the output of the last `npm run build`. Playwright starts two
+[synthetic test servers](#the-synthetic-test-server) from the repository's `.venv`, each with its
+own temporary SQLite database: the usual one on port 7889, with an administrator account, and one
+without accounts, like a new installation, on the next port, for `first-run.spec.ts`. It runs the
+specs in Chromium with one worker, in British English. Specs sign in as the administrator with
+`signInAsAdministrator(page, path)` from `e2e/support.ts`. Run one file with
+`npm run e2e -- events.spec.ts`.
 
 - Install the browser with `npx playwright install chromium`. When browsers cannot be downloaded,
   `PLAYWRIGHT_CHANNEL=msedge` (or `chrome`) uses an installed one.
-- `E2E_PORT` changes the port, for example when a manual preview already uses 7889. Running several
-  suites at the same time needs different ports.
+- `E2E_PORT` and `E2E_FIRST_RUN_PORT` (default `E2E_PORT` + 1) change the ports, for example when a
+  manual preview already uses 7889. Running several suites at the same time needs different ports.
 - CI splits the suite with `--shard=1/2` and `--shard=2/2`; reproduce a shard with
-  `npm run e2e -- --shard=1/2`. Each shard builds the app and starts its own server.
+  `npm run e2e -- --shard=1/2`. Each shard builds the app and starts its own servers.
 - CI also checks the contacts layout and touch navigation in WebKit:
   `npx playwright install webkit`, then
   `npm run e2e -- navigation.spec.ts --browser=webkit --grep "contacts keep|OS glyphs"`.
 - The feature-switch specs change switches through the administration and restore the defaults when
   they finish; they need no environment variables.
-- `E2E_BASE_URL` (with `E2E_ADMIN_USERNAME` and `E2E_ADMIN_PASSWORD`) runs the suite against an
-  existing deployment instead. Use it only with an isolated, empty instance: the tests create data.
-  The resident lifecycle test is skipped then, because it needs the server's captured mailbox.
+- `E2E_BASE_URL`, with `E2E_ADMIN_EMAIL` and `E2E_ADMIN_PASSWORD` (an administrator account of that
+  deployment), runs the suite against an existing deployment instead, without starting the servers.
+  Use it only with an isolated, empty instance: the tests create data. The tests that need the
+  server's captured mailbox or a new installation, such as `first-run.spec.ts`, are skipped then.
 
 Browser tests never use a real statement, database, AI provider or mail recipient.
 
 ### The synthetic test server
 
 `scripts/smoke_server.py` is a disposable, loopback-only Juntia for browser tests and manual
-previews. It applies the migrations to a SQLite database, seeds it, and captures emails in memory
-instead of sending them. Options:
+previews. It applies the migrations to a SQLite database, seeds it, creates the administrator
+account `browser-test@example.org` with the password `synthetic-browser-test-password` ("Browser
+Test", without a dwelling) unless it starts with `--first-run` or already has accounts, and
+captures emails in memory instead of sending them. Options:
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -165,10 +173,11 @@ instead of sending them. Options:
 | `--data-dir` | a temporary directory | Keep the database and uploads in this folder between runs. |
 | `--language` | `en` | `APP_LANGUAGE` for emails and first-run defaults (`en` or `es`). |
 | `--fake-google` | off | A synthetic Google provider, for the Google tests only. |
+| `--first-run` | off | Start without any account, like a new installation, so that `/login` offers to create the administration account. |
 
-It also exposes test-only endpoints, such as the captured mailbox and a reset of the synthetic
-administrator's sign-in counter used by the dwelling layout tests. They exist only in this script,
-never in the application. Never deploy it.
+It also exposes test-only endpoints, such as the captured mailbox and a reset of the sign-in
+counters of the synthetic administrator and its client, which `signInAsAdministrator` calls after
+each sign-in. They exist only in this script, never in the application. Never deploy it.
 
 ### Google sign-in tests
 
@@ -217,7 +226,8 @@ Migrations must run on PostgreSQL and SQLite, inside a transaction. Keep the mod
 `src/juntia/db.py` in step and add tests like `tests/test_*_migration.py`.
 
 The application applies migrations at startup (`alembic upgrade head`) and `python seed.py` creates
-the defaults of a new installation in `APP_LANGUAGE`.
+the defaults of a new installation in `APP_LANGUAGE` and opens its first-run screen, where the first
+visitor creates the administration account.
 
 ## Translations
 
@@ -271,7 +281,7 @@ publish workflow:
 | `backend` | Two [test groups](#test-groups) on PostgreSQL 18, with Tesseract installed for the test of OCR. Group 1 also runs the dependency audit, Ruff, mypy and the OpenAPI check. |
 | `frontend` | Two shards of the browser tests, each building the app. Shard 1 also runs the API type check, lint and unit tests; shard 2 adds the WebKit checks and the Google sign-in tests. |
 | `demo` | Builds the demo and runs its browser smoke test. |
-| `docker` | Builds the production image, reads a picture with its OCR in English and Spanish, and smoke-tests it with Compose: health, an unauthenticated request refused, an administrator sign-in, OCR available to the server and the web app. |
+| `docker` | Builds the production image, reads a picture with its OCR in English and Spanish, and smoke-tests it with Compose: health, an unauthenticated request refused, the administration account created once through `/api/auth/setup`, OCR available to the server, `python -m juntia.admins list` in the container and the web app. |
 | `application` | The required check: it fails unless every other job succeeded, including when one was cancelled or skipped. |
 
 A new push to a pull request cancels the CI run of its previous commit; that run then ends with a
@@ -321,7 +331,8 @@ These variables are for development and tests only. Never set them on a server.
 | `PRIVATE_STATEMENT_PATH` | pytest | Path to a real statement, to check the parser locally against it. The test is skipped without it. Never commit the file or its contents. |
 | `PRIVATE_STATEMENT_ROWS`, `PRIVATE_STATEMENT_FIRST_DATE`, `PRIVATE_STATEMENT_LAST_DATE`, `PRIVATE_STATEMENT_VALUE_DATE_DIFFERENCES` | pytest | Optional expectations for that private statement (row count, earliest and latest ISO booking dates, number of rows whose value date differs from the booking date); without them the test checks only generic invariants. |
 | `E2E_PORT` | `npm run e2e` | Port of the synthetic test server (default 7889). |
-| `E2E_BASE_URL`, `E2E_ADMIN_USERNAME`, `E2E_ADMIN_PASSWORD` | `npm run e2e` | Run against an existing, isolated and empty deployment instead. |
+| `E2E_FIRST_RUN_PORT` | `npm run e2e` | Port of the second synthetic test server, without accounts, for `first-run.spec.ts` (default `E2E_PORT` + 1). |
+| `E2E_BASE_URL`, `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` | `npm run e2e` | Run against an existing, isolated and empty deployment instead, signing in with one of its administrator accounts. |
 | `E2E_GOOGLE` | `npm run e2e` | `true` runs `google.spec.ts` with the synthetic Google provider. |
 | `PLAYWRIGHT_CHANNEL` | Playwright, `gen:icons` | Use an installed browser such as `msedge` or `chrome`. |
 | `DEMO_E2E_PORT` | `npm run e2e:demo` | Port of the demo preview (default 4183). |

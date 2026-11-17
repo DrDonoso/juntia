@@ -1,13 +1,11 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import type { DwellingLayout, DwellingLayoutOut } from '../src/api/schema.gen'
+import { administrator, signInAsAdministrator } from './support'
 
 test.beforeEach(async ({ page }) => {
   test.skip(Boolean(process.env.E2E_BASE_URL), 'Requires the disposable synthetic application')
-  await page.goto('/admin/dwellings')
-  await page.getByLabel('Username', { exact: true }).fill('browser-test')
-  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-test-password')
-  await page.getByRole('button', { name: 'Sign in to administration' }).click()
+  await signInAsAdministrator(page, '/admin/dwellings')
   await expect(page.getByRole('heading', { name: 'Dwellings', exact: true })).toBeVisible()
 })
 
@@ -138,7 +136,7 @@ test('dwelling layout publishes aligned floors, holes and exterior homes to both
   try {
     expect((await context.request.get('/api/neighbors/layout')).status()).toBe(401)
     expect((await context.request.post('/api/auth/login', { headers: headers(page), data: { email, password } })).status()).toBe(200)
-    expect((await context.request.put('/api/admin/dwellings/layout', { headers: headers(page), data: { version: saved.version, layout } })).status()).toBe(401)
+    expect((await context.request.put('/api/admin/dwellings/layout', { headers: headers(page), data: { version: saved.version, layout } })).status()).toBe(403)
     const reader = await context.newPage()
     await reader.goto('/neighbors')
     await expect(reader.getByRole('heading', { name: 'Layout Reader', exact: true })).toBeVisible()
@@ -173,8 +171,8 @@ test('dwelling layout supports real touch swapping, scroll and keyboard cancella
   const origin = new URL(page.url()).origin
   const context = await browser.newContext({ baseURL: origin, locale: 'en-GB', hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } })
   try {
-    expect((await context.request.post('/api/admin/auth/login', { headers: headers(page), data: {
-      username: 'browser-test', password: 'synthetic-browser-test-password',
+    expect((await context.request.post('/api/auth/login', { headers: headers(page), data: {
+      email: administrator.email, password: administrator.password,
     } })).status()).toBe(200)
     const mobile = await context.newPage()
     await mobile.goto('/admin/dwellings')

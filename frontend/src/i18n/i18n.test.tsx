@@ -254,19 +254,25 @@ describe('language selection', () => {
 })
 
 describe('shell', () => {
-  function renderShell() {
+  function renderShell(administrator = false) {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Unexpected request'))))
     vi.stubGlobal('matchMedia', (media: string) => ({ media, matches: false, addEventListener() {}, removeEventListener() {} }))
-    cache.setQueryData(['auth'], { authenticated: false, username: null })
     cache.setQueryData(['reader-auth'], {
-      ...signedOut, authenticated: true, kind: 'resident', name: 'Alex Morgan', email: 'alex@example.org',
+      ...signedOut, authenticated: true, administrator, name: 'Alex Morgan', email: 'alex@example.org',
       user_id: 1, dwelling_id: 1, expires_at: '2099-01-01T00:00:00Z',
     })
     cache.setQueryData(['general-settings'], { community_name: 'Maple Court' })
     cache.setQueryData(['features'], { actions: true, coefficient: true, events: true, google_login: false })
     return render(<I18nRoot><QueryClientProvider client={cache}><LoginNoticeProvider><MemoryRouter initialEntries={['/']}>
-      <Routes><Route element={<Shell />}><Route index element={<p>Overview page</p>} /></Route></Routes>
+      <Routes><Route element={<Shell />}>
+        <Route index element={<p>Overview page</p>} />
+        <Route path="admin" element={<p>Import page</p>} />
+      </Route></Routes>
     </MemoryRouter></LoginNoticeProvider></QueryClientProvider></I18nRoot>)
+  }
+
+  function menuLinks() {
+    return within(screen.getByRole('navigation', { name: 'User options' })).getAllByRole('link').map(link => link.textContent)
   }
 
   function expectNavigation(name: string, groups: Record<string, string[]>) {
@@ -287,6 +293,7 @@ describe('shell', () => {
     expect(screen.getByRole('contentinfo')).toHaveTextContent('Information from the imported statements')
     await user.click(screen.getByRole('button', { name: /^User menu, / }))
     const menu = screen.getByRole('navigation', { name: 'User options' })
+    expect(menuLinks()).toEqual(['My profile'])
     expect(within(menu).getByRole('link', { name: 'My profile' })).toHaveAttribute('href', '/profile')
     expect(within(menu).getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
     await user.selectOptions(within(menu).getByRole('combobox', { name: 'Language' }), 'es')
@@ -310,6 +317,20 @@ describe('shell', () => {
       Finances: ['Overview', 'Transactions'], Management: ['Actions', 'Events'], Community: ['Neighbors', 'Contacts'],
     })
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+  })
+
+  test('administrators open the administration from the user menu and return from it to the portal', async () => {
+    const user = userEvent.setup()
+    renderShell(true)
+    await user.click(screen.getByRole('button', { name: /^User menu, / }))
+    expect(menuLinks()).toEqual(['Administration', 'My profile'])
+    await user.click(screen.getByRole('link', { name: 'Administration' }))
+    expect(screen.getByText('Import page')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^User menu, / })).toHaveAttribute('aria-expanded', 'false')
+    await user.click(screen.getByRole('button', { name: /^User menu, / }))
+    expect(menuLinks()).toEqual(['Community portal', 'My profile'])
+    await user.click(within(screen.getByRole('navigation', { name: 'User options' })).getByRole('link', { name: 'Community portal' }))
+    expect(screen.getByText('Overview page')).toBeInTheDocument()
   })
 
   test('a Spanish browser opens the shell in Spanish', () => {

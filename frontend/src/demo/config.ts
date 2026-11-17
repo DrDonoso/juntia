@@ -8,10 +8,10 @@
  */
 export const IS_DEMO: boolean = import.meta.env.VITE_DEMO === '1'
 
-/** Username of the demo administrator (shown on the /admin sign-in screen: not a secret). */
-export const DEMO_ADMIN_USERNAME = 'demo'
-
-/** Password of the demo administrator and of every active neighbor of the demo. */
+/**
+ * Password of every active account of the demo, the administrator's included (shown on the sign-in
+ * screen: not a secret).
+ */
 export const DEMO_PASSWORD = 'demo'
 
 /** Seed of the synthetic data: the same day always gives the same demo. */

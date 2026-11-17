@@ -2,7 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, expect, test, vi } from 'vitest'
-import { cache } from './api/client'
+import { cache, signedOut } from './api/client'
 import type { ProfileOut } from './api/schema.gen'
 import { LoginNoticeProvider } from './auth'
 import { GoogleResult, GoogleSignIn } from './google'
@@ -20,7 +20,7 @@ function show(enabled: boolean, invitationToken?: string) {
 
 function showProfile(profile: Partial<ProfileOut> = {}, features = { google_login: true, coefficient: false }) {
   cache.setQueryData(['features'], features)
-  cache.setQueryData(['reader-auth'], { kind: 'resident', user_id: 1 })
+  cache.setQueryData(['reader-auth'], { ...signedOut, authenticated: true, user_id: 1 })
   cache.setQueryData(['profile', 1], {
     id: 1, name: 'Alex Morgan', email: 'alex@example.org', phone: '', version: 1, coefficient: null,
     dwelling_label: '1 A', last_login_at: null, google_linked: false, has_password: true, ...profile,

@@ -1,6 +1,6 @@
 /**
  * Contact routes of the demo API (src/juntia/contacts.py): the shared contacts with their tags and
- * history, the administrator's tag catalogue and the archive of deleted contacts. Every reader may
+ * history, the administrators' tag catalogue and the archive of deleted contacts. Every reader may
  * create, edit and delete contacts and tags; forms get the backend's field codes on errors.
  */
 import type { ContactOut, ContactTagIn, ContactTagOut } from '../../api/schema.gen'
@@ -75,9 +75,9 @@ function checkTags(state: CommunityState, input: ContactInput, current: readonly
   }
 }
 
-function author({ identity }: RouteContext) {
-  if (!identity) throw new DemoApiError('authentication_required', 401)
-  return actorOf(identity)
+function author({ user }: RouteContext) {
+  if (!user) throw new DemoApiError('authentication_required', 401)
+  return actorOf(user)
 }
 
 /** A current contact: deleted ones are only in the archive and the history. */

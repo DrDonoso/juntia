@@ -20,6 +20,7 @@ from juntia.app import create_app
 from juntia.config import Settings
 from juntia.db import GoogleAuthFlow, User, UserSession, UserToken, utcnow
 from juntia.errors import AppError
+from tests.support import ADMINISTRATOR
 from tests.test_users import (
     PASSWORD,
     activate,
@@ -27,6 +28,7 @@ from tests.test_users import (
     database,
     invite,
     login,
+    residents,
     token_from,
     visitor,
 )
@@ -102,7 +104,7 @@ def test_google_returns_to_an_action_and_can_participate(google, admin, config, 
         })
         assert comment.status_code == 201
         assert comment.json()["author"]["user_id"] == user["id"]
-        assert reader.get("/api/admin/statements").status_code == 401
+        assert reader.get("/api/admin/statements").status_code == 403
 
 
 def test_google_activation_preserves_invitation_details_without_a_local_password(
@@ -137,7 +139,7 @@ def test_google_activation_preserves_invitation_details_without_a_local_password
         assert profile["google_linked"] is True
         assert profile["last_login_at"] is not None
         assert reader.get("/api/summary").status_code == 200
-        assert reader.get("/api/admin/users").status_code == 401
+        assert reader.get("/api/admin/users").status_code == 403
         neighbors = reader.get("/api/neighbors").json()[0]["neighbors"]
         assert neighbors[0]["id"] == user["id"]
         assert current_user(admin, user["id"])["status"] == "active"
@@ -207,7 +209,7 @@ def test_google_activation_preserves_invited_name_when_profile_name_is_invalid(
 def test_google_never_registers_or_links_a_user_by_email_alone(google, admin, config, mailbox):
     with visitor(config) as reader:
         assert_google_error(finish(reader, start(reader)), "google_access_denied")
-        assert admin.get("/api/admin/users").json() == []
+        assert residents(admin) == []
         user, token = invite(admin, mailbox)
         assert_google_error(finish(reader, start(reader)), "google_access_denied")
         assert current_user(admin, user["id"])["status"] == "pending"
@@ -397,22 +399,57 @@ def test_cancelled_or_failed_google_preserves_password_login_and_invitation(
     assert current_user(admin, user["id"])["google_linked"] is False
 
 
-def test_security_headers_scopes_and_administrator_separation(google, admin, config, mailbox):
-    assert admin.post("/api/auth/google/start", json={}).status_code == 403
-    assert admin.post("/api/auth/google/link", json={"current_password": PASSWORD}).status_code == 403
+def test_security_headers_scopes_and_return_paths(google, config):
     with visitor(config) as reader:
         assert reader.post("/api/auth/google/link", json={"current_password": PASSWORD}).status_code == 401
         assert reader.post("/api/auth/google/start", json={}, headers={
             "origin": "https://attacker.invalid",
         }).status_code == 403
-        for path in ["https://attacker.invalid/", "//attacker.invalid/", "/admin", "/\\attacker.invalid", "/login"]:
+        for path in [
+            "https://attacker.invalid/", "//attacker.invalid/", "/\\attacker.invalid", "/login",
+            "/admin/", "/admin/users/1", "/administration",
+        ]:
             assert reader.post("/api/auth/google/start", json={"return_path": path}).status_code == 422
+        for path in ["/admin", "/admin/users", "/admin/deleted-documents?page=2"]:
+            assert reader.post("/api/auth/google/start", json={"return_path": path}).status_code == 200
         response = reader.post("/api/auth/google/start", json={})
         cookie = SimpleCookie(response.headers["set-cookie"])[auth.GOOGLE_COOKIE]
         assert cookie["path"] == "/api/auth" and cookie["samesite"].lower() == "lax"
         assert cookie["httponly"] and not cookie["domain"]
         assert response.headers["cache-control"] == "no-store"
         assert "accounts.google.com" not in response.headers["content-security-policy"]
+
+
+def test_administrators_sign_in_with_google_like_everyone(google, admin, config, mailbox):
+    response = admin.post("/api/admin/users", json={
+        "name": "Google Administrator", "email": "resident@example.org", "administrator": True,
+    })
+    assert response.status_code == 201, response.text
+    invited = response.json()
+    assert (invited["administrator"], invited["dwelling_id"]) == (True, None)
+    with visitor(config) as reader:
+        response = finish(reader, start(reader, token_from(mailbox[-1]), "/admin/users"))
+        assert response.status_code == 303
+        assert response.headers["location"] == "/admin/users"
+        session = reader.get("/api/auth/session").json()
+        assert session["administrator"] is True and session["dwelling_id"] is None
+        assert reader.get("/api/admin/users").status_code == 200
+        profile = reader.get("/api/auth/profile").json()
+        assert (profile["has_password"], profile["google_linked"]) == (False, True)
+        assert reader.post("/api/auth/logout").status_code == 204
+        response = finish(reader, start(reader, return_path="/admin"))
+        assert response.headers["location"] == "/admin"
+        assert reader.get("/api/admin/rules").status_code == 200
+    google["identity"] = google_auth.GoogleIdentity(
+        subject="google-subject-2", email=ADMINISTRATOR["email"],
+    )
+    linked = admin.post(
+        "/api/auth/google/link", json={"current_password": ADMINISTRATOR["password"]},
+    )
+    assert linked.status_code == 200, linked.text
+    flow = parse_qs(urlsplit(linked.json()["authorization_url"]).query)
+    assert finish(admin, flow).headers["location"] == "/profile?google=linked"
+    assert admin.get("/api/auth/profile").json()["google_linked"] is True
 
 
 def test_duplicate_callback_parameters_are_rejected(google, config):

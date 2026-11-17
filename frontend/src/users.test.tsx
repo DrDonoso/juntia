@@ -20,7 +20,7 @@ const dwellings: DwellingOut[] = [
 function resident(id: number, values: Partial<UserOut>): UserOut {
   return {
     // The accented initial checks that names sort ignoring accents.
-    id, email: `resident-${id}@example.org`, name: 'Áine', phone: '', status: 'active', version: 1,
+    id, email: `resident-${id}@example.org`, name: 'Áine', phone: '', status: 'active', version: 1, administrator: false,
     dwelling_id: 1, dwelling_label: 'Flat 2', coefficient: '1.00',
     last_login_at: null, invitation_status: 'none', invitation_expires_at: null,
     invitation_sent_at: null, google_linked: false, has_password: true, ...values,

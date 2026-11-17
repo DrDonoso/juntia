@@ -1,3 +1,4 @@
+import os
 import re
 from ipaddress import IPv4Address, IPv6Address
 from pathlib import Path
@@ -57,6 +58,20 @@ def normalize_origin(value: str) -> str:
 Language = Literal["en", "es"]
 # Storage settings are whole MiB (1 MiB = 1,048,576 bytes); the cap keeps byte counts exact in JSON.
 MAX_STORAGE_MB = 1024 * 1024 * 1024
+# The technical administrator's credentials, which accounts with the administrator role replaced.
+RETIRED_SETTINGS = ("ADMIN_USERNAME", "ADMIN_PASSWORD", "ALLOW_INSECURE_LOCAL_ADMIN")
+
+
+def retired_settings(env_file: Path | None = Path(".env")) -> list[str]:
+    """The retired settings still present in the environment or the .env file: they are
+    ignored, and startup asks to remove them."""
+    names = set(os.environ)
+    if env_file is not None and env_file.is_file():
+        for line in env_file.read_text(encoding="utf-8", errors="replace").splitlines():
+            if match := re.match(r"\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=", line):
+                names.add(match[1])
+    present = {name.upper() for name in names}
+    return [name for name in RETIRED_SETTINGS if name in present]
 
 
 class LanguageSettings(BaseSettings):
@@ -80,23 +95,19 @@ class Settings(LanguageSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
 
     database_url: str
-    admin_username: str
-    admin_password: SecretStr
-    allow_insecure_local_admin: bool = False
     auth_secret: SecretStr
     public_origin: str = "http://localhost:7778"
     auth_cookie_secure: bool = True
     session_hours: int = 168
     upload_dir: Path = Path("data/uploads")
     # Byte budgets for community action PDFs and the images pasted into texts, in MiB. Every
-    # stored file counts, active or withdrawn, until the administrator purges it: 250 MiB per
-    # resident author and 2 GiB for the whole community (residents and the technical
-    # administrator, who has no own budget).
+    # stored file counts, active or withdrawn, until an administrator purges it: 250 MiB per
+    # author, administrators included, and 2 GiB for the whole community.
     action_storage_user_quota_mb: int = 250
     action_storage_community_quota_mb: int = 2048
     # Free space kept on the upload volume (1 GiB): action PDFs, images, shared documents and
     # statement imports that would leave less free space are refused. The limits of shared
-    # documents are not environment settings: the administrator sets them in Storage.
+    # documents are not environment settings: administrators set them in Storage.
     min_free_disk_mb: int = 1024
     preview_hours: int = 24
     openai_api_key: SecretStr = SecretStr("")
@@ -164,13 +175,6 @@ class Settings(LanguageSettings):
                 raise ValueError("Plaintext SMTP is allowed only for local development")
         return self
 
-    @field_validator("admin_username")
-    @classmethod
-    def valid_username(cls, value: str) -> str:
-        if not value.strip() or len(value) > 150:
-            raise ValueError("ADMIN_USERNAME must contain 1-150 characters")
-        return value.strip()
-
     @field_validator("auth_secret")
     @classmethod
     def valid_secret(cls, value: SecretStr) -> SecretStr:
@@ -202,31 +206,8 @@ class Settings(LanguageSettings):
         origins = self.public_origins
         self.public_origin = ",".join(origins)
         for value in origins:
-            origin = urlsplit(value)
-            if self.auth_cookie_secure and origin.scheme != "https":
+            if self.auth_cookie_secure and urlsplit(value).scheme != "https":
                 raise ValueError("Secure cookies require every PUBLIC_ORIGIN to use HTTPS")
-            if self.allow_insecure_local_admin and (
-                origin.scheme != "http"
-                or origin.hostname not in {"localhost", "127.0.0.1", "::1"}
-                or self.auth_cookie_secure
-            ):
-                raise ValueError(
-                    "ALLOW_INSECURE_LOCAL_ADMIN requires every PUBLIC_ORIGIN to be a "
-                    "loopback HTTP origin with non-Secure cookies"
-                )
-        password = self.admin_password.get_secret_value()
-        local_defaults = (
-            self.allow_insecure_local_admin
-            and self.admin_username == "admin"
-            and password == "admin"
-        )
-        if not local_defaults:
-            if not password.strip() or len(password) < 15 or len(password.encode("utf-8")) > 72:
-                raise ValueError(
-                    "ADMIN_PASSWORD must have at least 15 characters and at most 72 bytes"
-                )
-            if password.lower().startswith(("changeme", "replace-me")):
-                raise ValueError("Replace the example administrator password")
         return self
 
     @property

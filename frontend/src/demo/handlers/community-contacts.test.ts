@@ -3,18 +3,18 @@ import type { ContactHistoryPage, ContactOut, ContactPage, ContactTagOut, Contac
 import { resetDemo } from '../store'
 import { communityStore } from '../store/community'
 import { foldText } from '../store/community-text'
-import { demoRequest } from '../testing'
+import { demoRequest, signInAdmin } from '../testing'
 
 // Thursday 29 October 2026, midday (local time), like the other demo tests.
 const NOW = new Date(2026, 9, 29, 12)
 const OLIVIA = { kind: 'resident', name: 'Olivia Bennett', user_id: 6 }
-const ADMIN = { kind: 'administrator', name: 'Technical administrator', user_id: null }
+// The administrator of the cast, the president: administrators write under their own name.
+const JAMES = { kind: 'resident', name: 'James Okafor', user_id: 1 }
 
 beforeEach(() => resetDemo({ now: () => NOW }))
 afterEach(() => resetDemo())
 
 const get = <T = unknown>(path: string) => demoRequest<T>('GET', path)
-const adminLogin = () => demoRequest('POST', '/api/admin/auth/login', { body: { username: 'demo', password: 'demo' } })
 
 async function contacts(params: Record<string, string> = {}, path = '/api/contacts'): Promise<ContactPage> {
   const response = await get<ContactPage>(`${path}?${new URLSearchParams(params)}`)
@@ -164,8 +164,8 @@ describe('contacts', () => {
     expect((await contacts()).total).toBe(15)
     expect((await get<ContactHistoryPage>(`/api/contact-history?contact_id=${value.id}`)).body.items[0])
       .toMatchObject({ kind: 'deleted', before: { name: 'Tom Ellis' }, after: null, author: OLIVIA })
-    expect(await get('/api/admin/contacts/deleted')).toMatchObject({ status: 401 })
-    await adminLogin()
+    expect(await get('/api/admin/contacts/deleted')).toMatchObject({ status: 403, body: { code: 'administrator_required' } })
+    await signInAdmin()
     const archive = await contacts({}, '/api/admin/contacts/deleted')
     expect(archive.items.map(item => item.name)).toEqual(['Laura Mills', 'Peter Doyle', 'Tom Ellis'])
     expect(archive.items.every(item => item.deleted_at !== null)).toBe(true)
@@ -215,11 +215,11 @@ describe('contact tags', () => {
     expect(created?.after && 'tags' in created.after ? created.after.tags.map(tag => tag.name) : []).toContain('Plumbing')
   })
 
-  test('the administrator manages the catalogue', async () => {
+  test('administrators manage the catalogue', async () => {
     const id = tagId('Insurance')
-    expect(await get('/api/admin/contact-tags')).toMatchObject({ status: 401 })
-    expect(await demoRequest('PATCH', `/api/admin/contact-tags/${id}`, { body: { name: 'Insurers', color: '#896385', version: 1 } })).toMatchObject({ status: 401 })
-    await adminLogin()
+    expect(await get('/api/admin/contact-tags')).toMatchObject({ status: 403, body: { code: 'administrator_required' } })
+    expect(await demoRequest('PATCH', `/api/admin/contact-tags/${id}`, { body: { name: 'Insurers', color: '#896385', version: 1 } })).toMatchObject({ status: 403 })
+    await signInAdmin()
     const catalogue = (await get<ContactTagPage>('/api/admin/contact-tags')).body
     expect(catalogue).toMatchObject({ page: 1, pages: 1, total: communityStore().contactTags.length })
     expect(catalogue.items.map(tag => tag.name.toLowerCase())).toEqual(catalogue.items.map(tag => tag.name.toLowerCase()).sort())
@@ -229,7 +229,7 @@ describe('contact tags', () => {
     expect(await get('/api/admin/contact-tags/9999')).toMatchObject({ status: 404, body: { code: 'contact_tag_not_found' } })
     const saved = await demoRequest<ContactTagOut>('PATCH', `/api/admin/contact-tags/${id}`, { body: { name: 'Insurers', color: '#FFFFFF', version: 1 } })
     expect(saved).toMatchObject({ status: 200, body: { id, name: 'Insurers', color: '#ffffff', version: 2 } })
-    expect((await get<ContactHistoryPage>('/api/contact-history')).body.items[0]).toMatchObject({ target: 'tag', target_id: id, author: ADMIN })
+    expect((await get<ContactHistoryPage>('/api/contact-history')).body.items[0]).toMatchObject({ target: 'tag', target_id: id, author: JAMES })
   })
 })
 
@@ -246,17 +246,17 @@ describe('contact history and access', () => {
     expect((await get('/api/contact-history?contact_id=0')).status).toBe(422)
   })
 
-  test('every route needs a session; the administrator writes as Technical administrator', async () => {
+  test('every route needs a session; an administrator writes under their own name', async () => {
     const id = contact('Marcus Hill').id
     await demoRequest('POST', '/api/auth/logout')
     for (const path of ['/api/contacts', `/api/contacts/${id}`, '/api/contact-tags', '/api/contact-history']) {
       expect(await get(path), path).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
     }
     expect(await demoRequest('POST', '/api/contacts', { body: { name: 'Anonymous', phone: '1234567' } })).toMatchObject({ status: 401 })
-    await adminLogin()
+    await signInAdmin()
     const created = await demoRequest<ContactOut>('POST', '/api/contacts', { body: { name: 'Council helpline', phone: '+44 20 7946 0404' } })
     expect(created.status).toBe(201)
-    expect((await get<ContactHistoryPage>(`/api/contact-history?contact_id=${created.body.id}`)).body.items[0].author).toEqual(ADMIN)
+    expect((await get<ContactHistoryPage>(`/api/contact-history?contact_id=${created.body.id}`)).body.items[0].author).toEqual(JAMES)
     expect(await demoRequest('POST', '/api/contacts', { body: { name: 'No header', phone: '1234567' }, mutationHeader: false })).toMatchObject({ status: 403, body: { code: 'invalid_origin' } })
   })
 })
