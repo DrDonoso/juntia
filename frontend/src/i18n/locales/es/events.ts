@@ -127,13 +127,13 @@ export const events: Messages<typeof source> = {
     pagination: 'actuaciones disponibles',
   },
   linked: {
-    upcoming: 'Próximos eventos',
-    all: 'Todos los eventos',
-    showPast: 'Mostrar eventos pasados',
+    title: 'Eventos',
     create: 'Nuevo evento de esta actuación',
-    emptyUpcoming: 'Esta actuación todavía no tiene próximos eventos.',
+    now: 'Ahora',
+    ongoing: 'En curso',
+    earlier: 'Cargar eventos anteriores',
+    later: 'Cargar eventos posteriores',
     empty: 'Esta actuación todavía no tiene eventos.',
-    pagination: 'eventos de la actuación',
     agenda: 'Consultar eventos de esta actuación',
   },
   dateField: {

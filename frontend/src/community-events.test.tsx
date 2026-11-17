@@ -737,42 +737,81 @@ test('action event panel is independently gated and lists events for that action
   mount(<ActionEvents action={item.action!} />)
   expect(fetcher).not.toHaveBeenCalled()
   await act(async () => { cache.setQueryData(['features'], flags) })
-  expect(await screen.findByText('This action has no upcoming events yet.')).toBeVisible()
-  expect(fetcher.mock.calls.some(call => String(call[0]).includes('action_id=7'))).toBe(true)
-  fireEvent.click(screen.getByRole('checkbox', { name: 'Show past events' }))
   expect(await screen.findByText('This action has no events yet.')).toBeVisible()
+  const requests = fetcher.mock.calls.map(call => String(call[0]))
+  expect(requests).toContain('/api/events?action_id=7&scope=past&page=1')
+  expect(requests).toContain('/api/events?action_id=7&scope=upcoming&page=1')
+  expect(screen.queryByRole('list')).toBeNull()
 })
 
-test('the action panel shows the complete timeline and opens events over the action', async () => {
+test('the action timeline shows every event in date order and opens them over the action', async () => {
   const user = userEvent.setup()
-  const finished = { ...item, id: 2, title: 'Finished visit' }
+  const finished = { ...item, id: 2, title: 'Finished visit', location: '', starts_at: '2020-03-10T09:00:00Z', ends_at: '2020-03-10T10:00:00Z' }
+  const ongoing = {
+    ...item, id: 3, title: 'Scaffolding', all_day: true, starts_at: null, ends_at: null,
+    starts_on: localInput(new Date(Date.now() - 86_400_000).toISOString(), 'Europe/Madrid').slice(0, 10),
+    ends_on: localInput(new Date(Date.now() + 2 * 86_400_000).toISOString(), 'Europe/Madrid').slice(0, 10),
+  }
   cache.setQueryData(['events', 'item', finished.id], finished)
-  const fetcher = vi.fn<Fetcher>(async url => response(new URL(url, 'http://localhost').searchParams.get('scope') === 'all'
-    ? { items: [{ ...occurrence, event: finished, is_past: true }, occurrence], total: 2, page: 1, pages: 1 }
-    : { items: [occurrence], total: 1, page: 1, pages: 1 }))
+  const fetcher = vi.fn<Fetcher>(async url => {
+    const past = new URL(url, 'http://localhost').searchParams.get('scope') === 'past'
+    return response({ items: past ? [finished] : [ongoing, item], total: past ? 1 : 2, page: 1, pages: 1 })
+  })
   vi.stubGlobal('fetch', fetcher)
   mount(<><ActionEvents action={item.action!} /><LocationProbe /></>, ['/actions/7?view=board'])
-  expect(await screen.findByRole('heading', { name: 'Upcoming events' })).toBeVisible()
-  expect(await screen.findByRole('link', { name: item.title })).toBeVisible()
-  expect(screen.queryByRole('link', { name: finished.title })).toBeNull()
-  expect(screen.getByRole('link', { name: 'View events for this action' })).toHaveAttribute('href', '/events?action_id=7')
-  await user.click(screen.getByRole('checkbox', { name: 'Show past events' }))
-  expect(await screen.findByRole('heading', { name: 'All events' })).toBeVisible()
-  const past = (await screen.findByRole('link', { name: finished.title })).closest('li')!
-  expect(past).toHaveClass('event-past')
-  expect(screen.getByRole('link', { name: item.title }).closest('li')).not.toHaveClass('event-past')
-  expect(Object.fromEntries(new URL(String(fetcher.mock.calls.at(-1)![0]), 'http://localhost').searchParams)).toEqual({
-    action_id: '7', scope: 'all',
-  })
-  expect(screen.getByRole('link', { name: 'View events for this action' })).toHaveAttribute('href', '/events?action_id=7&scope=all')
-  await user.click(screen.getByRole('link', { name: finished.title }))
+  const panel = await screen.findByRole('region', { name: 'Events' })
+  await within(panel).findByRole('link', { name: item.title })
+  const entries = within(panel).getAllByRole('listitem')
+  expect(entries.map(entry => entry.querySelector('h3')?.textContent ?? entry.textContent)).toEqual([finished.title, 'Now', ongoing.title, item.title])
+  expect(entries[0]).toHaveClass('event-past')
+  expect(entries[0]).toHaveTextContent(/^10\/03\/2020Finished visitFinished event10:00 – 11:00$/)
+  expect(within(entries[0]).queryByText('Ongoing')).toBeNull()
+  expect(entries[2]).not.toHaveClass('event-past')
+  expect(within(entries[2]).getByText('Ongoing')).toBeVisible()
+  expect(entries[3]).not.toHaveClass('event-past')
+  expect(within(entries[3]).getByText('10/05/2030', { selector: 'time' })).toHaveAttribute('dateTime', '2030-05-10')
+  expect(within(entries[3]).queryByText('Ongoing')).toBeNull()
+  expect(within(panel).queryByRole('button', { name: /Load (earlier|later) events/ })).toBeNull()
+  expect(within(panel).getByRole('link', { name: 'View events for this action' })).toHaveAttribute('href', '/events?action_id=7&scope=all')
+  await user.click(within(entries[0]).getByRole('link', { name: finished.title }))
   const dialog = await screen.findByRole('dialog', { name: finished.title })
   expect(screen.getByTestId('location')).toHaveTextContent('/actions/7?view=board&event=2')
   await user.click(within(dialog).getByRole('button', { name: 'Close' }))
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   expect(screen.getByTestId('location')).toHaveTextContent(/^\/actions\/7\?view=board$/)
-  expect(screen.getByRole('checkbox', { name: 'Show past events' })).toBeChecked()
-  expect(screen.getByRole('link', { name: finished.title })).toBeVisible()
+  expect(within(panel).getByRole('link', { name: finished.title })).toBeVisible()
+  const create = within(panel).getByRole('button', { name: 'New event for this action' })
+  expect(create).toHaveAttribute('title', 'New event for this action')
+  expect(create).toHaveTextContent('')
+  await user.click(create)
+  const editor = await screen.findByRole('dialog', { name: 'New event' })
+  expect(within(editor).getByRole('combobox', { name: 'Linked action (optional)' })).toHaveValue(item.action!.title)
+})
+
+test('the action timeline loads earlier and later events at its ends', async () => {
+  const user = userEvent.setup()
+  const event = (id: number, title: string, starts_at: string): EventOut => ({ ...item, id, title, starts_at, ends_at: starts_at.replace('T09', 'T10') })
+  const pages: Record<string, EventOut[][]> = {
+    past: [[event(3, 'March visit', '2020-03-10T09:00:00Z'), event(2, 'February visit', '2020-02-10T09:00:00Z')], [event(1, 'January visit', '2020-01-10T09:00:00Z')]],
+    upcoming: [[event(4, 'Spring works', '2040-04-10T09:00:00Z')], [event(5, 'Summer works', '2040-07-10T09:00:00Z')]],
+  }
+  vi.stubGlobal('fetch', vi.fn<Fetcher>(async url => {
+    const params = new URL(url, 'http://localhost').searchParams
+    const side = pages[params.get('scope')!], page = Number(params.get('page'))
+    return response({ items: side[page - 1], total: side.flat().length, page, pages: side.length })
+  }))
+  mount(<ActionEvents action={item.action!} />)
+  const panel = await screen.findByRole('region', { name: 'Events' })
+  const titles = () => within(panel).queryAllByRole('heading', { level: 3 }).map(heading => heading.textContent)
+  await waitFor(() => expect(titles()).toEqual(['February visit', 'March visit', 'Spring works']))
+  await user.click(within(panel).getByRole('button', { name: 'Load earlier events' }))
+  await waitFor(() => expect(titles()).toEqual(['January visit', 'February visit', 'March visit', 'Spring works']))
+  expect(within(panel).queryByRole('button', { name: 'Load earlier events' })).toBeNull()
+  expect(within(panel).getByRole('link', { name: 'January visit' })).toHaveFocus()
+  await user.click(within(panel).getByRole('button', { name: 'Load later events' }))
+  await waitFor(() => expect(titles()).toEqual(['January visit', 'February visit', 'March visit', 'Spring works', 'Summer works']))
+  expect(within(panel).queryByRole('button', { name: 'Load later events' })).toBeNull()
+  expect(within(panel).getByRole('link', { name: 'Summer works' })).toHaveFocus()
 })
 
 test('the event dialog renders its description as Markdown, with its images', async () => {
