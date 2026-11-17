@@ -182,3 +182,42 @@ describe('branding, features, version, account and health', () => {
     expect(await demoRequest('GET', '/api/account')).toMatchObject({ status: 401 })
   })
 })
+
+describe("what's new", () => {
+  const seen = (ids: unknown) => demoRequest('POST', '/api/whats-new/seen', { body: { ids } })
+
+  test('keeps the notes the account has read, checked like the API', async () => {
+    // None recorded at first: the app then marks every note as read (nothing to catch up on).
+    expect((await demoRequest('GET', '/api/whats-new')).body).toEqual({ seen: null })
+    const read = ['2026-11-17-whats-new', '2026-12-01-search']
+    expect((await seen(['2026-12-01-search', '2026-11-17-whats-new', '2026-12-01-search'])).body).toEqual({ seen: read })
+    expect((await seen(['2026-11-17-whats-new'])).body).toEqual({ seen: read })
+    const invalid: unknown[] = [
+      { ids: [] },
+      { ids: Array.from({ length: 501 }, (_, index) => `2026-01-01-n${index}`) },
+      { ids: '2026-11-17-whats-new' },
+      { ids: [7] },
+      { ids: ['whats-new'] },
+      { ids: ['2026-11-17-Whats-New'] },
+      { ids: [' 2026-11-17-whats-new'] },
+      { ids: [`2026-11-17-${'a'.repeat(70)}`] },
+      {},
+      { ids: read, all: true },
+    ]
+    for (const body of invalid) {
+      expect(await demoRequest('POST', '/api/whats-new/seen', { body }), JSON.stringify(body))
+        .toMatchObject({ status: 422, body: { code: 'invalid_request' } })
+    }
+    expect((await demoRequest('GET', '/api/whats-new')).body).toEqual({ seen: read })
+  })
+
+  test('each account keeps its own notes, and reading them needs a session', async () => {
+    await seen(['2026-11-17-whats-new'])
+    await login('james.okafor@example.com')
+    expect((await demoRequest('GET', '/api/whats-new')).body).toEqual({ seen: null })
+    await demoRequest('POST', '/api/auth/logout')
+    expect(await demoRequest('GET', '/api/whats-new')).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
+    expect(await seen(['2026-12-01-search'])).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
+    expect(coreStore().whatsNewSeen).toEqual(new Map([[6, ['2026-11-17-whats-new']]]))
+  })
+})

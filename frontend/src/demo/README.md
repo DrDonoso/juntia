@@ -75,7 +75,7 @@ src/demo/
     session.ts         the session: signedInResident(), requireAnySession(), requireAdmin(), actorOf()
   scenario/<domain>.ts initial data, deterministic and relative to today
   store/<domain>.ts    the data of this page load: <domain>Store() and reset<Domain>Store()
-  store/core.ts        shared state: session, features, general settings, account, dwellings, accounts
+  store/core.ts        shared state: session, features, general settings, account, dwellings, accounts, the What's new notes each account has read
   store/storage.ts     storage of PDFs, images and documents, from their stores (no state of its own)
   store/index.ts       resetDemo(): every store back to its scenario
   handlers/<domain>.ts the MSW handlers of each domain (an exported array)

@@ -12,6 +12,7 @@ All screenshots show synthetic data from the [demo](https://demo.juntia.drdonoso
 - [Roles](#roles)
 - [Navigation](#navigation)
 - [Languages](#languages)
+- [What's new](#whats-new)
 - [Finances](#finances)
 - [Actions](#actions)
 - [Events](#events)
@@ -72,10 +73,10 @@ language.
   navigation starts closed and opens over the page; choosing a link, pressing Escape or clicking
   outside closes it.
 - The avatar at the top right opens the user menu: for administrators, **Administration** on the
-  community pages or **Community portal** on the administration pages; then **My profile**, the
-  **Language** selector and **Sign out**. Next to it are the **Hide amounts** button (residents'
-  pages) and the light and dark theme button. The navigation and the avatar menu work with the
-  keyboard and return the focus when closed with Escape.
+  community pages or **Community portal** on the administration pages; then **My profile**,
+  **What's new**, the **Language** selector and **Sign out**. Next to it are the **Hide amounts**
+  button (residents' pages) and the light and dark theme button. The navigation and the avatar menu
+  work with the keyboard and return the focus when closed with Escape.
 - Dialogs close with their **Close** button, Escape or a click outside them, except while they are
   saving or deleting something.
 
@@ -91,6 +92,18 @@ language.
 - Texts people write, such as names, categories, labels and descriptions, are never translated.
 - Texts the server writes, such as emails and the defaults of a new installation, follow
   `APP_LANGUAGE` (see [configuration](configuration.md#language-and-time-zone)).
+
+## What's new
+
+- When someone opens Juntia after an update brought something they will notice, a **What's new**
+  window tells them in a couple of plain sentences, in their language: everything new since they
+  last looked (several updates together), new things first, each with a **Take me there** button
+  when it has a place in the app. Closing it counts the notes as read, on every device.
+- Accounts that have just joined start with nothing to catch up on, and only administrators see the
+  notes about the administration pages.
+- **What's new** in the avatar menu lists every note again, by month.
+- The notes ship with each version (nothing is fetched from outside the server); the server only
+  keeps which ones each account has read.
 
 ## Finances
 

@@ -19,6 +19,7 @@ setting up, running Juntia locally and the rules every pull request follows; thi
 - [API contract and generated types](#api-contract-and-generated-types)
 - [Database migrations](#database-migrations)
 - [Translations](#translations)
+- [What's new notes](#whats-new-notes)
 - [Icons](#icons)
 - [Dependencies](#dependencies)
 - [Continuous integration](#continuous-integration)
@@ -48,8 +49,8 @@ TypeScript 7, Vite 8, TanStack Query and React Aria. Install everything with
 | `src/juntia/` | Backend: application factory (`app.py`), routes, models (`db.py`), settings (`config.py`), server-side texts (`texts.py`), the statement parser (`parser.py`) and the import pipeline (`imports.py`) |
 | `alembic/versions/` | Database migrations, numbered `0001` to `0018` and onwards |
 | `tests/` | Backend tests (pytest) |
-| `scripts/` | OpenAPI export, dependency audit and the synthetic server used by browser tests |
-| `frontend/src/` | The React application; `i18n/` holds translations, `api/` the client and generated types, `demo/` the static demo |
+| `scripts/` | OpenAPI export, dependency audit, the synthetic server used by browser tests and the *What's new* section of each release |
+| `frontend/src/` | The React application; `i18n/` holds translations, `api/` the client and generated types, `demo/` the static demo, `whats-new/` the What's new notes |
 | `frontend/e2e/` | Playwright browser tests |
 | `docs/` | This documentation |
 
@@ -245,6 +246,51 @@ visitor creates the administration account.
   in both languages and follow `APP_LANGUAGE`.
 - Tests run in English by default; call `setLanguage('es')` to assert Spanish.
 
+## What's new notes
+
+A change people will notice comes with a note in the same pull request: the next time each person
+opens Juntia, a window (**What's new**) tells them what changed since they last looked, once, and
+the user menu keeps every note. Accounts opening Juntia for the first time start with nothing to
+catch up on. A note is a JSON file in `frontend/src/whats-new/notes/` named
+`YYYY-MM-DD-short-name.json` (the day it is written; lower-case letters, digits and hyphens):
+
+```json
+{
+  "kind": "new",
+  "audience": "everyone",
+  "icon": "folder",
+  "link": "/documents",
+  "en": {
+    "title": "Keep the community's papers in Documents",
+    "body": "Minutes, insurance papers and house rules now live in Documents, in the menu on the left. Open any of them on your phone or computer."
+  },
+  "es": {
+    "title": "Guarda los papeles de la comunidad en Documentos",
+    "body": "Las actas, el seguro y las normas están ahora en Documentos, en el menú de la izquierda. Ábrelos desde el móvil o el ordenador."
+  }
+}
+```
+
+- `kind`: `new` (something people can do now), `improved` (something works better) or `fixed` (a
+  problem people noticed is gone). The window shows new things first, then improvements, then fixes.
+- `audience`: `everyone`, or `admins` for the administration pages (only administrators see those
+  notes).
+- `icon` (optional): an icon of `frontend/src/icons.tsx`; without it, the icon of its kind.
+- `link` (optional): a page of the app where it can be tried, the same for every community
+  (`/documents`, `/admin/storage`; administration pages only in `admins` notes). The note then gets
+  a **Take me there** button.
+- `en`, `es`: a `title` (70 characters at most) saying what people can do now, and a `body` (300 at
+  most) with one or two short sentences on what it means for them and where to find it.
+
+Write for a neighbor, not a developer: everyday words, no technical ones (server, version, cache,
+browser, API, upload limits…), "tú" in Spanish like the rest of the interface, one change per note.
+Fixes only deserve a note when people noticed the problem. Dependency updates, refactoring, CI,
+documentation and invisible fixes need none. The file name is the note's id: once released, never
+rename or delete a note (people would see it again, or lose it from the list); correct its texts
+instead. `src/whats-new/notes.test.ts` checks every note (name, date, fields, icon, link and both
+languages), and the [release](#releases) on GitHub lists, in English, the notes added since the
+previous release.
+
 ## Icons
 
 Interface icons are SVG components in `frontend/src/icons.tsx` (a 24×24 canvas, 2-pixel strokes and
@@ -317,7 +363,9 @@ and in the `release` environment, the only place holding the Docker Hub credenti
    cache can reach a published image;
 3. pushes `drdonoso/juntia:latest` and `drdonoso/juntia:<version>`, with the version and build date
    baked in for `/api/version`;
-4. creates a GitHub release with generated notes.
+4. creates a GitHub release with generated notes, headed by a *What's new* section in English with
+   the [notes](#whats-new-notes) added since the previous release (`scripts/release_notes.py`; none
+   when there are none, and the release is still published if the section cannot be written).
 
 Releases never deploy to a server. See [releases and image tags](deployment.md#releases-and-image-tags).
 

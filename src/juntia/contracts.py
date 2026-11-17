@@ -1476,3 +1476,18 @@ class SummaryOut(Contract):
     categories: list[CategoryBreakdown]
     merchants: list[MerchantBreakdown]
     daily: list[DailyTotal]
+
+
+# What's new
+# A note's id is its file name in frontend/src/whats-new/notes/: ``YYYY-MM-DD-slug``.
+NOTE_ID_PATTERN = r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$"
+NoteId = Annotated[str, Field(max_length=80, pattern=NOTE_ID_PATTERN)]
+
+
+class WhatsNewOut(Contract):
+    # Notes the account has read (sorted); null until the interface records them for the first time.
+    seen: list[str] | None
+
+
+class WhatsNewSeenIn(Contract):
+    ids: Annotated[list[NoteId], Field(min_length=1, max_length=500)]

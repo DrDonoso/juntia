@@ -26,6 +26,7 @@ from . import (
     queries,
     storage_admin,
     users,
+    whats_new,
 )
 from .config import Settings, retired_settings
 from .contracts import Contract, reader_route
@@ -165,6 +166,7 @@ def create_app(config: Settings | None = None, *, text_worker: bool = True) -> F
     application.include_router(community_documents.settings_router)
     application.include_router(document_reading.router)
     application.include_router(contacts.router)
+    application.include_router(whats_new.router)
     application.include_router(api.public_router)
     application.include_router(api.reader)
     application.include_router(api.admin_router)

@@ -122,6 +122,9 @@ class User(Base):
     invitation_token_hash: Mapped[str | None] = mapped_column(String(64))
     invitation_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     invitation_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Ids of the "What's new" notes the account has read (see ``whats_new``); NULL until the
+    # interface records them for the first time.
+    whats_new_seen: Mapped[list[str] | None] = mapped_column(JSON(none_as_null=True))
 
 
 class UserSession(Base):

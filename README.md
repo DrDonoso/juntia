@@ -104,6 +104,11 @@ describes every part in detail.
 - English and Spanish interface, following the browser and switchable from the user menu or the
   sign-in screens. Server texts such as emails follow `APP_LANGUAGE`.
 
+**What's new**
+
+- After an update, everyone is told once, in plain words and in their language, what changed for
+  them since their last visit; the avatar menu keeps the list.
+
 **Security and privacy**
 
 - No public registration; HttpOnly, SameSite Strict cookies; an origin and anti-CSRF check on every

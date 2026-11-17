@@ -80,7 +80,7 @@ def test_action_migration_preserves_existing_finances_and_residents(config):
         unit = Dwelling(label="Legacy 1 A", coefficient=Decimal("12.34"))
         db.add(unit)
         await db.flush()
-        # Users as before 0024, without the administrator column of the current model.
+        # Users as before 0024, without the columns that later revisions add to the current model.
         users = table("users", *(column(name) for name in (
             "email", "name", "phone", "dwelling_id", "activated", "disabled", "auth_version",
             "version", "google_subject", "invitation_delivery", "id",

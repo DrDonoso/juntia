@@ -243,6 +243,26 @@ test('a neighbor signs in with the filled-in form', async ({ page }) => {
   await expectNoCrash(page)
 })
 
+test("what's new waits in the user menu without interrupting the visit", async ({ page }) => {
+  // The demo starts with nothing to catch up on: every note is marked as read and none is shown.
+  const saved = page.waitForRequest(request => request.url().endsWith('/api/whats-new/seen') && request.method() === 'POST')
+  await page.goto('/')
+  await explore(page)
+  await saved
+  await expect(page.getByRole('dialog', { name: en.whatsNew.title })).toHaveCount(0)
+  const avatar = page.getByRole('button', { name: en.shell.userMenu })
+  await avatar.click()
+  await page.locator('#user-menu').getByRole('button', { name: en.shell.whatsNew }).click()
+  const dialog = page.getByRole('dialog', { name: en.whatsNew.title })
+  // The first note (src/whats-new/notes/2026-11-17-whats-new.json).
+  await expect(dialog.getByRole('heading', { name: "Now we tell you what's new", level: 4 })).toBeVisible()
+  await expectAccessible(page, "what's new")
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+  await expect(avatar).toBeFocused()
+  await expectNoCrash(page)
+})
+
 test('an image pasted into a comment is uploaded to the demo API and shown from it', async ({ page }) => {
   await page.goto('/actions')
   await explore(page)

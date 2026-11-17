@@ -44,11 +44,12 @@ can agree on the approach before you invest time in it.
 | `src/juntia/` | FastAPI backend: application factory (`app.py`), API routes, SQLAlchemy models (`db.py`), settings (`config.py`), the bank-statement PDF parser (`parser.py`) and the import pipeline (`imports.py`) |
 | `alembic/` | Database migrations, numbered in `alembic/versions/` |
 | `tests/` | Backend tests (pytest) |
-| `scripts/` | OpenAPI export, dependency audit and the synthetic server used by the browser tests |
+| `scripts/` | OpenAPI export, dependency audit, the synthetic server used by the browser tests and the *What's new* section of each release |
 | `frontend/src/` | React and TypeScript application |
 | `frontend/src/i18n/` | Translation runtime and messages: `locales/en/` (the source of truth) and `locales/es/` |
 | `frontend/src/api/` | API client, OpenAPI contract (`openapi.json`) and the types generated from it (`schema.gen.ts`) |
 | `frontend/src/demo/` | Static demo: mock API handlers and synthetic data that run in the browser |
+| `frontend/src/whats-new/` | The in-app What's new: one JSON note per change people will notice |
 | `frontend/e2e/` | Playwright browser tests |
 | `docs/` | Documentation, including the [security model](docs/security-model.md) |
 
@@ -211,6 +212,15 @@ The interface is available in English (the default) and Spanish.
   `locales/en/errors.ts` and `locales/es/errors.ts`.
 - Server-generated texts, such as emails and first-run defaults, exist in English
   and Spanish and follow the `APP_LANGUAGE` setting: update both.
+
+### What's new
+
+A change people will notice comes with a note for the in-app **What's new**, in
+plain words and in both languages: a JSON file in
+`frontend/src/whats-new/notes/`. See
+[docs/development.md](docs/development.md#whats-new-notes) for how to write it.
+Dependency updates, refactoring, CI, documentation and fixes nobody noticed need
+none.
 
 ### API changes
 

@@ -1341,3 +1341,11 @@ export interface VersionOut {
   build_date: string
   version: string
 }
+
+export interface WhatsNewOut {
+  seen: string[] | null
+}
+
+export interface WhatsNewSeenIn {
+  ids: string[]
+}

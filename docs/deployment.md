@@ -365,10 +365,11 @@ publishes two tags of [`drdonoso/juntia`](https://hub.docker.com/r/drdonoso/junt
 - an immutable CalVer tag: `YYYYMMDD` (for example `20261029`), or `YYYYMMDD.02`, `YYYYMMDD.03` and
   so on for later releases on the same day.
 
-Each release also gets a [GitHub release](https://github.com/DrDonoso/juntia/releases) with
-generated notes. `/api/version` returns the tag and build date of the running image. The release
-image is built from scratch, without a build cache, by a job that only runs on `main` and is the
-only place holding the Docker Hub credentials (a GitHub environment named `release`). Nothing
+Each release also gets a [GitHub release](https://github.com/DrDonoso/juntia/releases): a *What's
+new* section with the notes people will see in the app, when the release brings any, then the
+generated list of changes. `/api/version` returns the tag and build date of the running image. The
+release image is built from scratch, without a build cache, by a job that only runs on `main` and is
+the only place holding the Docker Hub credentials (a GitHub environment named `release`). Nothing
 deploys automatically: you choose when to update.
 
 Pin `IMAGE_TAG` to a CalVer tag in production. `latest` is convenient for trying Juntia out, but it
@@ -530,6 +531,7 @@ data. Before downgrading, handle the data they protect, or simply restore a back
 | `0022` | Shared documents (switch off by default) | Refused while folders, documents, uploads or their history exist, purged ones included, or while Documents is on. |
 | `0023` | The text of shared documents, for their search | Discards the text read; upgrading again reads every document again. |
 | `0024` | Administrator accounts: the administrator role, accounts without a dwelling for administrators, and the end of the technical administrator's sessions (nobody becomes an administrator; see [upgrading](#upgrading-to-administrator-accounts)) | Refused while an account has no dwelling. Drops the role: earlier releases use `ADMIN_USERNAME` and `ADMIN_PASSWORD` again. |
+| `0025` | Which What's new notes each account has read (accounts that had signed in see the notes of this version once) | Forgets which notes were read: upgrading again shows every note once more to accounts that had signed in. |
 
 ## Storage quotas and purging
 

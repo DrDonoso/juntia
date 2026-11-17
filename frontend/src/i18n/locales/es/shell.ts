@@ -14,6 +14,7 @@ export const shell: Messages<typeof source> = {
   defaultUserName: 'Usuario',
   administration: 'Administración',
   myProfile: 'Mi perfil',
+  whatsNew: 'Novedades',
   signOut: 'Cerrar sesión',
   defaultCommunityName: 'Comunidad de vecinos',
   brandTagline: 'COMUNIDAD',

@@ -1,0 +1,143 @@
+/* What's new (src/whats-new): loaded with its own chunk, after the page. */
+
+.whats-new-intro {
+  margin: 0 0 var(--space-4);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.whats-new-notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Each kind of change has its colours: new (the brand's), improved (green), fixed (neutral). */
+.whats-new-new {
+  --kind-bg: rgba(var(--primary-rgb), .1);
+  --kind-text: var(--primary);
+}
+
+.whats-new-improved {
+  --kind-bg: rgba(var(--income-rgb), .12);
+  --kind-text: var(--income);
+}
+
+.whats-new-fixed {
+  --kind-bg: rgba(var(--cat-neutral-rgb), .12);
+  --kind-text: var(--text-muted);
+}
+
+.whats-new-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.whats-new-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--kind-bg);
+  color: var(--kind-text);
+}
+
+.whats-new-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.whats-new-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-1);
+}
+
+.whats-new-kind,
+.whats-new-audience {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.whats-new-kind {
+  background: var(--kind-bg);
+  color: var(--kind-text);
+}
+
+.whats-new-audience {
+  background: var(--bg);
+  color: var(--text-muted);
+}
+
+.whats-new-title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.whats-new-body {
+  margin: var(--space-1) 0 0;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.whats-new-go,
+.whats-new-more {
+  margin-top: var(--space-3);
+}
+
+.whats-new-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-5);
+}
+
+.whats-new-month + .whats-new-month {
+  margin-top: var(--space-6);
+}
+
+.whats-new-month-title {
+  margin: 0 0 var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 650;
+}
+
+/* Phones: more room for the text. */
+@media (max-width: 480px) {
+  .whats-new-note {
+    gap: var(--space-2);
+    padding: var(--space-3);
+  }
+
+  .whats-new-icon {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+/* Without background colours the badges and the icon circles keep an outline. */
+@media (forced-colors: active) {
+  .whats-new-icon,
+  .whats-new-kind,
+  .whats-new-audience {
+    border: 1px solid CanvasText;
+  }
+}

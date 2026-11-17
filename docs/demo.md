@@ -32,6 +32,8 @@ stored, and reloading the page starts the demo again.
   their folders, profiles, users and their administrator role, dwellings and their layout, rules,
   categories, imports and settings. Changes last until the page is reloaded.
 - The language selector switches between English and Spanish, like in a real installation.
+- **What's new** in the avatar menu lists every note. The demo starts with nothing to catch up on,
+  like a new account, so its window never opens by itself.
 
 ## The data
 

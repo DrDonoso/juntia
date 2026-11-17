@@ -7491,6 +7491,51 @@
         ],
         "title": "VersionOut",
         "type": "object"
+      },
+      "WhatsNewOut": {
+        "additionalProperties": false,
+        "properties": {
+          "seen": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seen"
+          }
+        },
+        "required": [
+          "seen"
+        ],
+        "title": "WhatsNewOut",
+        "type": "object"
+      },
+      "WhatsNewSeenIn": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "items": {
+              "maxLength": 80,
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}-[a-z0-9]+(-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "WhatsNewSeenIn",
+        "type": "object"
       }
     }
   },
@@ -14750,6 +14795,69 @@
           }
         },
         "summary": "Version"
+      }
+    },
+    "/api/whats-new": {
+      "get": {
+        "operationId": "whats_new_api_whats_new_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhatsNewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Whats New",
+        "tags": [
+          "What's new"
+        ]
+      }
+    },
+    "/api/whats-new/seen": {
+      "post": {
+        "description": "Add ``ids`` to the notes the account has read (ids already there change nothing).",
+        "operationId": "mark_seen_api_whats_new_seen_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WhatsNewSeenIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhatsNewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark Seen",
+        "tags": [
+          "What's new"
+        ]
       }
     },
     "/health": {

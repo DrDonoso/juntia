@@ -9,7 +9,7 @@ const names: IconName[] = [
   'upload', 'download', 'edit', 'trash', 'refresh', 'spinner', 'user', 'tag', 'arrow-up', 'arrow-down',
   'arrow-left', 'arrow-right', 'sun', 'moon', 'eye', 'eye-off', 'copy', 'more',
   'mail', 'phone', 'sort', 'grip', 'globe', 'folder', 'folder-plus', 'move', 'file', 'image', 'video',
-  'table', 'presentation', 'info', 'more-vertical',
+  'table', 'presentation', 'info', 'more-vertical', 'sparkles', 'trending-up',
 ]
 
 test.each(names)('%s uses a decorative, theme-aware SVG instead of a font glyph', name => {

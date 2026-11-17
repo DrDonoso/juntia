@@ -1,4 +1,4 @@
-import { Component, Suspense, lazy, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Component, Suspense, lazy, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Link, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router'
@@ -8,6 +8,7 @@ import { Notice, profileInitials, useAction, useFeatureLifecycle, useFeatures, u
 import { Icon } from './icons'
 import { PrivacyContext, storedPrivacy } from './privacy'
 import { I18nRoot, LanguageSelect, useI18n } from './i18n'
+import type { WhatsNewProps } from './whats-new/whats-new'
 import './styles/app.css'
 
 const Overview = lazy(() => import('./reader').then(m => ({ default: m.Overview })))
@@ -36,6 +37,12 @@ const DocumentReadingPage = lazy(() => import('./document-reading').then(m => ({
 // The public demo's banner, welcome dialog and sign-in help (src/demo). The literal
 // `import.meta.env.VITE_DEMO` check lets the bundler drop the demo from normal builds.
 const DemoChrome = import.meta.env.VITE_DEMO === '1' ? lazy(() => import('./demo/DemoChrome')) : null
+// What's new is loaded after the page, so its notes never delay it. Should its file be gone (a new
+// version replaced it), the app simply goes on without it.
+const WhatsNew = lazy(() => import('./whats-new/whats-new').then(
+  (module): { default: ComponentType<WhatsNewProps> } => ({ default: module.WhatsNew }),
+  (): { default: ComponentType<WhatsNewProps> } => ({ default: () => null }),
+))
 function BoundaryFallback() {
   const { t } = useI18n()
   return <section className="card"><h1>{t('shell.crash.title')}</h1><p>{t('shell.crash.description')}</p><button onClick={() => location.reload()}>{t('shell.crash.reload')}</button></section>
@@ -84,6 +91,7 @@ export function Shell() {
   const [compactNavigation, setCompactNavigation] = useState(() => window.matchMedia(compactNavigationQuery).matches)
   const [desktopCollapsed, setDesktopCollapsed] = useState(storedSidebarCollapsed)
   const [openMenu, setOpenMenu] = useState<'navigation' | 'user' | null>(null)
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false)
   const sidebar = useRef<HTMLElement>(null), navigationButton = useRef<HTMLButtonElement>(null)
   const userMenu = useRef<HTMLElement>(null), userButton = useRef<HTMLButtonElement>(null)
   const sidebarExpanded = compactNavigation ? openMenu === 'navigation' : !desktopCollapsed
@@ -183,6 +191,10 @@ export function Shell() {
               ? <Link to="/" onClick={closeMenu}>{t('shell.links.communityPortal')}</Link>
               : <Link to="/admin" onClick={closeMenu}>{t('shell.administration')}</Link>)}
             <NavLink to="/profile" onClick={closeMenu}>{t('shell.myProfile')}</NavLink>
+            <button type="button" className="quiet" onClick={() => {
+              setOpenMenu(null)
+              setWhatsNewOpen(true)
+            }}>{t('shell.whatsNew')}</button>
             <LanguageSelect className="user-menu-language" />
             <button type="button" className="quiet sign-out" disabled={action.busy} onClick={logout}>{t('shell.signOut')}</button>
           </nav>
@@ -241,6 +253,10 @@ export function Shell() {
       <main id="content" tabIndex={-1}>{action.notice}{general.error && <Notice error>{errorMessage(general.error)}</Notice>}{features.error && <Notice error>{errorMessage(features.error)}</Notice>}<Boundary><Suspense fallback={<Notice>{t('shell.loadingPage')}</Notice>}><Outlet /></Suspense></Boundary></main>
       <footer className="app-footer">{isAdmin ? t('shell.footer.admin') : isEventView ? t('shell.footer.events') : isDocumentView ? t('shell.footer.documents') : isContactsView ? t('shell.footer.contacts') : isActionView ? t('shell.footer.actions') : t('shell.footer.finances')}</footer>
     </div>
+    {signedIn && <Suspense fallback={null}>
+      <WhatsNew key={reader.data?.user_id} administrator={administrator}
+        allOpen={whatsNewOpen} onAllOpenChange={setWhatsNewOpen} restoreFocusRef={userButton} />
+    </Suspense>}
   </PrivacyContext>
 }
 /** The administration: for signed-in administrators; anyone else finds no such page. */
@@ -271,36 +287,39 @@ function NotFound() {
   return <Notice error>{t('shell.notFound')}</Notice>
 }
 
+/** Every page of the app (the What's new notes' links are checked against it: src/whats-new/notes.test.ts). */
+export const routes = <Route element={<Shell />}>
+  <Route path="login" element={<Login />} />
+  <Route path="forgot-password" element={<ForgotPassword />} />
+  <Route path="activate" element={<PasswordLink key="invitation" invitation />} />
+  <Route path="reset-password" element={<PasswordLink key="recovery" invitation={false} />} />
+  <Route element={<ReaderGate />}><Route index element={<Overview />} /><Route path="transactions" element={<Transactions />} /><Route path="profile" element={<ProfilePage />} /><Route path="neighbors" element={<NeighborsPage />} /></Route>
+  <Route element={<ReaderGate />}><Route path="actions" element={<ActionsPage />} /><Route path="actions/:itemId" element={<ActionDetailPage />} /></Route>
+  <Route element={<ReaderGate />}><Route path="contacts" element={<ContactsPage />} /></Route>
+  <Route element={<ReaderGate />}><Route path="events" element={<EventsPage />} /><Route path="events/:eventId" element={<EventDetailPage />} /></Route>
+  <Route element={<ReaderGate />}><Route path="documents" element={<DocumentsPage />} /><Route path="documents/folders/:folderId" element={<DocumentsPage />} /></Route>
+  <Route path="admin" element={<AdminGate />}><Route index element={<ImportPage />} />
+    <Route path="general" element={<GeneralPage />} />
+    <Route path="features" element={<FeaturesPage />} />
+    <Route path="users" element={<UsersPage />} /><Route path="dwellings" element={<DwellingsPage />} />
+    <Route path="labels" element={<CommunityLabelsPage />} />
+    <Route path="deleted-contacts" element={<ContactsPage deleted />} />
+    <Route path="deleted-documents" element={<DeletedDocumentsPage />} />
+    <Route path="document-reading" element={<DocumentReadingPage />} />
+    <Route path="storage" element={<StoragePage />} />
+    <Route path="cleanup" element={<CleanupPage />} />
+    <Route path="neighbors" element={<LegacyCommunityRedirect />} />
+    <Route path="contacts" element={<LegacyCommunityRedirect />} />
+    <Route path="actions" element={<LegacyCommunityRedirect />} /><Route path="actions/:itemId" element={<LegacyCommunityRedirect />} />
+    <Route path="transactions" element={<Transactions editable />} /><Route path="rules" element={<RulesPage />} />
+    <Route path="catalog" element={<CatalogPage />} /><Route path="statements" element={<Statements />} />
+  </Route><Route path="*" element={<NotFound />} />
+</Route>
+
 // Subscribing here re-renders the whole tree on a language switch, so plain formatters follow it too.
 function App() {
   useI18n()
-  return <I18nRoot><QueryClientProvider client={cache}><LoginNoticeProvider><BrowserRouter><Routes><Route element={<Shell />}>
-    <Route path="login" element={<Login />} />
-    <Route path="forgot-password" element={<ForgotPassword />} />
-    <Route path="activate" element={<PasswordLink key="invitation" invitation />} />
-    <Route path="reset-password" element={<PasswordLink key="recovery" invitation={false} />} />
-    <Route element={<ReaderGate />}><Route index element={<Overview />} /><Route path="transactions" element={<Transactions />} /><Route path="profile" element={<ProfilePage />} /><Route path="neighbors" element={<NeighborsPage />} /></Route>
-    <Route element={<ReaderGate />}><Route path="actions" element={<ActionsPage />} /><Route path="actions/:itemId" element={<ActionDetailPage />} /></Route>
-    <Route element={<ReaderGate />}><Route path="contacts" element={<ContactsPage />} /></Route>
-    <Route element={<ReaderGate />}><Route path="events" element={<EventsPage />} /><Route path="events/:eventId" element={<EventDetailPage />} /></Route>
-    <Route element={<ReaderGate />}><Route path="documents" element={<DocumentsPage />} /><Route path="documents/folders/:folderId" element={<DocumentsPage />} /></Route>
-    <Route path="admin" element={<AdminGate />}><Route index element={<ImportPage />} />
-      <Route path="general" element={<GeneralPage />} />
-      <Route path="features" element={<FeaturesPage />} />
-      <Route path="users" element={<UsersPage />} /><Route path="dwellings" element={<DwellingsPage />} />
-      <Route path="labels" element={<CommunityLabelsPage />} />
-      <Route path="deleted-contacts" element={<ContactsPage deleted />} />
-      <Route path="deleted-documents" element={<DeletedDocumentsPage />} />
-      <Route path="document-reading" element={<DocumentReadingPage />} />
-      <Route path="storage" element={<StoragePage />} />
-      <Route path="cleanup" element={<CleanupPage />} />
-      <Route path="neighbors" element={<LegacyCommunityRedirect />} />
-      <Route path="contacts" element={<LegacyCommunityRedirect />} />
-      <Route path="actions" element={<LegacyCommunityRedirect />} /><Route path="actions/:itemId" element={<LegacyCommunityRedirect />} />
-      <Route path="transactions" element={<Transactions editable />} /><Route path="rules" element={<RulesPage />} />
-      <Route path="catalog" element={<CatalogPage />} /><Route path="statements" element={<Statements />} />
-    </Route><Route path="*" element={<NotFound />} />
-  </Route></Routes>{DemoChrome && <Suspense fallback={null}><DemoChrome /></Suspense>}</BrowserRouter></LoginNoticeProvider></QueryClientProvider></I18nRoot>
+  return <I18nRoot><QueryClientProvider client={cache}><LoginNoticeProvider><BrowserRouter><Routes>{routes}</Routes>{DemoChrome && <Suspense fallback={null}><DemoChrome /></Suspense>}</BrowserRouter></LoginNoticeProvider></QueryClientProvider></I18nRoot>
 }
 
 const container = document.getElementById('root')

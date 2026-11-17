@@ -56,6 +56,7 @@ export function coreScenario(): CoreState {
     account: { iban: COMMUNITY.account.iban, name: COMMUNITY.account.name },
     dwellings,
     residents,
+    whatsNewSeen: new Map(),
     sequences: {
       dwelling: sequenceAfter(dwellings.map(dwelling => dwelling.id)),
       resident: sequenceAfter(residents.map(item => item.id)),

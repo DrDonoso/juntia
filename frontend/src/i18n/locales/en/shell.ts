@@ -14,6 +14,7 @@ export const shell = {
   // In the user menu of administrators, on the community pages (the administration offers the portal).
   administration: 'Administration',
   myProfile: 'My profile',
+  whatsNew: "What's new",
   signOut: 'Sign out',
   defaultCommunityName: 'Residential community',
   brandTagline: 'COMMUNITY',

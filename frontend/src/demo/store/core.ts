@@ -75,6 +75,11 @@ export interface CoreState {
   account: AccountOut | null
   dwellings: DemoDwelling[]
   residents: DemoResident[]
+  /**
+   * "What's new" notes each account has read, by account id (backend `users.whats_new_seen`).
+   * Nobody has one at first, so the visit starts with nothing to catch up on, like a new account.
+   */
+  whatsNewSeen: Map<number, string[]>
   sequences: { dwelling: IdSequence; resident: IdSequence }
 }
 
@@ -120,4 +125,21 @@ export function invitationStatus(resident: DemoResident): InvitationDelivery | '
 /** Whether the account can sign in (backend: activated, enabled and with a password). */
 export function canSignIn(resident: DemoResident): boolean {
   return resident.activated && !resident.disabled && resident.hasPassword
+}
+
+/** Read notes kept per account, the newest (backend `whats_new.MAX_SEEN`). */
+const MAX_NOTES_SEEN = 1000
+
+/** The "What's new" notes the account has read; null while none were recorded. */
+export function notesRead(accountId: number): string[] | null {
+  const seen = coreStore().whatsNewSeen.get(accountId)
+  return seen ? [...seen] : null
+}
+
+/** Adds notes to the ones the account has read (sorted, the newest kept), like the API. */
+export function markNotesRead(accountId: number, ids: readonly string[]): string[] {
+  const { whatsNewSeen } = coreStore()
+  const seen = [...new Set([...(whatsNewSeen.get(accountId) ?? []), ...ids])].sort().slice(-MAX_NOTES_SEEN)
+  whatsNewSeen.set(accountId, seen)
+  return [...seen]
 }

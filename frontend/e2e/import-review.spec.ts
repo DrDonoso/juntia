@@ -31,6 +31,9 @@ async function mockImport(page: Page, { count = 62, initialAccount = false, fail
     if (path === '/settings/general') return json({ community_name: 'Synthetic community' })
     if (path === '/features') return json({ actions: true, coefficient: true, events: false, documents: false, google_login: false })
     if (path === '/version') return json({ version: 'development', build_date: '' })
+    // What's new, as for a new account: nothing to show, and every note is marked as read.
+    if (path === '/whats-new') return json({ seen: null })
+    if (path === '/whats-new/seen') return json({ seen: [] })
     if (path === '/account') return json(initialAccount && !state.confirmation ? null : { iban: preview.iban, name: 'Community account' })
     if (path === '/catalog/categories') return json([{ id: 1, name: 'Cleaning', color: '#08735a' }, { id: 2, name: 'Maintenance', color: '#21639f' }])
     if (path === '/catalog/tags') return json([{ id: 1, name: 'Recurring', color: '#64748b' }])
