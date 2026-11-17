@@ -312,10 +312,11 @@ action (optional)** field (type to search), remove it with **Remove link**, or s
 with the **+** button of its **Events** (**New event for this action**), which links the new event to
 it. The action page shows all its events on a horizontal timeline in date order: finished events
 first and muted, a **Now** mark, then ongoing events (marked **Ongoing**) and upcoming ones. The
-timeline opens centered on **Now**, and a click anywhere on an event opens it over the action. The 20
-latest finished events and the next 20 load first; **Load earlier events** and **Load later
-events**, at its ends, bring 20 more. **View events for this action** shows them in the agenda.
-Linking never changes the action's status.
+timeline opens centered on **Now**; drag it sideways, with a finger or the mouse, to move along it.
+A click anywhere on an event opens it over the action (a drag does not). The 20 latest finished
+events and the next 20 load first; **Load earlier events** and **Load later events**, at its ends,
+bring 20 more. **View events for this action** shows them in the agenda. Linking never changes the
+action's status.
 
 ### Dates and time zone
 

@@ -81,6 +81,8 @@
 .event-linked > header h2 { margin: 0; }
 .event-track { display: flex; align-items: center; gap: var(--space-3); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; padding: var(--space-1) var(--space-1) var(--space-3); margin-bottom: var(--space-3); }
 .event-track > button { flex: 0 0 auto; }
+.event-track[data-draggable] { cursor: grab; }
+.event-track[data-dragging], .event-track[data-dragging] * { cursor: grabbing; user-select: none; }
 .event-track-list { display: flex; flex: 0 0 auto; margin: 0; padding: 0; list-style: none; }
 .event-track-list > li { position: relative; flex: 0 0 auto; display: flex; flex-direction: column; padding: 0 var(--space-2); }
 .event-track-list > li::before { content: ''; position: absolute; top: 29px; left: 0; right: 0; border-top: 2px solid var(--border); }

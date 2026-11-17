@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type MouseEvent, type PointerEvent } from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ApiError, api, errorMessage } from './api/client'
@@ -229,6 +229,59 @@ function centerIn(track: HTMLElement, entry: Element) {
   const box = track.getBoundingClientRect(), target = entry.getBoundingClientRect()
   track.scrollLeft += target.left + target.width / 2 - box.left - box.width / 2
 }
+// A mouse drags the timeline sideways, as a finger does on touch screens; a drag never opens the
+// event it ends on, while a plain click still does.
+function useDragScroll() {
+  const drag = useRef<{ pointer: number; x: number; left: number; moved: boolean } | null>(null)
+  const dragged = useRef(false)
+  function end(event: PointerEvent<HTMLElement>) {
+    const state = drag.current
+    if (!state || state.pointer !== event.pointerId) return
+    drag.current = null
+    event.currentTarget.removeAttribute('data-dragging')
+    if (!state.moved) return
+    // The click that ends the drag, if any, follows in the same task.
+    dragged.current = true
+    setTimeout(() => { dragged.current = false })
+  }
+  return {
+    onPointerDown(event: PointerEvent<HTMLElement>) {
+      const track = event.currentTarget
+      // The scroll bar below the entries scrolls by itself.
+      const onScrollBar = event.clientY >= track.getBoundingClientRect().top + track.clientTop + track.clientHeight
+      if (event.pointerType !== 'mouse' || event.button !== 0 || onScrollBar || track.scrollWidth <= track.clientWidth) return
+      drag.current = { pointer: event.pointerId, x: event.clientX, left: track.scrollLeft, moved: false }
+    },
+    onPointerMove(event: PointerEvent<HTMLElement>) {
+      const track = event.currentTarget, state = drag.current
+      track.toggleAttribute('data-draggable', track.scrollWidth > track.clientWidth)
+      if (!state || state.pointer !== event.pointerId) return
+      const distance = event.clientX - state.x
+      if (!state.moved) {
+        if (Math.abs(distance) < 6) return
+        state.moved = true
+        track.setPointerCapture(event.pointerId)
+        track.setAttribute('data-dragging', '')
+        window.getSelection()?.removeAllRanges()
+        if (document.activeElement instanceof HTMLElement && track.contains(document.activeElement)) document.activeElement.blur()
+      }
+      track.scrollLeft = state.left - distance
+    },
+    onPointerUp: end,
+    onPointerCancel: end,
+    onLostPointerCapture: end,
+    onClickCapture(event: MouseEvent<HTMLElement>) {
+      if (!dragged.current) return
+      dragged.current = false
+      event.preventDefault()
+      event.stopPropagation()
+    },
+    // A link would otherwise start dragging its address instead of the timeline.
+    onDragStart(event: DragEvent<HTMLElement>) {
+      event.preventDefault()
+    },
+  }
+}
 function TimelineEvent({ value, zone, past, ongoing }: { value: EventOut; zone: string; past: boolean; ongoing: boolean }) {
   const { t } = useI18n()
   const eventLink = useEventLink()
@@ -255,6 +308,7 @@ function LinkedEvents({ action }: { action: EventActionOut }) {
   const sides = { past, upcoming }
   const [creating, setCreating] = useState(false)
   const track = useRef<HTMLDivElement>(null)
+  const dragScroll = useDragScroll()
   // The timeline opens centered on now; afterwards it only moves to show what the reader loaded or created.
   const centered = useRef(false), reveal = useRef<Reveal | null>(null)
   const zone = config.data?.timezone
@@ -304,7 +358,7 @@ function LinkedEvents({ action }: { action: EventActionOut }) {
       </header>
       {(past.isPending || upcoming.isPending) && !failure && <Notice>{t('events.agenda.loading')}</Notice>}
       {failure && <Notice error>{errorMessage(failure)}</Notice>}
-      {zone && past.data && upcoming.data && (finished.length || pending.length ? <div ref={track} className="event-track">
+      {zone && past.data && upcoming.data && (finished.length || pending.length ? <div ref={track} className="event-track" {...dragScroll}>
         {past.hasNextPage && <button type="button" className="secondary" disabled={loadingMore} onClick={() => loadMore('past')}>{t('events.linked.earlier')}</button>}
         <ol className="event-track-list">
           {finished.map(value => <TimelineEvent key={value.id} value={value} zone={zone} past ongoing={false} />)}
