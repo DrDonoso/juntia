@@ -854,8 +854,27 @@ dialog.file-preview-pdf[open] { display: flex; flex-direction: column; height: 8
 /* At least 16px, so that phones do not zoom into the box. */
 .global-search-panel .global-search-field input { min-height: 44px; font-size: 16px; }
 .global-search-panel .search-results { position: static; width: auto; max-height: none; margin-top: var(--space-2); padding: 0; border: 0; box-shadow: none; }
+/* The last option of the list: every result, on their page. */
+.search-all { display: flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 6px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; color: var(--primary); font-weight: 600; }
+.search-all > span { flex: 1; }
+.search-all:hover, .search-all[data-active] { background: rgba(var(--primary-rgb), .08); }
+/* The page of results (search-results.tsx): filters by type with their counts, then the best of
+   each type, or a page of one type. */
+.search-filters { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0 0 var(--space-4); }
+.search-filter { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); font-weight: 550; text-decoration: none; }
+.search-filter:hover { background: rgba(var(--primary-rgb), .06); }
+.search-filter[aria-current="page"] { border-color: var(--primary); background: rgba(var(--primary-rgb), .1); color: var(--primary); }
+.search-count { padding: 0 7px; border-radius: 999px; background: var(--bg); color: var(--text-muted); font-size: var(--text-xs); font-weight: 600; line-height: 1.7; }
+.search-page-results[aria-busy="true"] { opacity: .7; }
+.search-group { margin-bottom: var(--space-4); }
+.search-group > h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 var(--space-2); font-size: 18px; }
+.search-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+/* Each section, or the filter, already says what its results are. */
+.search-list .search-hit-kind { display: none; }
+.search-group-more { margin-top: var(--space-2); }
 @media (forced-colors: active) {
-  .search-hit[data-active] { outline: 2px solid Highlight; outline-offset: -2px; }
+  .search-hit[data-active], .search-all[data-active] { outline: 2px solid Highlight; outline-offset: -2px; }
+  .search-filter[aria-current="page"] { outline: 2px solid Highlight; }
   .search-hit mark { background: Mark; color: MarkText; forced-color-adjust: none; }
   .neighbor-list > li[data-found] { outline: 2px solid Highlight; outline-offset: 6px; }
 }

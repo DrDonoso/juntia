@@ -10,7 +10,8 @@ export const search = {
   loading: 'Searching…',
   count: { zero: 'No results', one: '{count} result', other: '{count} results' },
   empty: 'Nothing matches “{query}”.',
-  more: 'Only the best matches are shown. Add words to narrow the search.',
+  // The last option of the list, which opens the page with every result.
+  seeAll: 'See all results',
   // The box on the right of each result.
   kinds: {
     action: 'Action',
@@ -29,4 +30,33 @@ export const search = {
     tags: 'Tags:',
   },
   dwelling: 'Dwelling {label}',
+  // The filters and headings of the page of results.
+  plural: {
+    action: 'Actions',
+    event: 'Events',
+    folder: 'Folders',
+    file: 'Documents',
+    neighbor: 'Neighbors',
+    contact: 'Contacts',
+    transaction: 'Transactions',
+  },
+  // The page with every result (search-results.tsx).
+  page: {
+    eyebrow: 'Search',
+    title: 'Results for “{query}”',
+    untitled: 'Search results',
+    short: 'Type at least two characters in the search box at the top of the page.',
+    filters: 'Filter by type',
+    all: 'All',
+    // Below the best few of a kind, to list them all.
+    seeKind: {
+      action: 'See all {count} actions',
+      event: 'See all {count} events',
+      folder: 'See all {count} folders',
+      file: 'See all {count} documents',
+      neighbor: 'See all {count} neighbors',
+      contact: 'See all {count} contacts',
+      transaction: 'See all {count} transactions',
+    },
+  },
 } as const

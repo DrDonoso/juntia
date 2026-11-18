@@ -293,7 +293,7 @@ test('an image pasted into a comment is uploaded to the demo API and shown from 
   await expectNoCrash(page)
 })
 
-test('the search at the top finds the sample data as it is typed and opens the chosen item', async ({ page }) => {
+test('the search at the top finds the sample data as it is typed, and lists every result on their page', async ({ page }) => {
   await page.goto('/')
   await explore(page)
   const box = page.getByRole('combobox', { name: en.search.label, exact: true })
@@ -302,11 +302,24 @@ test('the search at the top finds the sample data as it is typed and opens the c
   await expect(options.first()).toContainText('Bike storage in the basement')
   await expect(options.first().locator('.search-hit-kind')).toHaveText(en.search.kinds.action)
   await expect(options.filter({ hasText: 'Bike storage survey.csv' }).locator('.search-hit-kind')).toHaveText(en.search.kinds.file)
+  await expect(options.last()).toHaveText(en.search.seeAll)
   await expectAccessible(page, 'the search results')
+  await box.press('ArrowDown')
   await box.press('Enter')
   await expect(page).toHaveURL(/\/actions\/[1-9][0-9]*$/)
   await expect(page.getByRole('heading', { name: 'Bike storage in the basement', level: 1 })).toBeVisible()
   await expect(box).toHaveValue('')
+  // Enter without a chosen result opens the page with every result, filtered by type.
+  await box.fill('lift')
+  await box.press('Enter')
+  await expect(page).toHaveURL(/\/search\?q=lift$/)
+  const filters = page.getByRole('navigation', { name: en.search.page.filters, exact: true }).getByRole('link')
+  await expect(filters.first()).toHaveAttribute('aria-current', 'page')
+  await expectAccessible(page, 'the page of results')
+  await filters.filter({ hasText: en.search.plural.transaction }).click()
+  await expect(page).toHaveURL(/\/search\?q=lift&kind=transaction$/)
+  await expect(page.locator('main .search-list .search-hit').first()).toContainText('LIFT')
+  await expectAccessible(page, 'the transactions found')
   await expectNoCrash(page)
 })
 

@@ -69,7 +69,7 @@ export function safeReturnPath(value: string | null): string {
   if (!value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\') || hasControlCharacters(value)) return '/'
   const parsed = new URL(value, window.location.origin)
   // The pages of the portal and of the administration (backend: contracts.reader_route).
-  const readerRoute = ['/', '/transactions', '/profile', '/neighbors', '/actions', '/contacts', '/events', '/documents', '/admin'].includes(parsed.pathname)
+  const readerRoute = ['/', '/transactions', '/profile', '/neighbors', '/actions', '/contacts', '/events', '/documents', '/search', '/admin'].includes(parsed.pathname)
     || /^\/(?:actions|events|documents\/folders)\/[1-9][0-9]{0,9}$/.test(parsed.pathname)
     || /^\/admin\/[a-z]{1,30}(?:-[a-z]{1,30}){0,3}$/.test(parsed.pathname)
   if (parsed.origin !== window.location.origin || !readerRoute) return '/'

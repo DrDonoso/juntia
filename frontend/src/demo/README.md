@@ -235,7 +235,8 @@ Every operation of `src/api/openapi.json` belongs to exactly one module (`{x}` i
 - **search** (`handlers/search.ts`): `GET /api/search`, the search box at the top of every page:
   actions (with their comments and PDF names), events, folders and files (by name and by their
   text), neighbors, contacts and transactions, read from the other domains' stores with the
-  backend's rules (`src/juntia/search.py`).
+  backend's rules (`src/juntia/search.py`); `GET /api/search/results`, the page of results, with
+  the count of each kind and the best few of each, or a page of one kind.
 
 Any other `/api` request reaches the catch-all: a 501 `not_implemented` and a console error
 starting with `[demo] Unhandled API request:`. Two guards keep it that way:

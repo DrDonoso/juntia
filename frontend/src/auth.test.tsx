@@ -93,6 +93,8 @@ test.each([
   ['/documents/folders/7', '/documents/folders/7'],
   ['/documents/folders/0', '/'],
   ['/documents/7', '/'],
+  ['/search?q=ascensor&kind=action&page=2', '/search?q=ascensor&kind=action&page=2'],
+  ['/search/7', '/'],
   ['/admin/deleted-documents', '/admin/deleted-documents'],
   ['/actions/\n42', '/'],
   ['https://attacker.example/transactions', '/'],

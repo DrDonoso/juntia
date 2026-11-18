@@ -91,7 +91,8 @@ describes every part in detail.
 
 - One box at the top of every page finds, as you type, actions (their comments and PDFs too),
   events, folders, documents by name or content, neighbors, contacts and transactions, each with
-  its type in a box on the right, and opens the one you choose.
+  its type in a box on the right, and opens the one you choose. **See all results** opens a page
+  with every match, filtered by type.
 
 **Administration**
 

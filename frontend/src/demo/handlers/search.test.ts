@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import type { ActionCommentOut, ActionOut, SearchOut } from '../../api/schema.gen'
+import type { ActionCommentOut, ActionOut, SearchOut, SearchResultsOut } from '../../api/schema.gen'
 import { resetDemo } from '../store'
 import { demoRequest, signInAdmin } from '../testing'
 import { plainText, searchWords } from './search'
@@ -104,5 +104,61 @@ describe('the search box', () => {
     expect(plainText('Mira ![foto del portal](/api/actions/images/1234) y `nota_final`')).toBe('Mira foto del portal y nota_final')
     expect(plainText('# Orden del día\n\n- Cuotas\n1. Obras\n> - [x] _Hecho_ ~~antes~~\n\nfin')).toBe('Orden del día Cuotas Obras Hecho antes fin')
     expect(plainText('2 * 3 = 6')).toBe('2 * 3 = 6')
+  })
+})
+
+async function results(params: Record<string, string>): Promise<SearchResultsOut> {
+  const { status, body } = await demoRequest<SearchResultsOut>('GET', `/api/search/results?${new URLSearchParams(params)}`)
+  expect(status).toBe(200)
+  return body
+}
+
+describe('the page of results', () => {
+  test('needs a search, a known kind and a page from 1 to 500', async () => {
+    for (const query of ['', 'q=lift&kind=statement', 'q=lift&kind=transaction&page=0', 'q=lift&page=501', 'q=lift&page=two']) {
+      expect(await demoRequest('GET', `/api/search/results?${query}`)).toMatchObject({ status: 422, body: { code: 'invalid_request' } })
+    }
+    expect(await results({ q: '   ' })).toEqual({ counts: [], items: [], page: 1, pages: 0 })
+  })
+
+  test('counts every kind and lists the best few of each, the kinds with the best matches first', async () => {
+    const overview = await results({ q: 'lift' })
+    expect(overview.counts.map(count => count.kind)).toEqual(['action', 'event', 'file', 'contact', 'transaction'])
+    // Titles that start with the search first (an action, an event, a file), then titles with the word.
+    const groups = overview.items.map(item => item.kind).filter((kind, index, kinds) => kind !== kinds[index - 1])
+    expect(groups).toEqual(['action', 'event', 'file', 'contact', 'transaction'])
+    for (const { kind, total } of overview.counts) {
+      expect(overview.items.filter(item => item.kind === kind)).toHaveLength(Math.min(total, 5))
+    }
+    expect(overview.items[0].title).toBe('Lift modernisation: controller, doors and cabin')
+    expect([overview.page, overview.pages]).toEqual([1, 1])
+  })
+
+  test('pages through one kind, newest transactions first, with every count for the filters', async () => {
+    const overview = await results({ q: 'direct debit' })
+    const total = overview.counts.find(count => count.kind === 'transaction')?.total ?? 0
+    expect(total).toBeGreaterThan(20)
+    const first = await results({ q: 'direct debit', kind: 'transaction' })
+    const second = await results({ q: 'direct debit', kind: 'transaction', page: '2' })
+    expect(first.counts).toEqual(overview.counts)
+    expect([first.page, first.pages, first.items.length]).toEqual([1, Math.ceil(total / 20), 20])
+    expect(second.items.length).toBe(Math.min(total - 20, 20))
+    const dates = [...first.items, ...second.items].map(item => item.kind === 'transaction' ? item.booking_date : '')
+    expect(dates).toEqual([...dates].sort().reverse())
+    expect(new Set([...first.items, ...second.items].map(item => item.id)).size).toBe(first.items.length + second.items.length)
+    expect(await results({ q: 'direct debit', kind: 'transaction', page: '500' })).toEqual({
+      counts: overview.counts, items: [], page: 500, pages: first.pages,
+    })
+    // A kind without matches has nothing to page through.
+    expect(await results({ q: 'direct debit', kind: 'neighbor' })).toEqual({ counts: overview.counts, items: [], page: 1, pages: 0 })
+  })
+
+  test('sections that are off are neither counted nor listed', async () => {
+    await signInAdmin()
+    for (const feature of ['actions', 'events', 'documents']) {
+      expect((await demoRequest('PATCH', `/api/admin/settings/features/${feature}`, { body: { enabled: false } })).status).toBe(200)
+    }
+    expect((await results({ q: 'lift' })).counts.map(count => count.kind)).toEqual(['contact', 'transaction'])
+    expect(await results({ q: 'lift', kind: 'event' })).toMatchObject({ items: [], pages: 0 })
   })
 })

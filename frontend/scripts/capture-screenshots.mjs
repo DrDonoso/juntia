@@ -195,6 +195,16 @@ const SHOTS = [
     },
   },
   {
+    name: 'search-results',
+    as: 'neighbor',
+    async capture(page) {
+      await go(page, '/search?q=lift')
+      await heading(page, 'Results for “lift”').waitFor()
+      await page.getByRole('navigation', { name: 'Filter by type' }).getByRole('link').nth(3).waitFor()
+      await page.locator('.search-group').nth(2).waitFor()
+    },
+  },
+  {
     name: 'import-review',
     as: 'administrator',
     async capture(page) {

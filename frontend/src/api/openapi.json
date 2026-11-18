@@ -6660,6 +6660,34 @@
         "title": "RuleOut",
         "type": "object"
       },
+      "SearchCount": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "action",
+              "event",
+              "folder",
+              "file",
+              "neighbor",
+              "contact",
+              "transaction"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "total"
+        ],
+        "title": "SearchCount",
+        "type": "object"
+      },
       "SearchExcerpt": {
         "additionalProperties": false,
         "properties": {
@@ -6742,6 +6770,75 @@
           "more"
         ],
         "title": "SearchOut",
+        "type": "object"
+      },
+      "SearchResultsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "counts": {
+            "items": {
+              "$ref": "#/components/schemas/SearchCount"
+            },
+            "title": "Counts",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "action": "#/components/schemas/ActionHit",
+                  "contact": "#/components/schemas/ContactHit",
+                  "event": "#/components/schemas/EventHit",
+                  "file": "#/components/schemas/FileHit",
+                  "folder": "#/components/schemas/FolderHit",
+                  "neighbor": "#/components/schemas/NeighborHit",
+                  "transaction": "#/components/schemas/TransactionHit"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ActionHit"
+                },
+                {
+                  "$ref": "#/components/schemas/EventHit"
+                },
+                {
+                  "$ref": "#/components/schemas/FolderHit"
+                },
+                {
+                  "$ref": "#/components/schemas/FileHit"
+                },
+                {
+                  "$ref": "#/components/schemas/NeighborHit"
+                },
+                {
+                  "$ref": "#/components/schemas/ContactHit"
+                },
+                {
+                  "$ref": "#/components/schemas/TransactionHit"
+                }
+              ]
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "counts",
+          "items",
+          "page",
+          "pages"
+        ],
+        "title": "SearchResultsOut",
         "type": "object"
       },
       "SetPasswordIn": {
@@ -14856,6 +14953,88 @@
           }
         },
         "summary": "Search",
+        "tags": [
+          "Search"
+        ]
+      }
+    },
+    "/api/search/results": {
+      "get": {
+        "description": "Everything that contains every word of `q`, for the page of results: how many items of\neach kind match, and the best few of each kind or, for one kind, a page of its items.",
+        "operationId": "search_results_api_search_results_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "action",
+                    "event",
+                    "folder",
+                    "file",
+                    "neighbor",
+                    "contact",
+                    "transaction"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResultsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Results",
         "tags": [
           "Search"
         ]
