@@ -53,6 +53,8 @@ export const contacts = {
   },
   viewDetails: 'View details for {name}',
   details: {
+    // A contact opened from the search or a link that no longer exists.
+    missing: 'Contact not available',
     sendEmail: 'Email {name}',
     sendEmailTitle: 'Send an email',
     emailUnavailable: 'Email unavailable',

@@ -87,6 +87,12 @@ describes every part in detail.
 - A private **Neighbors** directory laid out like the building, marking the community president.
 - A shared **Contacts** address book for services and useful people, with tags, search and history.
 
+**Search**
+
+- One box at the top of every page finds, as you type, actions (their comments and PDFs too),
+  events, folders, documents by name or content, neighbors, contacts and transactions, each with
+  its type in a box on the right, and opens the one you choose.
+
 **Administration**
 
 - An administration at `/admin` for imports, rules, users, dwellings, labels and storage, which

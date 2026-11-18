@@ -104,11 +104,26 @@ def fold_sql(db: AsyncSession, value: SQLColumnExpression[str]) -> ColumnElement
     ))
 
 
+def text_position(
+    db: AsyncSession, value: ColumnElement[str], needle: str,
+) -> ColumnElement[int] | None:
+    """Where the text first contains the needle, from 1, or 0; None when it never can."""
+    # PostgreSQL text cannot contain NUL; binding it would turn a no-match search into an error.
+    if db.get_bind().dialect.name == "postgresql" and "\0" in needle:
+        return None
+    position = func.instr if db.get_bind().dialect.name == "sqlite" else func.strpos
+    return position(value, needle)
+
+
 def contains_text(
     db: AsyncSession, value: ColumnElement[str], needle: str,
 ) -> ColumnElement[bool]:
-    # PostgreSQL text cannot contain NUL; binding it would turn a no-match search into an error.
-    if db.get_bind().dialect.name == "postgresql" and "\0" in needle:
-        return false()
-    position = func.instr if db.get_bind().dialect.name == "sqlite" else func.strpos
-    return position(value, needle) > 0
+    position = text_position(db, value, needle)
+    return false() if position is None else position > 0
+
+
+def starts_text(
+    db: AsyncSession, value: ColumnElement[str], needle: str,
+) -> ColumnElement[bool]:
+    position = text_position(db, value, needle)
+    return false() if position is None else position == 1

@@ -11,6 +11,7 @@ All screenshots show synthetic data from the [demo](https://demo.juntia.drdonoso
 
 - [Roles](#roles)
 - [Navigation](#navigation)
+- [Search](#search)
 - [Languages](#languages)
 - [What's new](#whats-new)
 - [Finances](#finances)
@@ -77,8 +78,50 @@ language.
   **What's new**, the **Language** selector and **Sign out**. Next to it are the **Hide amounts**
   button (residents' pages) and the light and dark theme button. The navigation and the avatar menu
   work with the keyboard and return the focus when closed with Escape.
+- The top bar of every page, the administration's included, has the [search](#search) box: at 720
+  pixels wide or less, a magnifier before the buttons at the top right opens it.
 - Dialogs close with their **Close** button, Escape or a click outside them, except while they are
   saving or deleting something.
+
+## Search
+
+**Search the portal**, the box at the top of every page, finds what members read in the portal as
+they type:
+
+- **Actions** by title, description and labels, and by their comments and the names of their PDFs
+  (one comment or PDF name containing every word); **events** by title, location and description;
+  **folders** by name and **files** by name or by the words inside them, once Juntia has
+  [read them](#folders-and-files); **neighbors** by name, dwelling, email and phone; **contacts** by
+  any field or tag; and **transactions** by description and merchant.
+- From two characters on, and after a short pause, it lists what contains every word typed (up to
+  10 words), ignoring capitals and accents; phone numbers match with or without spaces, dots,
+  hyphens and parentheses. Each result shows what it is in a box on the right of its first line
+  (**Action**, **Event**, **Folder**, **Document**, **Neighbor**, **Contact** or **Transaction**), a
+  line of details such as the status, date, folder, dwelling, company or amount and, when the
+  words are not in the title, the text around them, with the words highlighted.
+- Titles that start with what was typed come first, then titles with every word, then the rest;
+  files found only by their text come last. It shows up to 5 results of each kind and 20 in total,
+  and says so when there are more: adding words narrows the search.
+- The arrows choose a result and Enter opens it, or the first one when none is chosen. Escape hides
+  the results and then empties the box. Ctrl+K (⌘K on a Mac), or `/` outside text fields, goes to
+  the box from any page without an open dialog.
+- A result opens its page: the action, the event over the agenda, the folder, the file in its folder
+  (in the viewer, or its **Info** when the viewer cannot show it), the neighbor marked in the
+  directory, the contact's details, or **Transactions** filtered by the transaction's description
+  and day. Like any page, the addresses of files (`/documents/folders/<id>?file=<id>`, or
+  `/documents?file=<id>` at the top level), neighbors (`/neighbors?neighbor=<id>`) and contacts
+  (`/contacts?contact=<id>`) can be bookmarked and shared.
+- At 720 pixels wide or less, the magnifier opens the search under the top bar; choosing a result,
+  Escape or a click outside closes it.
+- It only finds what the account can read in the portal: actions, events and documents while they
+  are [on](#features-switches), nothing deleted, and only the neighbors the directory lists. On the
+  administration's pages it searches the portal too, not statements, accounts or deleted items.
+  Amounts follow **Hide amounts**.
+
+<p align="center">
+  <img src="screenshots/search.png" alt="The search box at the top of the Actions page with the results for lift: an action, two events, a document, a contact and transactions, each with its type in a box on the right and the word highlighted" width="900"><br>
+  <sub>The <b>search</b> at the top of every page (synthetic demo data).</sub>
+</p>
 
 ## Languages
 

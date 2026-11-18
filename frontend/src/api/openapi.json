@@ -673,6 +673,57 @@
         "title": "ActionHistoryPage",
         "type": "object"
       },
+      "ActionHit": {
+        "additionalProperties": false,
+        "properties": {
+          "excerpt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SearchExcerpt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "action",
+            "default": "action",
+            "title": "Kind",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "detected",
+              "quoting",
+              "voting",
+              "approved",
+              "ordered",
+              "in_progress",
+              "done",
+              "discarded"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "excerpt",
+          "status"
+        ],
+        "title": "ActionHit",
+        "type": "object"
+      },
       "ActionIn": {
         "additionalProperties": false,
         "properties": {
@@ -1544,6 +1595,64 @@
           "pages"
         ],
         "title": "ContactHistoryPage",
+        "type": "object"
+      },
+      "ContactHit": {
+        "additionalProperties": false,
+        "properties": {
+          "company": {
+            "title": "Company",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SearchExcerpt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "contact",
+            "default": "contact",
+            "title": "Kind",
+            "type": "string"
+          },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "excerpt",
+          "company",
+          "email",
+          "phone"
+        ],
+        "title": "ContactHit",
         "type": "object"
       },
       "ContactIn": {
@@ -4672,6 +4781,104 @@
         "title": "EventHistoryPage",
         "type": "object"
       },
+      "EventHit": {
+        "additionalProperties": false,
+        "properties": {
+          "all_day": {
+            "title": "All Day",
+            "type": "boolean"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SearchExcerpt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "event",
+            "default": "event",
+            "title": "Kind",
+            "type": "string"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "excerpt",
+          "location",
+          "all_day",
+          "starts_at",
+          "ends_at",
+          "starts_on",
+          "ends_on"
+        ],
+        "title": "EventHit",
+        "type": "object"
+      },
       "EventIn": {
         "additionalProperties": false,
         "properties": {
@@ -5110,6 +5317,120 @@
         "title": "FeatureFlagsOut",
         "type": "object"
       },
+      "FileHit": {
+        "additionalProperties": false,
+        "properties": {
+          "document_kind": {
+            "enum": [
+              "pdf",
+              "image",
+              "video",
+              "document",
+              "spreadsheet",
+              "presentation",
+              "text"
+            ],
+            "title": "Document Kind",
+            "type": "string"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SearchExcerpt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "folder_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "file",
+            "default": "file",
+            "title": "Kind",
+            "type": "string"
+          },
+          "location": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentFolderRef"
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "excerpt",
+          "document_kind",
+          "folder_id",
+          "location"
+        ],
+        "title": "FileHit",
+        "type": "object"
+      },
+      "FolderHit": {
+        "additionalProperties": false,
+        "properties": {
+          "excerpt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SearchExcerpt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "folder",
+            "default": "folder",
+            "title": "Kind",
+            "type": "string"
+          },
+          "location": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentFolderRef"
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "excerpt",
+          "location"
+        ],
+        "title": "FolderHit",
+        "type": "object"
+      },
       "GeneralSettings": {
         "additionalProperties": false,
         "properties": {
@@ -5318,6 +5639,62 @@
           "net"
         ],
         "title": "MonthlyTotal",
+        "type": "object"
+      },
+      "NeighborHit": {
+        "additionalProperties": false,
+        "properties": {
+          "dwelling": {
+            "title": "Dwelling",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SearchExcerpt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_president": {
+            "title": "Is President",
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "neighbor",
+            "default": "neighbor",
+            "title": "Kind",
+            "type": "string"
+          },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "excerpt",
+          "email",
+          "phone",
+          "dwelling",
+          "is_president"
+        ],
+        "title": "NeighborHit",
         "type": "object"
       },
       "NeighborOut": {
@@ -6283,6 +6660,90 @@
         "title": "RuleOut",
         "type": "object"
       },
+      "SearchExcerpt": {
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "enum": [
+              "description",
+              "labels",
+              "comment",
+              "attachment",
+              "notes",
+              "tags",
+              "text"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "source"
+        ],
+        "title": "SearchExcerpt",
+        "type": "object"
+      },
+      "SearchOut": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "action": "#/components/schemas/ActionHit",
+                  "contact": "#/components/schemas/ContactHit",
+                  "event": "#/components/schemas/EventHit",
+                  "file": "#/components/schemas/FileHit",
+                  "folder": "#/components/schemas/FolderHit",
+                  "neighbor": "#/components/schemas/NeighborHit",
+                  "transaction": "#/components/schemas/TransactionHit"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ActionHit"
+                },
+                {
+                  "$ref": "#/components/schemas/EventHit"
+                },
+                {
+                  "$ref": "#/components/schemas/FolderHit"
+                },
+                {
+                  "$ref": "#/components/schemas/FileHit"
+                },
+                {
+                  "$ref": "#/components/schemas/NeighborHit"
+                },
+                {
+                  "$ref": "#/components/schemas/ContactHit"
+                },
+                {
+                  "$ref": "#/components/schemas/TransactionHit"
+                }
+              ]
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "more": {
+            "title": "More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "more"
+        ],
+        "title": "SearchOut",
+        "type": "object"
+      },
       "SetPasswordIn": {
         "additionalProperties": false,
         "properties": {
@@ -6917,6 +7378,59 @@
           "name"
         ],
         "title": "TagIn",
+        "type": "object"
+      },
+      "TransactionHit": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "booking_date": {
+            "format": "date",
+            "title": "Booking Date",
+            "type": "string"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SearchExcerpt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "transaction",
+            "default": "transaction",
+            "title": "Kind",
+            "type": "string"
+          },
+          "merchant": {
+            "title": "Merchant",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "excerpt",
+          "booking_date",
+          "amount",
+          "merchant"
+        ],
+        "title": "TransactionHit",
         "type": "object"
       },
       "TransactionOut": {
@@ -14299,6 +14813,51 @@
         "tags": [
           "Finance",
           "Neighbors"
+        ]
+      }
+    },
+    "/api/search": {
+      "get": {
+        "description": "What contains every word of `q`: a few items of each kind, the best matches first.",
+        "operationId": "search_api_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search",
+        "tags": [
+          "Search"
         ]
       }
     },

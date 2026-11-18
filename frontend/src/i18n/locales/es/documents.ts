@@ -141,6 +141,7 @@ export const documents: Messages<typeof source> = {
   },
   info: {
     title: 'Información: {name}',
+    missing: 'Archivo no disponible',
     loading: 'Cargando los detalles…',
     type: 'Tipo',
     size: 'Tamaño',

@@ -127,6 +127,14 @@ export interface ActionHistoryPage {
   total: number
 }
 
+export interface ActionHit {
+  excerpt: SearchExcerpt | null
+  id: number
+  kind: 'action'
+  status: 'detected' | 'quoting' | 'voting' | 'approved' | 'ordered' | 'in_progress' | 'done' | 'discarded'
+  title: string
+}
+
 export interface ActionIn {
   description?: string
   labels?: string[]
@@ -296,6 +304,16 @@ export interface ContactHistoryPage {
   page: number
   pages: number
   total: number
+}
+
+export interface ContactHit {
+  company: string
+  email: string | null
+  excerpt: SearchExcerpt | null
+  id: number
+  kind: 'contact'
+  phone: string
+  title: string
 }
 
 export interface ContactIn {
@@ -852,6 +870,19 @@ export interface EventHistoryPage {
   total: number
 }
 
+export interface EventHit {
+  all_day: boolean
+  ends_at: string | null
+  ends_on: string | null
+  excerpt: SearchExcerpt | null
+  id: number
+  kind: 'event'
+  location: string
+  starts_at: string | null
+  starts_on: string | null
+  title: string
+}
+
 export interface EventIn {
   action_id?: number | null
   all_day: boolean
@@ -922,6 +953,24 @@ export interface FeatureFlagsOut {
   google_login: boolean
 }
 
+export interface FileHit {
+  document_kind: 'pdf' | 'image' | 'video' | 'document' | 'spreadsheet' | 'presentation' | 'text'
+  excerpt: SearchExcerpt | null
+  folder_id: number | null
+  id: number
+  kind: 'file'
+  location: DocumentFolderRef[]
+  title: string
+}
+
+export interface FolderHit {
+  excerpt: SearchExcerpt | null
+  id: number
+  kind: 'folder'
+  location: DocumentFolderRef[]
+  title: string
+}
+
 export interface GeneralSettings {
   community_name: string
 }
@@ -968,6 +1017,17 @@ export interface MonthlyTotal {
   income: string
   month: string
   net: string
+}
+
+export interface NeighborHit {
+  dwelling: string
+  email: string
+  excerpt: SearchExcerpt | null
+  id: number
+  is_president: boolean
+  kind: 'neighbor'
+  phone: string
+  title: string
 }
 
 export interface NeighborOut {
@@ -1123,6 +1183,16 @@ export interface RuleOut {
   skip_ai: boolean
 }
 
+export interface SearchExcerpt {
+  source: 'description' | 'labels' | 'comment' | 'attachment' | 'notes' | 'tags' | 'text'
+  text: string
+}
+
+export interface SearchOut {
+  items: (ActionHit | EventHit | FolderHit | FileHit | NeighborHit | ContactHit | TransactionHit)[]
+  more: boolean
+}
+
 export interface SetPasswordIn {
   password: string
   token: string
@@ -1241,6 +1311,16 @@ export interface SummaryOut {
 export interface TagIn {
   color?: string
   name: string
+}
+
+export interface TransactionHit {
+  amount: string
+  booking_date: string
+  excerpt: SearchExcerpt | null
+  id: number
+  kind: 'transaction'
+  merchant: string
+  title: string
 }
 
 export interface TransactionOut {

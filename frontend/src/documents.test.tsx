@@ -123,8 +123,8 @@ afterEach(() => {
   Reflect.deleteProperty(navigator, 'pdfViewerEnabled')
 })
 
-function page(children: ReactNode = null) {
-  render(<I18nRoot><QueryClientProvider client={cache}><MemoryRouter initialEntries={['/documents']}>
+function page(children: ReactNode = null, address = '/documents') {
+  render(<I18nRoot><QueryClientProvider client={cache}><MemoryRouter initialEntries={[address]}>
     {children ?? <Routes>
       <Route path="/documents" element={<DocumentsPage />} />
       <Route path="/documents/folders/:folderId" element={<DocumentsPage />} />
@@ -361,6 +361,30 @@ test('on a computer that shows PDFs inside pages, PDFs open in the portal like t
     await user.click(viewer.getByRole('button', { name: 'Close' }))
     expect(screen.queryByRole('dialog')).toBeNull()
   }
+})
+
+test('a file the search opens shows in the viewer, or its info where the viewer does not show it', async () => {
+  const answer = vi.mocked(api).getMockImplementation()!
+  vi.mocked(api).mockImplementation(async (url, ...rest) => url === '/documents/files/99' ? Promise.reject(new ApiError('document_not_found', 404)) : answer(url, ...rest))
+  Object.defineProperty(navigator, 'pdfViewerEnabled', { configurable: true, value: true })
+  vi.stubGlobal('matchMedia', vi.fn((query: string) => ({ matches: query === '(pointer: fine)', media: query })))
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array([0x25]), { status: 206 })))
+  const user = userEvent.setup()
+  page(null, '/documents?file=7')
+  const viewer = within(await screen.findByRole('dialog', { name: 'Acta.pdf' }))
+  expect(await viewer.findByTitle('Acta.pdf')).toHaveAttribute('src', '/api/documents/versions/v7-2/preview')
+  await user.click(viewer.getByRole('button', { name: 'Close' }))
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(await grid()).toBeTruthy()
+  // Phones and tablets leave PDFs to the browser: the file's details say what it is and offer its download.
+  cleanup()
+  Reflect.deleteProperty(navigator, 'pdfViewerEnabled')
+  page(null, '/documents?file=7')
+  const details = within(await screen.findByRole('dialog', { name: 'Info: Acta.pdf' }))
+  expect(details.getByRole('link', { name: 'Download version 2' })).toHaveAttribute('href', '/api/documents/versions/v7-2/download')
+  cleanup()
+  page(null, '/documents?file=99')
+  expect(await screen.findByRole('dialog', { name: 'File not available' })).toHaveTextContent('The file does not exist or has been deleted.')
 })
 
 test('the search finds folders and files anywhere in Documents, says where they are and opens their folder', async () => {

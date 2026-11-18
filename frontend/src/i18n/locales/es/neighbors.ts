@@ -16,6 +16,7 @@ export const neighbors: Messages<typeof source> = {
     empty: 'Todavía no hay viviendas en el directorio.',
     missingDwelling: 'Una vivienda de esta casilla ya no está disponible. Actualiza el directorio o contacta con la administración.',
     otherDwellings: 'Otras viviendas',
+    notFound: 'Este vecino ya no está en el directorio.',
   },
   layout: {
     region: 'Plano de {zone}; desplázate horizontalmente para ver todas las columnas',

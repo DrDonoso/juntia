@@ -1,4 +1,4 @@
-import { Component, Suspense, lazy, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react'
+import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Link, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router'
@@ -8,6 +8,7 @@ import { Notice, profileInitials, useAction, useFeatureLifecycle, useFeatures, u
 import { Icon } from './icons'
 import { PrivacyContext, storedPrivacy } from './privacy'
 import { I18nRoot, LanguageSelect, useI18n } from './i18n'
+import { GlobalSearch } from './search'
 import type { WhatsNewProps } from './whats-new/whats-new'
 import './styles/app.css'
 
@@ -90,10 +91,14 @@ export function Shell() {
   const [hideValues, setHideValues] = useState(storedPrivacy)
   const [compactNavigation, setCompactNavigation] = useState(() => window.matchMedia(compactNavigationQuery).matches)
   const [desktopCollapsed, setDesktopCollapsed] = useState(storedSidebarCollapsed)
-  const [openMenu, setOpenMenu] = useState<'navigation' | 'user' | null>(null)
+  const [openMenu, setOpenMenu] = useState<'navigation' | 'user' | 'search' | null>(null)
   const [whatsNewOpen, setWhatsNewOpen] = useState(false)
   const sidebar = useRef<HTMLElement>(null), navigationButton = useRef<HTMLButtonElement>(null)
   const userMenu = useRef<HTMLElement>(null), userButton = useRef<HTMLButtonElement>(null)
+  const searchPanel = useRef<HTMLDivElement>(null), searchButton = useRef<HTMLButtonElement>(null)
+  const setSearchOpen = useCallback((open: boolean) => {
+    setOpenMenu(previous => open ? 'search' : previous === 'search' ? null : previous)
+  }, [])
   const sidebarExpanded = compactNavigation ? openMenu === 'navigation' : !desktopCollapsed
   const privateValues = isFinanceView && hideValues
   useEffect(() => {
@@ -119,9 +124,9 @@ export function Shell() {
   }, [])
   useEffect(() => {
     if (!openMenu) return
-    const panel = openMenu === 'navigation' ? sidebar.current : userMenu.current
-    const trigger = openMenu === 'navigation' ? navigationButton.current : userButton.current
-    panel?.querySelector<HTMLElement>(openMenu === 'navigation' ? 'nav a, .sidebar-return' : 'a, button')?.focus()
+    const panel = openMenu === 'navigation' ? sidebar.current : openMenu === 'user' ? userMenu.current : searchPanel.current
+    const trigger = openMenu === 'navigation' ? navigationButton.current : openMenu === 'user' ? userButton.current : searchButton.current
+    panel?.querySelector<HTMLElement>(openMenu === 'navigation' ? 'nav a, .sidebar-return' : openMenu === 'user' ? 'a, button' : 'input')?.focus()
     function dismiss(event: PointerEvent | FocusEvent) {
       if (event.target instanceof Node && !panel?.contains(event.target) && !trigger?.contains(event.target)) setOpenMenu(null)
     }
@@ -179,7 +184,11 @@ export function Shell() {
     <header className="topbar">
       <button ref={navigationButton} type="button" className="quiet icon-button navigation-toggle" title={t('shell.navigationMenu')} aria-label={t('shell.navigationMenu')} aria-controls="site-navigation" aria-expanded={sidebarExpanded} onClick={toggleNavigation}><Icon name={compactNavigation && sidebarExpanded ? 'close' : 'menu'} /></button>
       <span className="community-title" title={communityName}>{communityName}</span>
+      {signedIn && !compactNavigation && <GlobalSearch hideAmounts={hideValues} />}
       <div className="topbar-actions">
+        {signedIn && compactNavigation && <GlobalSearch hideAmounts={hideValues} panel={{
+          open: openMenu === 'search', setOpen: setSearchOpen, panel: searchPanel, trigger: searchButton,
+        }} />}
         {isFinanceView && signedIn && <button className="quiet icon-button" title={hideValues ? t('shell.showAmounts') : t('shell.hideAmounts')} aria-label={hideValues ? t('shell.showAmounts') : t('shell.hideAmounts')} aria-pressed={hideValues} onClick={togglePrivacy}><Icon name={hideValues ? 'eye-off' : 'eye'} /></button>}
         <button className="quiet icon-button" title={theme === 'dark' ? t('shell.lightMode') : t('shell.darkMode')} aria-label={theme === 'dark' ? t('shell.lightMode') : t('shell.darkMode')} aria-pressed={theme === 'dark'} onClick={toggleTheme}><Icon name={theme === 'dark' ? 'sun' : 'moon'} /></button>
         {signedIn && <div className="user-controls">

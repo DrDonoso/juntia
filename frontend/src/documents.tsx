@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type 
 import { createPortal } from 'react-dom'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link, useParams, useSearchParams } from 'react-router'
-import { ApiError, api, cache, errorMessage } from './api/client'
+import { ApiError, api, cache, codeMessage, errorMessage } from './api/client'
 import type {
   DocumentBrowseOut, DocumentEventOut, DocumentExcerpt, DocumentFolderInfoOut, DocumentFolderOut, DocumentFolderRef, DocumentHistoryPage,
   DocumentInfoOut, DocumentLimitsOut, DocumentOut, DocumentSearchPage, DocumentTextOut, DocumentTreeFolderOut, DocumentVersionOut,
@@ -154,6 +154,14 @@ function FolderView({ folderId }: { folderId: number | null }) {
   const [params, setParams] = useSearchParams()
   // The search covers all of Documents, wherever it is typed; the address keeps it for Back.
   const search = params.get('q') ?? '', q = search.trim(), searchPage = pageParam(params.get('page'))
+  const linkedFile = params.get('file')
+  function closeLinkedFile() {
+    setParams(previous => {
+      const next = new URLSearchParams(previous)
+      next.delete('file')
+      return next
+    }, { replace: true })
+  }
   const [sort, setSort] = useState<Sort>('name')
   const results = useSearch(q, sort, searchPage)
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
@@ -306,7 +314,32 @@ function FolderView({ folderId }: { folderId: number | null }) {
         setDialog(null)
       } : undefined} />}
     {dialog?.kind === 'view' && <FilePreview file={dialog.file} close={() => setDialog(null)} />}
+    {linkedFile !== null && <LinkedFile key={linkedFile} raw={linkedFile} close={closeLinkedFile} newVersion={newVersion} />}
   </>
+}
+
+/**
+ * The file the address names (`?file=<id>`, which the search opens): in the viewer, or its details
+ * when the viewer does not show it here.
+ */
+function LinkedFile({ raw, close, newVersion }: { raw: string; close: () => void; newVersion: (file: DocumentOut) => void }) {
+  const { t } = useI18n()
+  const id = folderParam(raw)
+  const query = useQuery({
+    queryKey: ['documents', 'file', id],
+    queryFn: ({ signal }) => api<DocumentInfoOut>(`/documents/files/${id}`, 'GET', undefined, signal),
+    enabled: typeof id === 'number',
+  })
+  const value = query.data
+  if (value) {
+    const preview = documentPreview(value)
+    return preview && opensInViewer(preview.kind) ? <FilePreview file={preview} close={close} />
+      : <InfoDialog item={{ kind: 'file', value }} close={close} newVersion={() => { close(); newVersion(value) }} />
+  }
+  if (typeof id === 'number' && !query.error) return null
+  return <Modal title={t('documents.info.missing')} close={close}>
+    <Notice error>{query.error ? errorMessage(query.error) : codeMessage('document_not_found')}</Notice>
+  </Modal>
 }
 
 type MenuOption = {

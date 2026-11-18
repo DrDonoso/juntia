@@ -613,6 +613,39 @@ of each file is kept in the database, and so in its backups, until a new version
 replaces the file or the file is purged; a deleted file keeps it, so that
 restoring the file makes it searchable again.
 
+## Global search
+
+`GET /api/search`, behind the box at the top of every page, requires a session
+of an active account like the portal's other pages; administrators use it like
+any member, and it never searches the administration's data (statements,
+accounts, invitations or deleted items). It returns only what that account can
+already read through the portal's own APIs: actions, with their comments and the
+names of their PDFs, while the Actions switch is on; events while Events is on;
+folders and files, by name and by the text read from their current version,
+while Documents is on; the accounts the Neighbors directory lists (active,
+activated and with a dwelling); contacts; and transactions. Deleted events,
+contacts, folders and files, and withdrawn comments and PDFs, are left out, and
+the switches are checked on every request.
+
+`q` takes 1 to 200 characters, and only its first 10 distinct words are used.
+Words are compared as literal text in the database, folded for capitals and
+accents (no wildcards or patterns), and each kind of item returns at most 5
+results, 20 in total. Excerpts are built on the server only for the results
+returned, at most 40 characters before the first match and 100 after it, from
+texts the account can already read; the Markdown of descriptions and comments is
+reduced to plain text with patterns that run in linear time, so a crafted text
+cannot hold up the server. Every search still scans those tables, so
+it is not a substitute for database resource budgets.
+
+The search terms travel in the query string, as in the other searches: keep
+access logs off and redact query strings at proxies (see
+[Deployment controls](#deployment-controls)). Results stay in the page's memory,
+are cleared with the other private queries on sign-out and identity changes, and
+are discarded when a feature switch changes. **Hide amounts** applies to them
+too. The `file=`, `contact=` and `neighbor=` address parameters that results
+open are checked as positive integers before anything is requested, and the
+records they name are read through their usual, authorized APIs.
+
 ## Deployment controls
 
 The **Actions** switch defaults to on. When it is off, both navigations hide

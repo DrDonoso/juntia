@@ -9,6 +9,7 @@ import { coreHandlers } from './core'
 import { financeHandlers } from './finance'
 import { UNHANDLED_PREFIX, UNHANDLED_STATUS, domainHandlers, handlers, unhandledHandler } from './index'
 import { peopleHandlers } from './people'
+import { searchHandlers } from './search'
 import { sharedDocumentHandlers } from './shared-documents'
 import { storageHandlers } from './storage'
 
@@ -23,11 +24,13 @@ const login = (email: string, password = 'demo') => demoRequest('POST', '/api/au
 
 describe('the demo API modules', () => {
   test('every module exports an array of handlers, gathered before the catch-all', () => {
-    const modules = [coreHandlers, financeHandlers, communityHandlers, peopleHandlers, storageHandlers, sharedDocumentHandlers]
+    const modules = [
+      coreHandlers, financeHandlers, communityHandlers, peopleHandlers, storageHandlers, sharedDocumentHandlers, searchHandlers,
+    ]
     for (const module of modules) expect(Array.isArray(module)).toBe(true)
     expect(domainHandlers).toEqual({
       core: coreHandlers, finance: financeHandlers, community: communityHandlers, people: peopleHandlers, storage: storageHandlers,
-      documents: sharedDocumentHandlers,
+      documents: sharedDocumentHandlers, search: searchHandlers,
     })
     expect(handlers).toEqual([...modules.flat(), unhandledHandler])
     expect(unhandledHandler.info).toMatchObject({ path: '/api/*' })

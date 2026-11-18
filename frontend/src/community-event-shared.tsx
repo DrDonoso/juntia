@@ -5,10 +5,13 @@ import { ApiError, api, cache, codeMessage, downloadFile, errorMessage } from '.
 import type { ActionPage, EventActionOut, EventCalendarOut, EventConfigOut, EventIn, EventOccurrenceOut, EventOut, EventSnapshot, FeatureFlagsOut } from './api/schema.gen'
 import { Icon } from './icons'
 import { EventDateField, focusEventDateField } from './event-date-field'
-import { dateTimeFormat, t, useI18n } from './i18n'
+import { eventRange, localInput, shiftDay, useEventConfig } from './event-time'
+import { t, useI18n } from './i18n'
 import { MarkdownText } from './markdown'
 import { MarkdownField } from './markdown-field'
 import { Modal, Notice, Pagination, day, focusFormField, useAction, useFeatures } from './shared'
+
+export { eventRange, localInput, shiftDay, useEventConfig }
 
 export function EventFeatureGate({ children }: { children: ReactNode }) {
   const { t } = useI18n()
@@ -20,58 +23,11 @@ export function EventFeatureGate({ children }: { children: ReactNode }) {
   return children
 }
 
-export function useEventConfig() {
-  return useQuery({
-    queryKey: ['events', 'config'],
-    queryFn: ({ signal }) => api<EventConfigOut>('/events/config', 'GET', undefined, signal),
-  })
-}
-
 export function cacheEvent(value: EventOut) {
   const features = cache.getQueryData<FeatureFlagsOut>(['features'])
   if (features?.events === true) {
     cache.setQueryData(['events', 'item', value.id], features.actions ? value : { ...value, action: null })
   }
-}
-
-// Wall-clock time in the community zone as `YYYY-MM-DDTHH:mm:ss` for drafts and comparisons;
-// the fixed en-GB parts are parsed, never displayed.
-export function localInput(value: string, zone: string): string {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
-  }).formatToParts(new Date(value))
-  function part(type: Intl.DateTimeFormatPartTypes) {
-    const result = parts.find(part => part.type === type)?.value
-    if (!result) throw new Error(t('events.errors.unreadableDate'))
-    return result
-  }
-  return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}:${part('second')}`
-}
-
-export function shiftDay(value: string, days: number): string {
-  const date = new Date(`${value}T00:00:00Z`)
-  if (!value || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
-    throw new Error(t('events.errors.invalidDate'))
-  }
-  date.setUTCDate(date.getUTCDate() + days)
-  return date.toISOString().slice(0, 10)
-}
-
-export function eventRange(value: EventSnapshot, zone: string, compact = false): string {
-  if (value.all_day) {
-    if (!value.starts_on || !value.ends_on) throw new Error(t('events.errors.invalidInterval'))
-    const last = shiftDay(value.ends_on, -1)
-    if (last !== value.starts_on) return t('events.schedule.allDayRange', { start: day(value.starts_on), end: day(last) })
-    return compact ? t('events.schedule.allDay') : t('events.schedule.allDayOn', { date: day(value.starts_on) })
-  }
-  if (!value.starts_at || !value.ends_at) throw new Error(t('events.errors.invalidSchedule'))
-  const sameDay = localInput(value.starts_at, zone).slice(0, 10) === localInput(value.ends_at, zone).slice(0, 10)
-  const format = dateTimeFormat({
-    timeZone: zone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-    ...(compact && sameDay ? {} : { year: 'numeric', month: '2-digit', day: '2-digit' } as const),
-  })
-  return t('events.schedule.range', { start: format.format(new Date(value.starts_at)), end: format.format(new Date(value.ends_at)) })
 }
 
 export function EventActionLink({ value }: { value: EventSnapshot }) {
