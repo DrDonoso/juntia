@@ -1,7 +1,7 @@
 # Features
 
 Juntia is a private portal for **one** residential community. This page describes what each part
-does, for residents and for the technical administrator. Installation and operation are covered in
+does, for residents and for administrators. Installation and operation are covered in
 [deployment.md](deployment.md), settings in [configuration.md](configuration.md), and statement
 imports in [importing-statements.md](importing-statements.md).
 
@@ -12,6 +12,7 @@ All screenshots show synthetic data from the [demo](https://demo.juntia.drdonoso
 - [Roles](#roles)
 - [Navigation](#navigation)
 - [Languages](#languages)
+- [What's new](#whats-new)
 - [Finances](#finances)
 - [Actions](#actions)
 - [Events](#events)
@@ -26,17 +27,31 @@ All screenshots show synthetic data from the [demo](https://demo.juntia.drdonoso
 
 - **Residents** (neighbors) have invited accounts, each linked to one dwelling. They all read the
   same community finances (not a ledger filtered by dwelling), take part in Actions, Events,
-  Documents and Contacts, see the Neighbors directory and edit their own profile. They cannot change
-  finances, see statements or original bank PDFs, or manage accounts.
-- The **technical administrator** is a single account defined in the server configuration
-  (`ADMIN_USERNAME`, `ADMIN_PASSWORD`) that signs in at `/admin`. It imports and classifies the
-  finances and manages settings, dwellings, users, labels and storage. It can also open the
-  residents' pages and take part in actions, events, documents and contacts without a resident
-  account; everything it writes is shown as "Technical administrator", never with its username. It
-  cannot be edited or deleted from the application, and Google sign-in never grants it.
-- The **community president** is a designation for one active resident, shown with a medal. It
-  grants no extra permission.
+  Documents and Contacts, see the Neighbors directory and edit their own profile. Unless they are
+  administrators too, they cannot change finances, see statements or original bank PDFs, or manage
+  accounts.
+- **Administrators** are accounts with the administrator role. They open the
+  [administration](#administration) from the user menu to import and classify the finances and
+  manage settings, dwellings, users, labels and storage, and they can moderate what others wrote
+  (comments, PDFs, images and shared documents). An administrator may have no dwelling; one with a
+  dwelling, such as the president, is also a neighbor. Administrators take part in actions, events,
+  documents and contacts like everyone, under their own name.
+- The **community president** is a designation for one active neighbor, an account with a
+  dwelling, shown with a medal. It grants no extra permission.
 - Anonymous visitors only see the sign-in pages.
+
+**The first administrator.** A new installation has no accounts: the first person to open it gets
+**Create the administration account** instead of the sign-in, with their name, email and a password.
+It creates an administrator without a dwelling, signs it in and opens the administration. It is
+offered only while the installation has no accounts, and never on an installation upgraded from a
+release with a technical administrator (see [deployment](deployment.md#the-administration-account)).
+Then administrators invite the neighbors and give or take the role in [Users](#managing-users): at
+least one active administrator always remains, and nobody changes their own role. Only accounts
+with a dwelling appear in the Neighbors directory and can hold the presidency.
+
+Earlier releases had a single **technical administrator** defined in the server configuration,
+without an account. What it wrote keeps the author "Technical administrator", in each reader's
+language.
 
 ## Navigation
 
@@ -45,9 +60,11 @@ All screenshots show synthetic data from the [demo](https://demo.juntia.drdonoso
 - The administration sidebar groups **Finances** (Import, Classify transactions, Rules, Categories
   and tags, Manage statements), **Settings** (General, Features, Dwellings, Users, Community labels,
   Storage) and **Housekeeping** (Free up space, Deleted documents, Document reading, Deleted
-  contacts). **Community portal** opens the residents' pages with the same session.
-- The administration is not linked from the residents' navigation, on any screen size: open `/admin`
-  directly. Its sign-in and server-side authorization are independent of that.
+  contacts). **Community portal**, at its bottom, opens the residents' pages with the same session.
+- The administration is not linked from the residents' navigation, on any screen size:
+  administrators open it with **Administration** in the user menu. Signed out, `/admin` leads to the
+  sign-in, which returns there; for an account without the role it shows "Page not found.". The
+  server checks the role on every request, independently of that.
 - Old bookmarks such as `/admin/actions`, `/admin/actions/<id>`, `/admin/neighbors` and
   `/admin/contacts` redirect to the matching community pages, keeping filters and fragments;
   `/admin/contacts?deleted=1` redirects to `/admin/deleted-contacts`.
@@ -55,10 +72,11 @@ All screenshots show synthetic data from the [demo](https://demo.juntia.drdonoso
   space back to the page and the browser remembers the choice. At 720 pixels wide or less, the
   navigation starts closed and opens over the page; choosing a link, pressing Escape or clicking
   outside closes it.
-- The avatar at the top right opens **My profile**, the **Language** selector and **Sign out**. Next
-  to it are the **Hide amounts** button (residents' pages) and the light and dark theme button. The
-  navigation and the avatar menu work with the keyboard and return the focus when closed with
-  Escape.
+- The avatar at the top right opens the user menu: for administrators, **Administration** on the
+  community pages or **Community portal** on the administration pages; then **My profile**,
+  **What's new**, the **Language** selector and **Sign out**. Next to it are the **Hide amounts**
+  button (residents' pages) and the light and dark theme button. The navigation and the avatar menu
+  work with the keyboard and return the focus when closed with Escape.
 - Dialogs close with their **Close** button, Escape or a click outside them, except while they are
   saving or deleting something.
 
@@ -66,14 +84,26 @@ All screenshots show synthetic data from the [demo](https://demo.juntia.drdonoso
 
 - The interface is available in **English** and **Spanish**. The first visit follows the browser's
   preferred languages (the first English or Spanish one) and falls back to English.
-- Anyone can switch with the **Language** selector in the user menu and on the sign-in, password
-  recovery, account activation and administration sign-in screens. The choice is kept in that
-  browser, not in the account.
+- Anyone can switch with the **Language** selector in the user menu and on the sign-in, first-run,
+  password recovery and account activation screens. The choice is kept in that browser, not in the
+  account.
 - Dates, numbers, amounts and alphabetical sorting follow the chosen language (British English or
   Spanish conventions: day/month/year dates in both).
 - Texts people write, such as names, categories, labels and descriptions, are never translated.
 - Texts the server writes, such as emails and the defaults of a new installation, follow
   `APP_LANGUAGE` (see [configuration](configuration.md#language-and-time-zone)).
+
+## What's new
+
+- When someone opens Juntia after an update brought something they will notice, a **What's new**
+  window tells them in a couple of plain sentences, in their language: everything new since they
+  last looked (several updates together), new things first, each with a **Take me there** button
+  when it has a place in the app. Closing it counts the notes as read, on every device.
+- Accounts that have just joined start with nothing to catch up on, and only administrators see the
+  notes about the administration pages.
+- **What's new** in the avatar menu lists every note again, by month.
+- The notes ship with each version (nothing is fetched from outside the server); the server only
+  keeps which ones each account has read.
 
 ## Finances
 
@@ -141,10 +171,10 @@ three independent catalogs.
 until they are done. The section is on by default and can be turned off in
 [Features](#features-switches).
 
-**Who can do what.** Every active resident and the administrator can create an action, edit any
-action, change its status, comment, attach PDFs and paste images. Only the author of a comment or a
-PDF, or the administrator, can edit, rename or withdraw that contribution. None of this grants
-access to the finances' administration or to accounts.
+**Who can do what.** Every active account can create an action, edit any action, change its status,
+comment, attach PDFs and paste images. Only the author of a comment or a PDF, or an administrator,
+can edit, rename or withdraw that contribution. None of this grants access to the finances'
+administration or to accounts.
 
 **Content.** An action has a title (up to 200 characters), an optional description in Markdown (up
 to 20,000 characters) and up to 20 labels (up to 100 characters each). Comments accept up to 10,000
@@ -173,7 +203,7 @@ characters of Markdown. See [Markdown and images](#markdown-and-images).
 
 ### Labels
 
-Labels group actions by topic. A new label gets a color derived from its name, or the color the
+Labels group actions by topic. A new label gets a color derived from its name, or the color an
 administrator saves in [Community labels](#community-labels). Labels are reused across actions and
 are independent from financial tags and contact tags.
 
@@ -204,7 +234,7 @@ sites open in a new tab, and headings are shown smaller than the page's own head
   links and never loaded. Selecting an image shows it at full size in Juntia's viewer.
 - Images are visible to every member, like the text that shows them. Removing an image from the
   text does not delete it: earlier versions in the history may still show it, and it keeps counting
-  against the [storage quotas](deployment.md#storage-quotas-and-purging). Only the administrator
+  against the [storage quotas](deployment.md#storage-quotas-and-purging). Only administrators
   can delete an image permanently, in [Free up space](#free-up-space); the texts then show "Image
   not available".
 - Images in an action's texts follow the Actions switch, and images in event descriptions follow
@@ -220,15 +250,15 @@ sites open in a new tab, and headings are shown smaller than the page's own head
 - Each PDF may be up to **20 MiB** (20,971,520 bytes) and each action may have **20 active PDFs**.
   Scanned documents are fine; no parser, OCR or AI reads attachments. Only PDFs are accepted.
 - Each PDF also counts against the [storage quotas](deployment.md#storage-quotas-and-purging): a
-  per-resident and a community-wide budget, withdrawn PDFs included until the administrator purges
-  them.
+  per-person budget, administrators included, and a community-wide one, withdrawn PDFs included
+  until an administrator purges them.
 - The eye icon shows the PDF in Juntia's viewer, an authenticated preview on the portal's own
   address (on phones and tablets, and where the browser cannot show PDFs inside a page, in a new
-  tab); the download icon saves it. The author or the administrator can also rename it
+  tab); the download icon saves it. The author or an administrator can also rename it
   (the `.pdf` extension and the content are kept) and withdraw it.
 - PDF contents never change: to correct a document, upload a new one and withdraw the old one.
 - **Withdrawing** frees an active slot but **does not erase the file**: it stays visible and
-  downloadable to every member in the history, and keeps counting against the quotas, until the
+  downloadable to every member in the history, and keeps counting against the quotas, until an
   administrator deletes it permanently in [Free up space](#free-up-space). The interface warns
   about this before withdrawing. A permanently deleted PDF keeps its name, size and checksum in the
   history and is shown as "Permanently deleted", but it can no longer be opened or downloaded.
@@ -244,11 +274,12 @@ lines once); labels are compared one by one, and very large edits show both comp
 
 Each entry keeps the author's name **at that moment**: renaming, deactivating or deleting an
 account does not rewrite earlier entries, and account identifiers are never reused, so a new account
-with the same email gains no rights over older contributions. Times are shown in the browser's time
+with the same email gains no rights over older contributions. What the technical administrator of
+earlier releases wrote shows "Technical administrator". Times are shown in the browser's time
 zone.
 
 Actions are never deleted: discard them instead. There is no way to edit the history or delete
-content permanently, except the administrator's permanent deletion of a withdrawn PDF's file. Do
+content permanently, except an administrator's permanent deletion of a withdrawn PDF's file. Do
 not post content that may need to be erased later.
 
 **Concurrent edits.** If someone else saved first, your save is rejected instead of overwriting their
@@ -271,8 +302,8 @@ storage administration keep working.
 ## Events
 
 **Events** (`/events`) is the community's shared agenda. It is **off by default**: turn it on in
-[Features](#features-switches). Every active resident and the administrator can create, edit and
-delete any event; versions stop concurrent edits from overwriting each other.
+[Features](#features-switches). Every active account can create, edit and delete any event; versions
+stop concurrent edits from overwriting each other.
 
 ### Agenda
 
@@ -360,7 +391,7 @@ PDFs attached to actions.
   already in use gets a number, such as "Minutes (2).pdf". Accepted files are PDFs; JPG, PNG, GIF,
   WebP and HEIC pictures; Word, Excel and PowerPoint files and their OpenDocument equivalents,
   without macros; plain text and CSV; and phone videos (MP4, M4V, MOV). Each file may take 50 MiB
-  and each video 1 GiB by default; the administrator changes these sizes in
+  and each video 1 GiB by default; administrators change these sizes in
   [Storage](#storage). Files of other types, empty or too large are explained in the
   upload list without sending them.
 - **Uploads** shows the progress of each file. Uploads go on while you move around Juntia, and the
@@ -404,24 +435,23 @@ The **⋮** button at the top right of each card offers:
 - **Info**: type, size, location, who uploaded or created it and when, whether its text is
   searchable, its versions and its [history](#document-history).
 - **Delete**, in red, for those allowed to delete the item. After a confirmation it disappears for
-  everyone, with everything inside it; only the administrator can restore it or delete it
+  everyone, with everything inside it; only administrators can restore it or delete it
   permanently, in [Deleted documents](#deleted-documents).
 
 The menu works with the keyboard (arrows, Home, End and Escape) and only lists what you may do.
 
 ### Permissions
 
-Every neighbor and the administrator can create folders and upload files. Who can rename, move,
-upload new versions and delete is chosen in [Features](#features-switches), below the Documents
-switch:
+Every account can create folders and upload files. Who can rename, move, upload new versions and
+delete is chosen in [Features](#features-switches), below the Documents switch:
 
 - **Whoever created them** (default): each neighbor changes the files and folders they created. A
   folder can only be deleted by whoever created everything inside it.
-- **Only the technical administrator**: neighbors add files and folders, and only the administrator
-  changes or deletes them.
+- **Only administrators**: neighbors add files and folders, and only administrators change or
+  delete them.
 - **Every neighbor**: anyone changes or deletes any file or folder.
 
-The technical administrator can always change everything.
+Administrators can always change everything.
 
 ### Document history
 
@@ -440,11 +470,11 @@ keep working in the administration.
 
 ## Neighbors
 
-**Neighbors** (`/neighbors`) is the private directory of the community, for residents and the
-administrator:
+**Neighbors** (`/neighbors`) is the private directory of the community, for every account:
 
-- It lists the active residents' names, emails and phone numbers, grouped by dwelling. Pending and
-  deactivated accounts are not shown; dwellings without active residents still appear.
+- It lists the names, emails and phone numbers of the active accounts with a dwelling, grouped by
+  dwelling. Pending and deactivated accounts, and administrators without a dwelling, are not shown;
+  dwellings without active residents still appear.
 - Each email has a link and a copy button (with instructions to copy it manually when the browser
   does not allow it); phone numbers open the device's dialer. Juntia itself never sends messages or
   places calls. Your own card shows **You**.
@@ -456,7 +486,7 @@ administrator:
   and attic) are recognized, and other labels sort naturally.
 
 Phone numbers are optional. Residents add theirs in **My profile** (the form says it is visible to
-signed-in neighbors); the administrator can set them too. They accept 7 to 15 digits with an optional
+signed-in neighbors); administrators can set them too. They accept 7 to 15 digits with an optional
 leading `+`, and spaces, dots, hyphens and parentheses are removed. Numbers are not verified and are
 never used to sign in.
 
@@ -481,8 +511,9 @@ In **Settings > Dwellings**, **Arrange dwellings** lays the directory out like t
   accounts are never deleted.
 - Everything stays in a draft: **Preview** shows the directory as it will look, and **Save layout**
   publishes it for everyone. Cancelling or closing with changes asks before discarding them, and a
-  failed save keeps the draft. If another administrator session saved first, **Load saved version**
-  replaces your draft with it. Drafts are never stored in the browser.
+  failed save keeps the draft. If the layout was saved meanwhile, for example by another
+  administrator, **Load saved version** replaces your draft with it. Drafts are never stored in the
+  browser.
 - On narrow screens each zone scrolls sideways on its own. Touch dragging uses the handle, and the
   keyboard can drag with Space, the arrow keys and Escape.
 - After the first save, new or unplaced dwellings appear under **Other dwellings**. Renaming a
@@ -493,19 +524,21 @@ In **Settings > Dwellings**, **Arrange dwellings** lays the directory out like t
 ### Community president
 
 In **Settings > Users**, the **Presidency** card shows the current holder. **Change president**
-offers the active residents, by name and dwelling, and **Unassigned**; the confirmation describes
-the transfer. There is a single holder, and the designation belongs to the person, not the dwelling.
+offers the active neighbors, accounts with a dwelling, by name and dwelling, and **Unassigned**; the
+confirmation describes the transfer. There is a single holder, and the designation belongs to the
+person, not the dwelling.
 
-The presidency grants no permissions. Editing the holder's name, phone or dwelling keeps it;
-deactivating or deleting the holder, or changing their email, clears it (the confirmation warns
-first), and reactivating does not restore it. If two administrator sessions change it at once, the
-later change is rejected instead of overwriting the first.
+The presidency grants no permissions: the administration needs the administrator role.
+Editing the holder's name, phone or dwelling keeps it; deactivating or deleting the holder, or
+changing their email, clears it (the confirmation warns first), and so does leaving an
+administrator holder without a dwelling. Reactivating does not restore it. If two administrators
+change it at once, the later change is rejected instead of overwriting the first.
 
 ## Contacts
 
 **Contacts** (`/contacts`) is the community's shared address book of services and useful people,
-separate from the Neighbors directory, accounts and dwellings. Every active resident and the
-administrator can create, edit and delete any contact, whatever the state of the Actions switch.
+separate from the Neighbors directory, accounts and dwellings. Every active account can create, edit
+and delete any contact, whatever the state of the Actions switch.
 
 - A contact has a name (required) and a company or service (up to 150 characters each), one email
   and one phone (at least one of the two), plain-text notes (up to 20,000 characters) and up to 30
@@ -516,14 +549,14 @@ administrator can create, edit and delete any contact, whatever the state of the
   the search, sorting and page stay in the address. Narrow screens show cards instead of the table.
 - Clicking a name opens the contact's details with buttons to email or call (disabled when the
   channel is missing). The menu of each contact offers **Edit**, **History** and **Delete**.
-- Tags are created or reused when the contact is saved, with the same picker as financial tags. The
-  administrator renames and recolors them in [Community labels](#community-labels); tags cannot be
+- Tags are created or reused when the contact is saved, with the same picker as financial tags.
+  Administrators rename and recolor them in [Community labels](#community-labels); tags cannot be
   deleted globally.
 - **History** shows each change with its author, date and the values before and after, including tag
   names and colors.
 - **Deleting** a contact removes it from the address book but **keeps its details and history,
   readable by every member**; the confirmation says so. There is no restore or permanent erasure.
-  The administrator can browse removed contacts in [Deleted contacts](#deleted-contacts).
+  Administrators can browse removed contacts in [Deleted contacts](#deleted-contacts).
 
 <p align="center">
   <img src="screenshots/contacts.png" alt="Shared contacts address book" width="900"><br>
@@ -534,14 +567,17 @@ administrator can create, edit and delete any contact, whatever the state of the
 
 ### Invitations
 
-There is no public registration. In **Settings > Users**, **Invite user** takes a name, an email
-(unique, compared without case), a dwelling (create it first) and an optional phone number.
+There is no public registration: apart from the administration account of a new installation (see
+[roles](#roles)), every account starts with an invitation. In **Settings > Users**, **Invite user**
+takes a name, an email (unique, compared without case), an optional phone number, the
+**Administrator** checkbox and a dwelling (create it first). Only administrators may have **No
+dwelling**.
 
 - The email contains a single-use link, valid for **72 hours**, to choose a password or, when
-  configured, to continue with Google. It names the community. Resident passwords need at least 10
-  characters (at most 72 bytes; longer ones are rejected, not truncated).
+  configured, to continue with Google. It names the community. Passwords need at least 10
+  characters (at most 72 bytes; longer ones are rejected, not truncated), administrators' included.
 - The link carries its token after `#`, so it never reaches server logs; the page removes it from
-  the address bar, and it is used only when the resident saves a password or continues with Google.
+  the address bar, and it is used only when the person saves a password or continues with Google.
   If the page is reloaded before that, open the email again.
 - The users list shows each account's status (**Pending activation**, **Active**, **Deactivated**),
   the invitation state (**Not sent**, **Delivery pending**, **Accepted by SMTP**, **Delivery
@@ -553,31 +589,46 @@ There is no public registration. In **Settings > Users**, **Invite user** takes 
 
 ### Signing in and recovering a password
 
-Residents sign in at `/login` with their email and password, or with Google when it is linked.
+Everyone, administrators included, signs in at `/login` with their email and password, or with
+Google when it is linked, and gets the same kind of session; administrators then open the
+administration from the user menu. After signing in, Juntia returns to the page that asked for it,
+administration pages included.
 **Forgot your password?** sends a single-use link valid for **one hour** to active accounts only.
 The answer is the same whether the account exists or not, and the email is sent after answering so
 its timing reveals nothing. A reset signs the account out everywhere and cancels other links. The
 email is sent by the running process, not a durable queue: request another link if the server
 restarted meanwhile.
 
-Sign-in attempts are throttled per account and per client address.
+Sign-in attempts are throttled: 10 per email and 50 per client address every five minutes. An
+administrator's 10 attempts count per client address, so failures elsewhere never lock them out.
 
 ### Managing users
 
 - Sort the list by **User**, **Phone**, **Dwelling**, **Status** or **Last sign-in** (click again to
   reverse), and filter it by dwelling; the sorting stays in the address. Missing phones and
   **Never** stay last.
+- Administrators have an **Administrator** badge next to their name, and accounts without a
+  dwelling show **No dwelling**.
 - Editing the name or dwelling keeps the account. **Changing the email** signs the account out,
   cancels its links, removes its password, unlinks Google, clears the presidency and sends an
   invitation to the new address (when the account is reactivated, if it is deactivated).
+- **Administrator**, in the edit dialog, gives or takes the role. It applies at once, without
+  signing the person out: their browser notices within 30 seconds, or right after the server
+  refuses an administration request, and the administration page of someone who lost the role then
+  closes. A dwelling is required unless the account is an administrator, so taking the role from an
+  account without a dwelling needs a dwelling too.
+- At least one active administrator always remains: taking the role from the last one, or
+  deactivating, deleting or changing the email of that account, is refused. Nobody changes their own
+  role or email, or deactivates or deletes their own account: ask another administrator.
+  Administrators manage other administrators like any account.
 - **Deactivate** signs the account out and cancels its links immediately. **Reactivate** lets an
   activated account sign in again without restoring old sessions; accounts never activated get a new
   invitation.
 - **Delete user** asks you to type the account's email, then permanently deletes the account with its
-  sessions, links and Google link. The dwelling, the finances and the other residents stay, and so
-  do the actions, comments, PDFs and history the person wrote, under the name they had. To start
-  over with the same email, invite it again: the new account starts pending, with no history and no
-  access to the old one. Dwellings cannot be deleted.
+  sessions, links and Google link. Its dwelling, if any, the finances and the other accounts stay,
+  and so do the actions, comments, PDFs and history the person wrote, under the name they had. To
+  start over with the same email, invite it again: the new account starts pending, with no history
+  and no access to the old one. Dwellings cannot be deleted.
 
 <p align="center">
   <img src="screenshots/users.png" alt="Administration users page" width="900"><br>
@@ -586,17 +637,18 @@ Sign-in attempts are throttled per account and per client address.
 
 ### My profile
 
-The avatar menu opens **My profile**:
+The avatar menu opens **My profile**, for every account, administrators included:
 
-- Residents edit their name and contact phone, and see their email, dwelling, ownership coefficient
-  (when the feature is on) and last sign-in. The administrator manages the email and dwelling.
+- The header says **Neighbor account**, **Neighbor and administrator account** or, for an
+  administrator without a dwelling, **Administrator account**.
+- Everyone edits their name and contact phone, and sees their email, dwelling (**None** without
+  one), ownership coefficient (when the feature is on and the account has a dwelling) and last
+  sign-in. Administrators manage the email and dwelling in [Users](#managing-users).
 - **Change password** needs the current password and signs the account out on every device,
   cancelling any recovery link. **Sign out of all my sessions** does the same without changing the
   password.
-- **Link Google** and **Unlink Google** manage Google sign-in (see below). Residents who only use
+- **Link Google** and **Unlink Google** manage Google sign-in (see below). Accounts that only use
   Google can request a link to create a **Local password**.
-- For the technical administrator, the profile is informational: its credentials live in the server
-  configuration.
 
 ### Google sign-in
 
@@ -605,25 +657,28 @@ membership. Configure it as described in [configuration](configuration.md#google
 
 - On the invitation page, **Continue with Google** requires a Google account with the same verified
   email and consumes the invitation. The account takes its name from the Google profile (given name
-  and family name, or the full name) when it is valid, and keeps the administrator's name otherwise.
-  Residents can change it in **My profile**; later sign-ins never overwrite it.
-- Existing residents sign in with their password and choose **Link Google** in **My profile**,
-  confirming their current password. Matching emails alone never link accounts.
+  and family name, or the full name) when it is valid, and keeps the name given in the invitation
+  otherwise. Everyone can change it in **My profile**; later sign-ins never overwrite it.
+- Existing accounts, administrators included, sign in with their password and choose **Link
+  Google** in **My profile**, confirming their current password. Matching emails alone never link
+  accounts.
 - Later Google sign-ins match the linked Google account and require the account's current email.
   Another Google account, an address that was never invited, a deactivated account, an expired
-  invitation or a revoked link get no access, and Google never grants the administration.
+  invitation or a revoked link get no access. Google never grants a role: an account linked to
+  Google opens the administration only while it has the administrator role. An administrator, like
+  anyone, may also sign in with Google alone, without a password.
 - **Unlink Google** requires a local password and signs the account out.
 - Juntia asks Google only for `openid email profile`, loads no Google script on its pages and keeps
   no Google token. An attempt expires after ten minutes and belongs to the browser that started it.
-- Sign out of the administration before using Google as a resident in the same browser. Google may
-  refuse embedded browsers inside other apps (`disallowed_useragent`): use a regular browser.
+- Google may refuse embedded browsers inside other apps (`disallowed_useragent`): use a regular
+  browser.
 - Removing the configuration hides the Google button without deleting links or signing anyone out.
 
 ## Administration
 
-The technical administrator manages the community at `/admin`. Finances are described
-[above](#finances-in-the-administration); users and the presidency in
-[accounts and sign-in](#accounts-and-sign-in) and [Neighbors](#community-president).
+Administrators manage the community at `/admin`, which they open with **Administration** in the
+user menu. Finances are described [above](#finances-in-the-administration); users and the
+presidency in [accounts and sign-in](#accounts-and-sign-in) and [Neighbors](#community-president).
 
 ### General
 
@@ -642,7 +697,7 @@ rebuilding anything:
 - **Documents** (off by default): see [turning Documents off](#turning-documents-off). Once it is on,
   **Who can change shared documents** appears below it: see [permissions](#permissions).
 
-Each switch saves immediately and only the administrator can change it. The values live in the
+Each switch saves immediately and only administrators can change it. The values live in the
 database, so they survive restarts and backups, and the server applies them on the next request. Open
 pages notice within a few seconds (and when they regain focus). Turning a feature off never deletes
 its data.
@@ -650,8 +705,8 @@ its data.
 ### Dwellings and ownership coefficients
 
 **Dwellings** lists the community's homes and how many accounts each has. Create them before
-inviting residents: each account belongs to exactly one dwelling, and a dwelling can have several.
-Dwellings cannot be deleted.
+inviting residents: each resident's account belongs to exactly one dwelling (administrators may
+have none), and a dwelling can have several accounts. Dwellings cannot be deleted.
 
 When **Ownership coefficients** is on, each dwelling has a coefficient from 0 to 100 with up to two
 decimals, shared by its accounts and shown to them in **My profile**. Coefficients are informational:
@@ -683,9 +738,12 @@ images pasted into descriptions and comments and the shared documents use, and s
 shared documents:
 
 - **Community**: the total against the community quota, with active and withdrawn PDFs and images;
-- **Technical administrator**: its PDFs and images, which count only towards the community quota;
+- **Technical administrator**: the PDFs and images that the technical administrator of earlier
+  releases uploaded, which count only towards the community quota; it appears only while some
+  remain;
 - **Documents**: shared documents have their own quotas. The card shows current files, earlier
-  versions, deleted documents not yet purged, the administrator's uploads and unfinished uploads;
+  versions, deleted documents not yet purged and unfinished uploads, plus **Uploaded by the
+  technical administrator** while files of the technical administrator of earlier releases remain;
 - **Server disk**: the free space against the reserve kept for uploads and imports;
 - **Shared documents limits**: the largest file and video that can be uploaded to
   [Documents](#documents) and the documents quotas per neighbor and for the community. Each has a
@@ -693,10 +751,10 @@ shared documents:
   size in MiB, which moves the slider; the (i) next to each name explains it on hover, focus or tap.
   **Save limits** applies them at once to new uploads, and the page warns when a quota is below
   what is already stored. **Change the limits**, on the Documents card, leads here.
-- **Storage by neighbor**: each resident, deleted accounts included, against the personal quota of
-  PDFs and images and against the documents quota, with the number of document versions they keep.
-  The neighbors using the most space come first; each column header sorts by that column, and a
-  second click reverses it.
+- **Storage by neighbor**: each person who stored files, administrators and deleted accounts
+  included, against the personal quota of PDFs and images and against the documents quota, with the
+  number of document versions they keep. Everyone has the same quotas. The people using the most
+  space come first; each column header sorts by that column, and a second click reverses it.
 
 The action quotas and the reserve are server settings; the quotas, the reserve and the permanent
 deletion (purge) are explained in [storage quotas and purging](deployment.md#storage-quotas-and-purging)
@@ -713,7 +771,7 @@ and, for documents, in [shared documents](deployment.md#shared-documents).
 documents: **Free up space**, [Deleted documents](#deleted-documents),
 [Document reading](#document-reading) and [Deleted contacts](#deleted-contacts).
 
-**Free up space** (`/admin/cleanup`) lists the files that stay on the server until the
+**Free up space** (`/admin/cleanup`) lists the files that stay on the server until an
 administrator deletes them permanently, each list 5 per page with a box that finds files by name,
 ignoring capitals and accents. Previews open in the same viewer as in [Documents](#folders-and-files):
 

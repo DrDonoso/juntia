@@ -1,6 +1,5 @@
 import { useId, useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router'
 import { api, cache, clearPrivateData, errorMessage, signedOut } from './api/client'
 import type { GoogleStartOut, ProfileOut, UserAuthOut } from './api/schema.gen'
 import { useLoginNotice, useReaderAuth, type LoginNotice } from './auth'
@@ -118,7 +117,7 @@ function SessionsCard({ finish }: { finish: FinishSecurityAction }) {
   </section>
 }
 
-function ResidentProfile({ userId }: { userId: number }) {
+function AccountProfile({ userId }: { userId: number }) {
   const { t } = useI18n()
   const { setNotice } = useLoginNotice()
   const features = useFeatures()
@@ -128,7 +127,6 @@ function ResidentProfile({ userId }: { userId: number }) {
     setNotice(notice)
     await clearPrivateData(true)
     cache.setQueryData(['reader-auth'], signedOut)
-    cache.setQueryData(['auth'], { authenticated: false, username: null })
   }
   if (query.isPending) return <Notice>{t('accounts.profile.loading')}</Notice>
   if (query.error) return <Notice error>{errorMessage(query.error)}</Notice>
@@ -136,15 +134,17 @@ function ResidentProfile({ userId }: { userId: number }) {
   return <div className="profile-layout">
     <section className="card"><header className="profile-identity">
       <span className="profile-avatar" aria-hidden="true">{profileInitials(profile.name)}</span>
-      <div><h2>{profile.name}</h2><p className="muted">{t('accounts.profile.neighborAccount')}</p></div>
+      <div><h2>{profile.name}</h2><p className="muted">{profile.administrator
+        ? profile.dwelling_id === null ? t('accounts.profile.administratorAccount') : t('accounts.profile.administratorNeighborAccount')
+        : t('accounts.profile.neighborAccount')}</p></div>
     </header>
       <PersonalDetailsForm key={profile.id} profile={profile} />
       <h3>{t('accounts.profile.account.title')}</h3>
       {features.error && <Notice error>{errorMessage(features.error)}</Notice>}
       <dl className="profile-details">
         <dt>{t('accounts.profile.account.email')}</dt><dd>{profile.email}</dd>
-        <dt>{t('accounts.profile.account.dwelling')}</dt><dd>{profile.dwelling_label}</dd>
-        {coefficientEnabled && <><dt>{t('accounts.profile.account.coefficient')}</dt><dd className="nowrap">{coefficientPercent(profile.coefficient)}</dd></>}
+        <dt>{t('accounts.profile.account.dwelling')}</dt><dd>{profile.dwelling_label ?? t('accounts.profile.account.noDwelling')}</dd>
+        {coefficientEnabled && profile.dwelling_id !== null && <><dt>{t('accounts.profile.account.coefficient')}</dt><dd className="nowrap">{coefficientPercent(profile.coefficient)}</dd></>}
         <dt>{t('accounts.profile.account.lastSignIn')}</dt><dd>{profile.last_login_at ? <time dateTime={profile.last_login_at}>{connectionTime(profile.last_login_at)}</time> : t('common.never')}</dd>
       </dl>
       <p className="muted">{coefficientEnabled ? t('accounts.profile.account.managedWithCoefficient') : t('accounts.profile.account.managed')} {t('accounts.profile.account.lastSignInHelp')}</p>
@@ -165,16 +165,8 @@ export function ProfilePage() {
   return <><div className="page-heading"><div><p className="eyebrow">{t('accounts.profile.eyebrow')}</p><h1>{t('accounts.profile.title')}</h1>
     <p className="muted">{t('accounts.profile.description')}</p></div></div>
     <GoogleResult />
-    {identity?.kind === 'administrator'
-      ? <section className="card technical-profile"><header className="profile-identity">
-        <span className="profile-avatar" aria-hidden="true">{profileInitials(identity.name || t('accounts.profile.technical.fallbackName'))}</span>
-        <div><h2>{identity.name}</h2><p className="muted">{t('accounts.profile.technical.role')}</p></div>
-      </header>
-        <p>{t('accounts.profile.technical.help')}</p>
-        <Link to="/admin" className="button secondary">{t('accounts.profile.technical.back')}</Link>
-      </section>
-      : identity?.kind === 'resident' && identity.user_id !== null
-        ? <ResidentProfile key={identity.user_id} userId={identity.user_id} />
-        : <Notice error>{t('accounts.profile.unidentified')}</Notice>}
+    {identity?.authenticated && identity.user_id !== null
+      ? <AccountProfile key={identity.user_id} userId={identity.user_id} />
+      : <Notice error>{t('accounts.profile.unidentified')}</Notice>}
   </>
 }

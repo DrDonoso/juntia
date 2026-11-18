@@ -1,12 +1,12 @@
 /**
  * Shared documents (src/juntia/community_documents.py): folders and files that every member reads
  * and downloads, kept in memory with their bytes. Anyone adds folders and files; who may rename,
- * move, replace (upload a new version of) and delete an item follows the administrator's policy:
- * whoever created it, only the administrator, or everyone, and the administrator always may.
- * Deleting hides an item, and everything inside a folder, as one deletion that only the
- * administrator sees, restores or purges. Every item keeps a history of who created, uploaded,
- * renamed, moved, deleted, restored and purged it. Files arrive in resumable chunks of at most
- * 4 MiB, within the largest file and video sizes and the byte quotas the administrator sets.
+ * move, replace (upload a new version of) and delete an item follows the administrators' policy:
+ * whoever created it, only administrators, or everyone, and administrators always may. Deleting
+ * hides an item, and everything inside a folder, as one deletion that only administrators see,
+ * restore or purge. Every item keeps a history of who created, uploaded, renamed, moved, deleted,
+ * restored and purged it. Files arrive in resumable chunks of at most 4 MiB, within the largest
+ * file and video sizes and the byte quotas administrators set, which every uploader has.
  *
  * The handlers parse a request and call an operation, which checks the rest in the backend's
  * order. The data of a page load replays ../scenario/shared-documents.ts through the same
@@ -22,10 +22,11 @@ import { DemoApiError } from '../core/errors'
 import { IdSequence } from '../core/ids'
 import { paginate } from '../core/pagination'
 import { demoRandom, type Random } from '../core/random'
+import type { DemoActor } from '../core/session'
 import { MAX_ID, characterCount } from '../core/validation'
 import { zipArchive, type ZipEntry, type ZipTime } from '../core/zip'
 import { sharedDocumentsScenario } from '../scenario/shared-documents'
-import { actorOut, compareText } from './community-model'
+import { actorOut, authorship, compareText } from './community-model'
 import { sha256Hex } from './community-sha256'
 import { foldText } from './community-text'
 import { wallClock } from './community-time'
@@ -55,10 +56,10 @@ export const DEFAULT_DOCUMENT_SETTINGS: Readonly<DocumentSettings> = {
   manage_policy: 'creator', max_file_mb: 50, max_video_mb: 1024, user_quota_mb: 2048, community_quota_mb: 20480,
 }
 
-/** The largest file or video limit the administrator may choose, 10 GiB: a single file always fits in a ZIP download. */
+/** The largest file or video limit an administrator may choose, 10 GiB: a single file always fits in a ZIP download. */
 export const DOCUMENT_SIZE_LIMIT_MB = 10 * 1024
 
-/** The largest quota the administrator may choose, 10 TiB. */
+/** The largest quota an administrator may choose, 10 TiB. */
 export const DOCUMENT_QUOTA_LIMIT_MB = 10 * 1024 * 1024
 
 export const ARCHIVE_MAX_ITEMS = 100
@@ -184,7 +185,7 @@ export interface DemoDocumentUpload {
 }
 
 export interface SharedDocumentsState {
-  /** The administrator's policy and limits, which apply at once to browsing, uploads and quotas. */
+  /** The administrators' policy and limits, which apply at once to browsing, uploads and quotas. */
   settings: DocumentSettings
   folders: DemoDocumentFolder[]
   documents: DemoDocument[]
@@ -216,7 +217,7 @@ export type SharedDocumentChange =
   | { remove: string }
 
 /** A dated change of the scenario, and who made it. */
-export type SharedDocumentStep = { at: string; by: ActorOut } & SharedDocumentChange
+export type SharedDocumentStep = { at: string; by: DemoActor } & SharedDocumentChange
 
 let state: SharedDocumentsState | null = null
 
@@ -240,7 +241,7 @@ function parentOf(item: Item): number | null {
   return isFolder(item) ? item.parentId : item.folderId
 }
 
-function owns(item: { author: ActorOut }, actor: ActorOut): boolean {
+function owns(item: { author: ActorOut }, actor: DemoActor): boolean {
   return item.author.kind === actor.kind && item.author.user_id === actor.user_id
 }
 
@@ -351,13 +352,13 @@ function subtree(documents: SharedDocumentsState, root: DemoDocumentFolder): { f
 
 // --- Permissions ---
 
-/** `may_manage`: rename, move, replace and delete, following the policy; the administrator always may. */
-export function mayManage(item: { author: ActorOut }, actor: ActorOut, policy: DocumentPolicy): boolean {
-  if (actor.kind === 'administrator' || policy === 'everyone') return true
+/** `may_manage`: rename, move, replace and delete, following the policy; administrators always may. */
+export function mayManage(item: { author: ActorOut }, actor: DemoActor, policy: DocumentPolicy): boolean {
+  if (actor.administrator || policy === 'everyone') return true
   return policy === 'creator' && owns(item, actor)
 }
 
-function requireManage(item: { author: ActorOut }, actor: ActorOut, policy: DocumentPolicy): void {
+function requireManage(item: { author: ActorOut }, actor: DemoActor, policy: DocumentPolicy): void {
   if (!mayManage(item, actor, policy)) throw new DemoApiError('document_permission_required', 403)
 }
 
@@ -376,7 +377,7 @@ interface Stats {
 }
 
 /** Everything active inside a folder, at any depth: files, their current versions' bytes and folders. */
-function folderStats(documents: SharedDocumentsState, folder: DemoDocumentFolder, actor: ActorOut): Stats {
+function folderStats(documents: SharedDocumentsState, folder: DemoDocumentFolder, actor: DemoActor): Stats {
   const stats: Stats = { files: 0, folders: 0, size: 0, owned: true }
   for (const document of folderFiles(documents, folder.id)) {
     stats.files += 1
@@ -393,19 +394,19 @@ function folderStats(documents: SharedDocumentsState, folder: DemoDocumentFolder
   return stats
 }
 
-export function folderOut(documents: SharedDocumentsState, folder: DemoDocumentFolder, actor: ActorOut): DocumentFolderOut {
+export function folderOut(documents: SharedDocumentsState, folder: DemoDocumentFolder, actor: DemoActor): DocumentFolderOut {
   const stats = folderStats(documents, folder, actor)
   const manage = mayManage(folder, actor, documents.settings.manage_policy)
   return {
     id: folder.id, parent_id: folder.parentId, name: folder.name, version: folder.version, author: actorOut(folder.author),
     created_at: folder.createdAt, updated_at: folder.updatedAt, file_count: stats.files, folder_count: stats.folders,
     size: stats.size, can_manage: manage,
-    // Under the "creator" policy a resident deletes a folder only if they created all it holds.
-    can_delete: manage && (actor.kind === 'administrator' || documents.settings.manage_policy !== 'creator' || stats.owned),
+    // Under the "creator" policy someone who is not an administrator deletes a folder only if they created all it holds.
+    can_delete: manage && (actor.administrator || documents.settings.manage_policy !== 'creator' || stats.owned),
   }
 }
 
-export function folderInfo(documents: SharedDocumentsState, folder: DemoDocumentFolder, actor: ActorOut): DocumentFolderInfoOut {
+export function folderInfo(documents: SharedDocumentsState, folder: DemoDocumentFolder, actor: DemoActor): DocumentFolderInfoOut {
   return {
     ...folderOut(documents, folder, actor), location: refs(folderPath(documents, folder.parentId)),
     deleted_at: null, deleted_by: null, purged_at: null,
@@ -419,7 +420,7 @@ export function versionOut(version: DemoDocumentVersion): DocumentVersionOut {
   }
 }
 
-export function documentOut(documents: SharedDocumentsState, document: DemoDocument, actor: ActorOut): DocumentOut {
+export function documentOut(documents: SharedDocumentsState, document: DemoDocument, actor: DemoActor): DocumentOut {
   const current = currentVersion(documents, document)
   return {
     id: document.id, folder_id: document.folderId, name: document.name, kind: document.kind,
@@ -430,7 +431,7 @@ export function documentOut(documents: SharedDocumentsState, document: DemoDocum
   }
 }
 
-export function documentInfo(documents: SharedDocumentsState, document: DemoDocument, actor: ActorOut): DocumentInfoOut {
+export function documentInfo(documents: SharedDocumentsState, document: DemoDocument, actor: DemoActor): DocumentInfoOut {
   const deletion = document.deletionId === null ? undefined : documents.deletions.find(item => item.id === document.deletionId)
   return {
     ...documentOut(documents, document, actor), location: refs(folderPath(documents, document.folderId)),
@@ -563,7 +564,7 @@ export function historyPage(documents: SharedDocumentsState, item: Item, page: n
   return { ...info, items: items.map(eventOut) }
 }
 
-/** `limits`: the fixed limits, and the largest file and video the administrator chose. */
+/** `limits`: the fixed limits, and the largest file and video administrators chose. */
 export function documentLimits(settings: DocumentSettings): DocumentLimitsOut {
   return {
     extensions: [...DOCUMENT_TYPES.keys()].sort(), video_extensions: [...VIDEO_EXTENSIONS], max_file_bytes: settings.max_file_mb * MIB,
@@ -573,7 +574,7 @@ export function documentLimits(settings: DocumentSettings): DocumentLimitsOut {
 }
 
 /** `browse`: a folder (null: the top level), the path to it and its folders and files. */
-export function browse(documents: SharedDocumentsState, folderId: number | null, actor: ActorOut): DocumentBrowseOut {
+export function browse(documents: SharedDocumentsState, folderId: number | null, actor: DemoActor): DocumentBrowseOut {
   const folder = folderId === null ? null : activeFolder(documents, folderId)
   return {
     folder: folder && folderOut(documents, folder, actor), path: refs(folderPath(documents, folderId)),
@@ -606,7 +607,7 @@ function searchOrder(sort: DocumentSort, size: (item: Item) => number): (a: Item
  * folders first; then the files whose text contains it, with the words around the first place.
  */
 export function searchDocuments(
-  documents: SharedDocumentsState, q: string, sort: DocumentSort, page: number, actor: ActorOut,
+  documents: SharedDocumentsState, q: string, sort: DocumentSort, page: number, actor: DemoActor,
 ): DocumentSearchPage {
   const needle = foldText(q.trim())
   // The text is kept on one line with single spaces.
@@ -641,17 +642,17 @@ export function uploadOut(upload: DemoDocumentUpload): DocumentUploadOut {
 
 // --- History ---
 
-function record(documents: SharedDocumentsState, actor: ActorOut, kind: DocumentEventKind, item: Item, at: string, details: DocumentEventDetails): void {
+function record(documents: SharedDocumentsState, actor: DemoActor, kind: DocumentEventKind, item: Item, at: string, details: DocumentEventDetails): void {
   documents.events.push({
     id: documents.sequences.event.next(), folderId: isFolder(item) ? item.id : null, documentId: isFolder(item) ? null : item.id,
-    kind, author: { ...actor }, createdAt: at, details,
+    kind, author: authorship(actor), createdAt: at, details,
   })
 }
 
 // --- Folders and files ---
 
 /** `create_folder`: anyone adds a folder, at most ten levels deep. */
-export function createFolder(documents: SharedDocumentsState, actor: ActorOut, name: string, parentId: number | null, at: string): DemoDocumentFolder {
+export function createFolder(documents: SharedDocumentsState, actor: DemoActor, name: string, parentId: number | null, at: string): DemoDocumentFolder {
   const checked = checkedName(name)
   let above: DemoDocumentFolder[] = []
   if (parentId !== null) {
@@ -662,7 +663,7 @@ export function createFolder(documents: SharedDocumentsState, actor: ActorOut, n
   requireRoom(documents, parentId)
   requireFreeName(documents, parentId, checked)
   const folder: DemoDocumentFolder = {
-    id: documents.sequences.folder.next(), parentId, name: checked, author: { ...actor }, version: 1, createdAt: at, updatedAt: at,
+    id: documents.sequences.folder.next(), parentId, name: checked, author: authorship(actor), version: 1, createdAt: at, updatedAt: at,
     deletedAt: null, deletionId: null, purgedAt: null,
   }
   documents.folders.push(folder)
@@ -681,7 +682,7 @@ export interface ItemEdit {
 
 /** Renames and moves an item that passed the checks, with their history entries. */
 function applyEdit(
-  documents: SharedDocumentsState, actor: ActorOut, item: Item, name: string, destination: number | null,
+  documents: SharedDocumentsState, actor: DemoActor, item: Item, name: string, destination: number | null,
   moved: { before: DemoDocumentFolder[]; after: DemoDocumentFolder[] } | null, at: string,
 ): void {
   if (name !== item.name) record(documents, actor, 'renamed', item, at, { previous_name: item.name, name })
@@ -694,7 +695,7 @@ function applyEdit(
 }
 
 /** `edit_folder`: a new name or another place, never inside itself nor deeper than ten levels. */
-export function editFolder(documents: SharedDocumentsState, actor: ActorOut, folderId: number, edit: ItemEdit, at: string): DemoDocumentFolder {
+export function editFolder(documents: SharedDocumentsState, actor: DemoActor, folderId: number, edit: ItemEdit, at: string): DemoDocumentFolder {
   const folder = activeFolder(documents, folderId)
   if (folder.version !== edit.version) throw stale()
   requireManage(folder, actor, documents.settings.manage_policy)
@@ -719,7 +720,7 @@ export function editFolder(documents: SharedDocumentsState, actor: ActorOut, fol
 }
 
 /** `edit_file`: a new name (its extension, and so its type, never changes) or another folder. */
-export function editDocument(documents: SharedDocumentsState, actor: ActorOut, documentId: number, edit: ItemEdit, at: string): DemoDocument {
+export function editDocument(documents: SharedDocumentsState, actor: DemoActor, documentId: number, edit: ItemEdit, at: string): DemoDocument {
   const document = activeDocument(documents, documentId)
   if (document.version !== edit.version) throw stale()
   requireManage(document, actor, documents.settings.manage_policy)
@@ -741,14 +742,14 @@ export function editDocument(documents: SharedDocumentsState, actor: ActorOut, d
   return document
 }
 
-/** `delete_items`: hides the item and everything in it as one deletion, which the administrator can undo. */
+/** `delete_items`: hides the item and everything in it as one deletion, which administrators can undo. */
 function deleteItems(
-  documents: SharedDocumentsState, actor: ActorOut, root: Item, folders: readonly DemoDocumentFolder[], files: readonly DemoDocument[], at: string,
+  documents: SharedDocumentsState, actor: DemoActor, root: Item, folders: readonly DemoDocumentFolder[], files: readonly DemoDocument[], at: string,
 ): void {
   const location = folderNames(folderPath(documents, parentOf(root)))
   const deletion: DemoDocumentDeletion = {
     id: documents.random.uuid(), folderId: isFolder(root) ? root.id : null, documentId: isFolder(root) ? null : root.id,
-    name: root.name, location, author: { ...actor }, createdAt: at, restoredAt: null, purgedAt: null,
+    name: root.name, location, author: authorship(actor), createdAt: at, restoredAt: null, purgedAt: null,
   }
   documents.deletions.push(deletion)
   for (const item of [...folders, ...files]) {
@@ -759,19 +760,19 @@ function deleteItems(
   }
 }
 
-/** `delete_folder`: under the "creator" policy a resident deletes only a folder whose whole content they created. */
-export function deleteFolder(documents: SharedDocumentsState, actor: ActorOut, folderId: number, expected: number, at: string): void {
+/** `delete_folder`: under the "creator" policy, a folder holding anything someone else created only administrators delete. */
+export function deleteFolder(documents: SharedDocumentsState, actor: DemoActor, folderId: number, expected: number, at: string): void {
   const folder = activeFolder(documents, folderId)
   if (folder.version !== expected) throw stale()
   requireManage(folder, actor, documents.settings.manage_policy)
   const { folders, files } = subtree(documents, folder)
-  if (actor.kind !== 'administrator' && documents.settings.manage_policy === 'creator' && ![...folders, ...files].every(item => owns(item, actor))) {
+  if (!actor.administrator && documents.settings.manage_policy === 'creator' && ![...folders, ...files].every(item => owns(item, actor))) {
     throw new DemoApiError('document_folder_not_owned', 403)
   }
   deleteItems(documents, actor, folder, folders, files, at)
 }
 
-export function deleteDocument(documents: SharedDocumentsState, actor: ActorOut, documentId: number, expected: number, at: string): void {
+export function deleteDocument(documents: SharedDocumentsState, actor: DemoActor, documentId: number, expected: number, at: string): void {
   const document = activeDocument(documents, documentId)
   if (document.version !== expected) throw stale()
   requireManage(document, actor, documents.settings.manage_policy)
@@ -784,13 +785,12 @@ function totalSize(versions: readonly DemoDocumentVersion[]): number {
   return versions.reduce((sum, version) => sum + version.size, 0)
 }
 
-/** `check_quota`: the uploader's budget (residents only), then the community's, as the administrator set them now. */
-export function checkDocumentQuota(documents: SharedDocumentsState, actor: ActorOut, size: number): void {
+/** `check_quota`: the uploader's budget (every account's, administrators included), then the community's, as set now. */
+export function checkDocumentQuota(documents: SharedDocumentsState, actor: DemoActor, size: number): void {
   const stored = documents.versions.filter(version => version.purgedAt === null)
   const { user_quota_mb, community_quota_mb } = documents.settings
-  if (actor.kind === 'resident' && actor.user_id !== null) {
-    const own = stored.filter(version => version.author.kind === 'resident' && version.author.user_id === actor.user_id)
-    if (totalSize(own) + size > user_quota_mb * MIB) throw new DemoApiError('document_storage_user_quota', 409)
+  if (totalSize(stored.filter(version => owns(version, actor))) + size > user_quota_mb * MIB) {
+    throw new DemoApiError('document_storage_user_quota', 409)
   }
   if (totalSize(stored) + size > community_quota_mb * MIB) throw new DemoApiError('document_storage_community_quota', 409)
 }
@@ -821,7 +821,7 @@ function discard(documents: SharedDocumentsState, upload: DemoDocumentUpload): v
 }
 
 /** `create_upload`: starts an upload, or finds the one already started with this id; its chunks follow. */
-export function startUpload(documents: SharedDocumentsState, actor: ActorOut, input: UploadInput, at: string): DemoDocumentUpload {
+export function startUpload(documents: SharedDocumentsState, actor: DemoActor, input: UploadInput, at: string): DemoDocumentUpload {
   const { name, extension } = uploadName(input.name)
   if (input.size === 0) throw new DemoApiError('document_file_empty', 422)
   const { max_file_mb, max_video_mb } = documents.settings
@@ -850,7 +850,7 @@ export function startUpload(documents: SharedDocumentsState, actor: ActorOut, in
   for (const upload of [...documents.uploads.filter(item => expired(item, at)), ...open.slice(MAX_OPEN_UPLOADS - 1)]) discard(documents, upload)
   const upload: DemoDocumentUpload = {
     id: input.uploadId, folderId: input.folderId, documentId: input.documentId, name, extension, size: input.size, received: 0,
-    chunks: [], author: { ...actor }, createdAt: at, updatedAt: at, expiresAt: at, activity: 0,
+    chunks: [], author: authorship(actor), createdAt: at, updatedAt: at, expiresAt: at, activity: 0,
   }
   touch(documents, upload, at)
   documents.uploads.push(upload)
@@ -858,7 +858,7 @@ export function startUpload(documents: SharedDocumentsState, actor: ActorOut, in
 }
 
 /** One's own upload, while it has not expired (404 `document_upload_not_found`). */
-export function ownUpload(documents: SharedDocumentsState, actor: ActorOut, uploadId: string, at: string): DemoDocumentUpload {
+export function ownUpload(documents: SharedDocumentsState, actor: DemoActor, uploadId: string, at: string): DemoDocumentUpload {
   const upload = documents.uploads.find(item => item.id === uploadId)
   if (!upload || !owns(upload, actor) || expired(upload, at)) throw new DemoApiError('document_upload_not_found', 404)
   return upload
@@ -866,7 +866,7 @@ export function ownUpload(documents: SharedDocumentsState, actor: ActorOut, uplo
 
 /** `upload_chunk`: the next bytes of an upload, starting where the received ones end. */
 export function receiveChunk(
-  documents: SharedDocumentsState, actor: ActorOut, uploadId: string, offset: number, data: Uint8Array<ArrayBuffer>, at: string,
+  documents: SharedDocumentsState, actor: DemoActor, uploadId: string, offset: number, data: Uint8Array<ArrayBuffer>, at: string,
 ): DemoDocumentUpload {
   const upload = ownUpload(documents, actor, uploadId, at)
   if (offset !== upload.received) throw new DemoApiError('document_upload_offset', 409)
@@ -878,7 +878,7 @@ export function receiveChunk(
 }
 
 /** `cancel_upload`: cancelling an unknown upload succeeds, someone else's is not found. */
-export function cancelUpload(documents: SharedDocumentsState, actor: ActorOut, uploadId: string): void {
+export function cancelUpload(documents: SharedDocumentsState, actor: DemoActor, uploadId: string): void {
   const upload = documents.uploads.find(item => item.id === uploadId)
   if (!upload) return
   if (!owns(upload, actor)) throw new DemoApiError('document_upload_not_found', 404)
@@ -900,7 +900,7 @@ function uploadedBytes(upload: DemoDocumentUpload): Uint8Array<ArrayBuffer> {
 }
 
 /** `completed`: a completion retried after it succeeded is answered from the stored version. */
-function completed(documents: SharedDocumentsState, uploadId: string, actor: ActorOut): DemoDocument {
+function completed(documents: SharedDocumentsState, uploadId: string, actor: DemoActor): DemoDocument {
   const version = documents.versions.find(item => item.id === uploadId)
   if (!version || !owns(version, actor)) throw new DemoApiError('document_upload_not_found', 404)
   const document = findDocument(documents, version.documentId)
@@ -912,7 +912,7 @@ function completed(documents: SharedDocumentsState, uploadId: string, actor: Act
  * `complete_upload`: checks the received file and adds it as a new document or a new version. A
  * file whose content does not match its type is refused and its upload discarded.
  */
-export async function completeUpload(documents: SharedDocumentsState, actor: ActorOut, uploadId: string, at: string): Promise<DemoDocument> {
+export async function completeUpload(documents: SharedDocumentsState, actor: DemoActor, uploadId: string, at: string): Promise<DemoDocument> {
   const upload = documents.uploads.find(item => item.id === uploadId)
   if (!upload || !owns(upload, actor)) return completed(documents, uploadId, actor)
   if (upload.received !== upload.size) throw new DemoApiError('document_upload_incomplete', 409)
@@ -928,10 +928,10 @@ export async function completeUpload(documents: SharedDocumentsState, actor: Act
 /**
  * The end of `complete_upload`, for a file whose content is known to match its type (the
  * scenario's): a new version of a document, or a new document named like the file, numbered when
- * the name is taken. The policy and the quotas are the administrator's current ones, which may have
+ * the name is taken. The policy and the quotas are the current ones, which may have
  * changed since the upload began.
  */
-export function publishUpload(documents: SharedDocumentsState, actor: ActorOut, uploadId: string, at: string): DemoDocument {
+export function publishUpload(documents: SharedDocumentsState, actor: DemoActor, uploadId: string, at: string): DemoDocument {
   const upload = documents.uploads.find(item => item.id === uploadId)
   // Completed or cancelled by another request meanwhile.
   if (!upload || !owns(upload, actor)) return completed(documents, uploadId, actor)
@@ -966,7 +966,7 @@ export function publishUpload(documents: SharedDocumentsState, actor: ActorOut, 
     checkDocumentQuota(documents, actor, upload.size)
     const name = freeName(documents, upload.folderId, upload.name, upload.extension)
     document = {
-      id: documents.sequences.document.next(), folderId: upload.folderId, name, kind: type.kind, currentNumber: 1, author: { ...actor },
+      id: documents.sequences.document.next(), folderId: upload.folderId, name, kind: type.kind, currentNumber: 1, author: authorship(actor),
       version: 1, createdAt: at, updatedAt: at, deletedAt: null, deletionId: null, purgedAt: null,
     }
     documents.documents.push(document)
@@ -979,7 +979,7 @@ export function publishUpload(documents: SharedDocumentsState, actor: ActorOut, 
   for (const version of documents.versions) if (version.documentId === document.id) version.text = null
   documents.versions.push({
     id: upload.id, documentId: document.id, number: document.currentNumber, extension: upload.extension, mediaType: type.mediaType,
-    size: upload.size, sha256: sha256Hex(bytes), bytes, author: { ...actor }, createdAt: at, purgedAt: null,
+    size: upload.size, sha256: sha256Hex(bytes), bytes, author: authorship(actor), createdAt: at, purgedAt: null,
     text: READABLE_EXTENSIONS.has(upload.extension) ? queuedText(at) : null,
   })
   discard(documents, upload)
@@ -996,7 +996,7 @@ export interface VersionFile {
 
 /**
  * `version_response`: a stored version to download (`attachment`) or preview (`inline`: PDFs,
- * pictures and videos); the administrator's copy (`deleted`) also of deleted documents.
+ * pictures and videos); administrators' copy (`deleted`) also of deleted documents.
  */
 export function versionFile(
   documents: SharedDocumentsState, versionId: string, disposition: 'attachment' | 'inline', { deleted = false } = {},
@@ -1074,7 +1074,7 @@ export function documentArchive(documents: SharedDocumentsState, folderIds: read
 
 // --- Administration ---
 
-/** Deletions the administrator can still restore or purge, newest first. */
+/** Deletions administrators can still restore or purge, newest first. */
 export function openDeletions(documents: SharedDocumentsState): DemoDocumentDeletion[] {
   return documents.deletions
     .map((deletion, index) => ({ deletion, index }))
@@ -1112,7 +1112,7 @@ function openDeletion(documents: SharedDocumentsState, deletionId: string): Demo
  * `restore_deletion`: brings back everything deleted together, where it was, or at the top level
  * if that folder is gone; a name already in use gets a number.
  */
-export function restoreDeletion(documents: SharedDocumentsState, actor: ActorOut, deletionId: string, at: string): void {
+export function restoreDeletion(documents: SharedDocumentsState, actor: DemoActor, deletionId: string, at: string): void {
   const deletion = openDeletion(documents, deletionId)
   if (deletion.restoredAt !== null || deletion.purgedAt !== null) throw new DemoApiError('document_deletion_closed', 409)
   const { folders, files } = deletionItems(documents, deletion)
@@ -1143,7 +1143,7 @@ export function restoreDeletion(documents: SharedDocumentsState, actor: ActorOut
 }
 
 /** `purge_deletion`: deletes the files of everything deleted together, for good; records and history remain. */
-export function purgeDeletion(documents: SharedDocumentsState, actor: ActorOut, deletionId: string, at: string): void {
+export function purgeDeletion(documents: SharedDocumentsState, actor: DemoActor, deletionId: string, at: string): void {
   const deletion = openDeletion(documents, deletionId)
   if (deletion.restoredAt !== null) throw new DemoApiError('document_deletion_closed', 409)
   // Repeating a purge succeeds unchanged.
@@ -1171,7 +1171,7 @@ export function purgeDeletion(documents: SharedDocumentsState, actor: ActorOut, 
  * version unchanged; current versions (409 `document_version_current`) and deleted documents (409
  * `document_deleted`, purged from Deleted documents instead) are refused.
  */
-export function purgeDocumentVersion(documents: SharedDocumentsState, actor: ActorOut, versionId: string, at: string): DemoDocumentVersion {
+export function purgeDocumentVersion(documents: SharedDocumentsState, actor: DemoActor, versionId: string, at: string): DemoDocumentVersion {
   const version = documents.versions.find(item => item.id === versionId)
   if (!version) throw new DemoApiError('document_version_not_found', 404)
   const document = findDocument(documents, version.documentId)
@@ -1211,7 +1211,7 @@ export function replaySharedDocuments(steps: readonly SharedDocumentStep[]): Sha
     if (!found) throw new Error(`The documents scenario has no item "${key}" yet`)
     return found
   }
-  const upload = (by: ActorOut, file: ScenarioFile, target: { folderId: number | null; documentId: number | null }, at: string) => {
+  const upload = (by: DemoActor, file: ScenarioFile, target: { folderId: number | null; documentId: number | null }, at: string) => {
     startUpload(documents, by, { uploadId: file.uploadId, name: file.name, size: file.bytes.length, ...target }, at)
     receiveChunk(documents, by, file.uploadId, 0, file.bytes, at)
     return publishUpload(documents, by, file.uploadId, at)

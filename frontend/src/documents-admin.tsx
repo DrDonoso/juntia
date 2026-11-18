@@ -267,7 +267,7 @@ export function DocumentStorageCard({ storage }: { storage: DocumentStorageOut }
       <div><dt>{t('storage.documents.current')}</dt><dd>{byteSize(storage.current_bytes)} · {t('storage.documents.files', { count: storage.files })}</dd></div>
       <div><dt>{t('storage.documents.previous')}</dt><dd>{byteSize(storage.previous_bytes)} · {t('storage.documents.versions', { count: storage.previous_versions })}</dd></div>
       <div><dt>{t('storage.documents.deleted')}</dt><dd>{byteSize(storage.deleted_bytes)} · {t('storage.documents.files', { count: storage.deleted_files })}</dd></div>
-      <div><dt>{t('storage.documents.administrator')}</dt><dd>{byteSize(storage.administrator_bytes)}</dd></div>
+      {storage.administrator_bytes > 0 && <div><dt>{t('storage.documents.administrator')}</dt><dd>{byteSize(storage.administrator_bytes)}</dd></div>}
       <div><dt>{t('storage.documents.uploads')}</dt><dd>{byteSize(storage.upload_bytes)} · {t('storage.documents.uploadCount', { count: storage.uploads })}</dd></div>
     </dl>
     <p className="storage-hint"><a href="#document-limits">{t('storage.documents.change')}</a></p>

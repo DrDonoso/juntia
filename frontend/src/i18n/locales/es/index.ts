@@ -15,6 +15,7 @@ import { labels } from './labels'
 import { neighbors } from './neighbors'
 import { shell } from './shell'
 import { storage } from './storage'
+import { whatsNew } from './whatsNew'
 
 export const es: Messages<Dictionary> = {
   common,
@@ -32,4 +33,5 @@ export const es: Messages<Dictionary> = {
   storage,
   documents,
   demo,
+  whatsNew,
 }

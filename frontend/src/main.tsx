@@ -1,19 +1,19 @@
-import { Component, Suspense, lazy, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Component, Suspense, lazy, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router'
+import { BrowserRouter, Link, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router'
 import { api, cache, clearPrivateData, errorMessage, signedOut } from './api/client'
-import { ForgotPassword, LoginNoticeProvider, PasswordLink, ReaderGate, ResidentLogin, useAdminAuth, useReaderAuth, useSessionLifecycle } from './auth'
+import { ForgotPassword, Login, LoginNoticeProvider, PasswordLink, ReaderGate, useReaderAuth, useSessionLifecycle } from './auth'
 import { Notice, profileInitials, useAction, useFeatureLifecycle, useFeatures, useGeneralSettings } from './shared'
 import { Icon } from './icons'
 import { PrivacyContext, storedPrivacy } from './privacy'
 import { I18nRoot, LanguageSelect, useI18n } from './i18n'
+import type { WhatsNewProps } from './whats-new/whats-new'
 import './styles/app.css'
 
 const Overview = lazy(() => import('./reader').then(m => ({ default: m.Overview })))
 const Transactions = lazy(() => import('./reader').then(m => ({ default: m.Transactions })))
 const Statements = lazy(() => import('./reader').then(m => ({ default: m.Statements })))
-const Login = lazy(() => import('./admin').then(m => ({ default: m.Login })))
 const ImportPage = lazy(() => import('./admin').then(m => ({ default: m.ImportPage })))
 const RulesPage = lazy(() => import('./admin').then(m => ({ default: m.RulesPage })))
 const CatalogPage = lazy(() => import('./admin').then(m => ({ default: m.CatalogPage })))
@@ -37,6 +37,12 @@ const DocumentReadingPage = lazy(() => import('./document-reading').then(m => ({
 // The public demo's banner, welcome dialog and sign-in help (src/demo). The literal
 // `import.meta.env.VITE_DEMO` check lets the bundler drop the demo from normal builds.
 const DemoChrome = import.meta.env.VITE_DEMO === '1' ? lazy(() => import('./demo/DemoChrome')) : null
+// What's new is loaded after the page, so its notes never delay it. Should its file be gone (a new
+// version replaced it), the app simply goes on without it.
+const WhatsNew = lazy(() => import('./whats-new/whats-new').then(
+  (module): { default: ComponentType<WhatsNewProps> } => ({ default: module.WhatsNew }),
+  (): { default: ComponentType<WhatsNewProps> } => ({ default: () => null }),
+))
 function BoundaryFallback() {
   const { t } = useI18n()
   return <section className="card"><h1>{t('shell.crash.title')}</h1><p>{t('shell.crash.description')}</p><button onClick={() => location.reload()}>{t('shell.crash.reload')}</button></section>
@@ -62,8 +68,10 @@ function storedSidebarCollapsed() {
 }
 export function Shell() {
   const { t } = useI18n()
-  const auth = useAdminAuth(), reader = useReaderAuth(), action = useAction()
-  useSessionLifecycle(reader.data, auth.data?.authenticated)
+  const reader = useReaderAuth(), action = useAction()
+  useSessionLifecycle(reader.data)
+  const signedIn = reader.data?.authenticated === true
+  const administrator = signedIn && reader.data?.administrator === true
   const general = useGeneralSettings()
   const features = useFeatures(true)
   useFeatureLifecycle(features.data)
@@ -83,6 +91,7 @@ export function Shell() {
   const [compactNavigation, setCompactNavigation] = useState(() => window.matchMedia(compactNavigationQuery).matches)
   const [desktopCollapsed, setDesktopCollapsed] = useState(storedSidebarCollapsed)
   const [openMenu, setOpenMenu] = useState<'navigation' | 'user' | null>(null)
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false)
   const sidebar = useRef<HTMLElement>(null), navigationButton = useRef<HTMLButtonElement>(null)
   const userMenu = useRef<HTMLElement>(null), userButton = useRef<HTMLButtonElement>(null)
   const sidebarExpanded = compactNavigation ? openMenu === 'navigation' : !desktopCollapsed
@@ -96,7 +105,7 @@ export function Shell() {
   }, [theme])
   useEffect(() => {
     setOpenMenu(null)
-  }, [location, auth.data?.authenticated, reader.data?.authenticated])
+  }, [location, reader.data?.authenticated, reader.data?.administrator])
   useEffect(() => {
     const query = window.matchMedia(compactNavigationQuery)
     function resize() {
@@ -150,7 +159,7 @@ export function Shell() {
     closeMenu()
     void action.run(async () => {
       await api('/auth/logout', 'POST'); await clearPrivateData(true)
-      cache.setQueryData(['auth'], { authenticated: false, username: null }); cache.setQueryData(['reader-auth'], signedOut)
+      cache.setQueryData(['reader-auth'], signedOut)
     })
   }
   function toggleTheme() {
@@ -165,22 +174,29 @@ export function Shell() {
     try { localStorage.setItem('juntia_hide_values', next ? '1' : '0') }
     catch { console.warn('Privacy preference could not be stored.') }
   }
-  const initials = profileInitials(reader.data?.name || auth.data?.username || t('shell.defaultUserName'))
+  const initials = profileInitials(reader.data?.name || t('shell.defaultUserName'))
   return <PrivacyContext value={privateValues}><a className="skip-link" href="#content">{t('shell.skipToContent')}</a>
     <header className="topbar">
       <button ref={navigationButton} type="button" className="quiet icon-button navigation-toggle" title={t('shell.navigationMenu')} aria-label={t('shell.navigationMenu')} aria-controls="site-navigation" aria-expanded={sidebarExpanded} onClick={toggleNavigation}><Icon name={compactNavigation && sidebarExpanded ? 'close' : 'menu'} /></button>
       <span className="community-title" title={communityName}>{communityName}</span>
       <div className="topbar-actions">
-        {isFinanceView && reader.data?.authenticated && <button className="quiet icon-button" title={hideValues ? t('shell.showAmounts') : t('shell.hideAmounts')} aria-label={hideValues ? t('shell.showAmounts') : t('shell.hideAmounts')} aria-pressed={hideValues} onClick={togglePrivacy}><Icon name={hideValues ? 'eye-off' : 'eye'} /></button>}
+        {isFinanceView && signedIn && <button className="quiet icon-button" title={hideValues ? t('shell.showAmounts') : t('shell.hideAmounts')} aria-label={hideValues ? t('shell.showAmounts') : t('shell.hideAmounts')} aria-pressed={hideValues} onClick={togglePrivacy}><Icon name={hideValues ? 'eye-off' : 'eye'} /></button>}
         <button className="quiet icon-button" title={theme === 'dark' ? t('shell.lightMode') : t('shell.darkMode')} aria-label={theme === 'dark' ? t('shell.lightMode') : t('shell.darkMode')} aria-pressed={theme === 'dark'} onClick={toggleTheme}><Icon name={theme === 'dark' ? 'sun' : 'moon'} /></button>
-        {(auth.data?.authenticated || reader.data?.authenticated) && <div className="user-controls">
+        {signedIn && <div className="user-controls">
           <button ref={userButton} type="button" className="quiet icon-button profile-button" title={t('shell.userMenu')} aria-label={t('shell.userMenuLabel', { initials })} aria-controls="user-menu" aria-expanded={openMenu === 'user'} onClick={() => setOpenMenu(previous => previous === 'user' ? null : 'user')}>
             <span className="profile-avatar" aria-hidden="true">{initials}</span>
           </button>
           <nav ref={userMenu} id="user-menu" className="user-menu" aria-label={t('shell.userOptions')} hidden={openMenu !== 'user'}>
-            {reader.data?.authenticated && <NavLink to="/profile" onClick={closeMenu}>{t('shell.myProfile')}</NavLink>}
+            {administrator && (isAdmin
+              ? <Link to="/" onClick={closeMenu}>{t('shell.links.communityPortal')}</Link>
+              : <Link to="/admin" onClick={closeMenu}>{t('shell.administration')}</Link>)}
+            <NavLink to="/profile" onClick={closeMenu}>{t('shell.myProfile')}</NavLink>
+            <button type="button" className="quiet" onClick={() => {
+              setOpenMenu(null)
+              setWhatsNewOpen(true)
+            }}>{t('shell.whatsNew')}</button>
             <LanguageSelect className="user-menu-language" />
-            <button type="button" className="quiet" disabled={action.busy} onClick={logout}>{t('shell.signOut')}</button>
+            <button type="button" className="quiet sign-out" disabled={action.busy} onClick={logout}>{t('shell.signOut')}</button>
           </nav>
         </div>}
       </div>
@@ -191,7 +207,7 @@ export function Shell() {
     }}><NavLink to={isAdmin ? '/admin' : '/'} className="brand"><img src="/icon.svg" alt="" width="38" height="38" /><span>Juntia<strong>{t('shell.brandTagline')}</strong></span></NavLink>
       <span className="nav-label">{isAdmin ? t('shell.adminLabel') : t('shell.portalLabel')}</span>
       {isAdmin ? <>
-        {auth.data?.authenticated && <nav aria-label={t('shell.navigation.admin')}>
+        {administrator && <nav aria-label={t('shell.navigation.admin')}>
           <NavigationGroup title={t('shell.groups.finances')}>
             <NavLink to="/admin" end><Icon name="upload" />{t('shell.links.import')}</NavLink>
             <NavLink to="/admin/transactions"><Icon name="receipt" />{t('shell.links.classifyTransactions')}</NavLink>
@@ -214,7 +230,7 @@ export function Shell() {
             <NavLink to="/admin/deleted-contacts"><Icon name="file-text" />{t('shell.links.deletedContacts')}</NavLink>
           </NavigationGroup>
         </nav>}
-      </> : reader.data?.authenticated && <nav aria-label={t('shell.navigation.main')}>
+      </> : signedIn && <nav aria-label={t('shell.navigation.main')}>
         <NavigationGroup title={t('shell.groups.finances')}>
           <NavLink to="/" end><Icon name="dashboard" />{t('shell.links.overview')}</NavLink>
           <NavLink to="/transactions"><Icon name="receipt" />{t('shell.links.transactions')}</NavLink>
@@ -237,16 +253,22 @@ export function Shell() {
       <main id="content" tabIndex={-1}>{action.notice}{general.error && <Notice error>{errorMessage(general.error)}</Notice>}{features.error && <Notice error>{errorMessage(features.error)}</Notice>}<Boundary><Suspense fallback={<Notice>{t('shell.loadingPage')}</Notice>}><Outlet /></Suspense></Boundary></main>
       <footer className="app-footer">{isAdmin ? t('shell.footer.admin') : isEventView ? t('shell.footer.events') : isDocumentView ? t('shell.footer.documents') : isContactsView ? t('shell.footer.contacts') : isActionView ? t('shell.footer.actions') : t('shell.footer.finances')}</footer>
     </div>
+    {signedIn && <Suspense fallback={null}>
+      <WhatsNew key={reader.data?.user_id} administrator={administrator}
+        allOpen={whatsNewOpen} onAllOpenChange={setWhatsNewOpen} restoreFocusRef={userButton} />
+    </Suspense>}
   </PrivacyContext>
 }
+/** The administration: for signed-in administrators; anyone else finds no such page. */
 function AdminGate() {
   const { t } = useI18n()
-  const query = useAdminAuth(), reader = useReaderAuth()
-  if (query.isPending) return <Notice>{t('auth.checkingSession')}</Notice>
-  if (query.error) return <Notice error>{errorMessage(query.error)}</Notice>
-  if (!query.data?.authenticated) return <Login />
+  const reader = useReaderAuth(), location = useLocation()
+  if (reader.isPending) return <Notice>{t('auth.checkingSession')}</Notice>
   if (reader.error) return <Notice error>{errorMessage(reader.error)}</Notice>
-  if (reader.data?.kind !== 'administrator') return <Notice>{t('auth.checkingSession')}</Notice>
+  if (!reader.data?.authenticated) {
+    return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
+  }
+  if (!reader.data.administrator) return <NotFound />
   return <Outlet />
 }
 
@@ -265,36 +287,39 @@ function NotFound() {
   return <Notice error>{t('shell.notFound')}</Notice>
 }
 
+/** Every page of the app (the What's new notes' links are checked against it: src/whats-new/notes.test.ts). */
+export const routes = <Route element={<Shell />}>
+  <Route path="login" element={<Login />} />
+  <Route path="forgot-password" element={<ForgotPassword />} />
+  <Route path="activate" element={<PasswordLink key="invitation" invitation />} />
+  <Route path="reset-password" element={<PasswordLink key="recovery" invitation={false} />} />
+  <Route element={<ReaderGate />}><Route index element={<Overview />} /><Route path="transactions" element={<Transactions />} /><Route path="profile" element={<ProfilePage />} /><Route path="neighbors" element={<NeighborsPage />} /></Route>
+  <Route element={<ReaderGate />}><Route path="actions" element={<ActionsPage />} /><Route path="actions/:itemId" element={<ActionDetailPage />} /></Route>
+  <Route element={<ReaderGate />}><Route path="contacts" element={<ContactsPage />} /></Route>
+  <Route element={<ReaderGate />}><Route path="events" element={<EventsPage />} /><Route path="events/:eventId" element={<EventDetailPage />} /></Route>
+  <Route element={<ReaderGate />}><Route path="documents" element={<DocumentsPage />} /><Route path="documents/folders/:folderId" element={<DocumentsPage />} /></Route>
+  <Route path="admin" element={<AdminGate />}><Route index element={<ImportPage />} />
+    <Route path="general" element={<GeneralPage />} />
+    <Route path="features" element={<FeaturesPage />} />
+    <Route path="users" element={<UsersPage />} /><Route path="dwellings" element={<DwellingsPage />} />
+    <Route path="labels" element={<CommunityLabelsPage />} />
+    <Route path="deleted-contacts" element={<ContactsPage deleted />} />
+    <Route path="deleted-documents" element={<DeletedDocumentsPage />} />
+    <Route path="document-reading" element={<DocumentReadingPage />} />
+    <Route path="storage" element={<StoragePage />} />
+    <Route path="cleanup" element={<CleanupPage />} />
+    <Route path="neighbors" element={<LegacyCommunityRedirect />} />
+    <Route path="contacts" element={<LegacyCommunityRedirect />} />
+    <Route path="actions" element={<LegacyCommunityRedirect />} /><Route path="actions/:itemId" element={<LegacyCommunityRedirect />} />
+    <Route path="transactions" element={<Transactions editable />} /><Route path="rules" element={<RulesPage />} />
+    <Route path="catalog" element={<CatalogPage />} /><Route path="statements" element={<Statements />} />
+  </Route><Route path="*" element={<NotFound />} />
+</Route>
+
 // Subscribing here re-renders the whole tree on a language switch, so plain formatters follow it too.
 function App() {
   useI18n()
-  return <I18nRoot><QueryClientProvider client={cache}><LoginNoticeProvider><BrowserRouter><Routes><Route element={<Shell />}>
-    <Route path="login" element={<ResidentLogin />} />
-    <Route path="forgot-password" element={<ForgotPassword />} />
-    <Route path="activate" element={<PasswordLink key="invitation" invitation />} />
-    <Route path="reset-password" element={<PasswordLink key="recovery" invitation={false} />} />
-    <Route element={<ReaderGate />}><Route index element={<Overview />} /><Route path="transactions" element={<Transactions />} /><Route path="profile" element={<ProfilePage />} /><Route path="neighbors" element={<NeighborsPage />} /></Route>
-    <Route element={<ReaderGate />}><Route path="actions" element={<ActionsPage />} /><Route path="actions/:itemId" element={<ActionDetailPage />} /></Route>
-    <Route element={<ReaderGate />}><Route path="contacts" element={<ContactsPage />} /></Route>
-    <Route element={<ReaderGate />}><Route path="events" element={<EventsPage />} /><Route path="events/:eventId" element={<EventDetailPage />} /></Route>
-    <Route element={<ReaderGate />}><Route path="documents" element={<DocumentsPage />} /><Route path="documents/folders/:folderId" element={<DocumentsPage />} /></Route>
-    <Route path="admin" element={<AdminGate />}><Route index element={<ImportPage />} />
-      <Route path="general" element={<GeneralPage />} />
-      <Route path="features" element={<FeaturesPage />} />
-      <Route path="users" element={<UsersPage />} /><Route path="dwellings" element={<DwellingsPage />} />
-      <Route path="labels" element={<CommunityLabelsPage />} />
-      <Route path="deleted-contacts" element={<ContactsPage deleted />} />
-      <Route path="deleted-documents" element={<DeletedDocumentsPage />} />
-      <Route path="document-reading" element={<DocumentReadingPage />} />
-      <Route path="storage" element={<StoragePage />} />
-      <Route path="cleanup" element={<CleanupPage />} />
-      <Route path="neighbors" element={<LegacyCommunityRedirect />} />
-      <Route path="contacts" element={<LegacyCommunityRedirect />} />
-      <Route path="actions" element={<LegacyCommunityRedirect />} /><Route path="actions/:itemId" element={<LegacyCommunityRedirect />} />
-      <Route path="transactions" element={<Transactions editable />} /><Route path="rules" element={<RulesPage />} />
-      <Route path="catalog" element={<CatalogPage />} /><Route path="statements" element={<Statements />} />
-    </Route><Route path="*" element={<NotFound />} />
-  </Route></Routes>{DemoChrome && <Suspense fallback={null}><DemoChrome /></Suspense>}</BrowserRouter></LoginNoticeProvider></QueryClientProvider></I18nRoot>
+  return <I18nRoot><QueryClientProvider client={cache}><LoginNoticeProvider><BrowserRouter><Routes>{routes}</Routes>{DemoChrome && <Suspense fallback={null}><DemoChrome /></Suspense>}</BrowserRouter></LoginNoticeProvider></QueryClientProvider></I18nRoot>
 }
 
 const container = document.getElementById('root')

@@ -6,7 +6,9 @@
 import type { ActorOut, EventHistoryOut, EventOut, EventSnapshot } from '../../api/schema.gen'
 import { pageCount } from '../core/pagination'
 import { findAction } from './community-actions'
-import { actorOut, compareText, sameJson, type ChangeKind, type CommunityState, type DemoEvent, type DemoEventChange } from './community-model'
+import {
+  actorOut, authorship, compareText, sameJson, type ChangeKind, type CommunityState, type DemoEvent, type DemoEventChange,
+} from './community-model'
 import { foldText } from './community-text'
 import { COMMUNITY_TIME_ZONE, dayNumber, dayOfNumber, zonedDateTime, zonedDay } from './community-time'
 
@@ -52,14 +54,14 @@ function record(
   state: CommunityState, event: DemoEvent, actor: ActorOut, kind: ChangeKind, before: EventSnapshot | null,
   after: EventSnapshot | null, at: string,
 ): void {
-  state.eventHistory.push({ id: state.sequences.eventHistory.next(), eventId: event.id, kind, author: { ...actor }, createdAt: at, before, after })
+  state.eventHistory.push({ id: state.sequences.eventHistory.next(), eventId: event.id, kind, author: authorship(actor), createdAt: at, before, after })
 }
 
 export function createEvent(
   state: CommunityState, actor: ActorOut, fields: EventFields, actionId: number | null, at: string, calendarUid: string,
 ): DemoEvent {
   const event: DemoEvent = {
-    id: state.sequences.event.next(), calendarUid, ...fields, actionId, author: { ...actor }, version: 1,
+    id: state.sequences.event.next(), calendarUid, ...fields, actionId, author: authorship(actor), version: 1,
     createdAt: at, updatedAt: at, deletedAt: null,
   }
   state.events.push(event)

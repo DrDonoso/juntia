@@ -87,6 +87,11 @@ export interface DemoPreviewRow extends StatementRow {
 /** An uploaded statement waiting for confirmation (backend `Preview`). */
 export interface DemoPreview {
   id: string
+  /**
+   * The administrator who uploaded it: like the backend's previews, which belong to the session
+   * that uploaded them, nobody else opens or confirms it (404 `preview_not_found`).
+   */
+  ownerId: number
   expiresAt: string
   /** Finance revision when it was read: any later finance change makes it stale. */
   revision: number

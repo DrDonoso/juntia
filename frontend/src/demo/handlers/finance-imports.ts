@@ -1,10 +1,10 @@
 /**
  * Bank statements and imports of the demo API (src/juntia/api.py, imports.py). The demo cannot read
- * real bank PDFs: any PDF the administrator uploads reads as the synthetic statement of the latest
+ * real bank PDFs: any PDF an administrator uploads reads as the synthetic statement of the latest
  * movements (../scenario/finance.ts), so the review shows what is already recorded, what is new and
- * what the rules suggest. Confirming records the new movements and keeps the uploaded file as the
- * statement's original; removing a statement removes the movements no other statement backs. AI
- * suggestions need a real server.
+ * what the rules suggest; only its uploader reviews and confirms it. Confirming records the new
+ * movements and keeps the uploaded file as the statement's original; removing a statement removes
+ * the movements no other statement backs. AI suggestions need a real server.
  */
 import type { AccountOut, DeleteImpact, ImportOut, PreviewOut, PreviewRow } from '../../api/schema.gen'
 import { COMMUNITY } from '../cast'
@@ -95,10 +95,10 @@ function cleanExpired(state: FinanceState): void {
   for (const [id, preview] of state.previews) if (Date.parse(preview.expiresAt) < now().getTime()) state.previews.delete(id)
 }
 
-/** Backend `get_preview`. */
-function getPreview(state: FinanceState, id: string): DemoPreview {
+/** Backend `get_preview`: only the administrator who uploaded it finds it. */
+function getPreview(state: FinanceState, id: string, ownerId: number): DemoPreview {
   const preview = state.previews.get(id)
-  if (!preview) throw new DemoApiError('preview_not_found', 404)
+  if (!preview || preview.ownerId !== ownerId) throw new DemoApiError('preview_not_found', 404)
   if (!preview.committedImportId && Date.parse(preview.expiresAt) <= now().getTime()) throw new DemoApiError('preview_expired', 410)
   checkAccount(preview.iban)
   return preview
@@ -165,8 +165,8 @@ function checkPdf(bytes: Uint8Array): void {
   if (!looksLikePdf(bytes)) throw new DemoApiError('invalid_pdf')
 }
 
-/** Backend `stage`: reads the (synthetic) statement against the ledger and keeps it for review. */
-function stage(state: FinanceState, filename: string, fileHash: string, bytes: Uint8Array<ArrayBuffer>): DemoPreview {
+/** Backend `stage`: reads the (synthetic) statement against the ledger and keeps it for its uploader's review. */
+function stage(state: FinanceState, ownerId: number, filename: string, fileHash: string, bytes: Uint8Array<ArrayBuffer>): DemoPreview {
   const { statement } = state
   const account = checkAccount(statement.iban)
   let rows = matchRows(state, statement.rows)
@@ -187,6 +187,7 @@ function stage(state: FinanceState, filename: string, fileHash: string, bytes: U
   if (account) rows = applyRules(rows, state.rules, statement.iban)
   const preview: DemoPreview = {
     id: state.ids.uuid(),
+    ownerId,
     expiresAt: hoursFromNow(PREVIEW_HOURS),
     revision: state.revision,
     version: 1,
@@ -374,7 +375,7 @@ export const financeImportHandlers: HttpHandler[] = [
     state.revision += 1
   }, { status: 204 })),
 
-  http.post('/api/admin/imports/preview', route('admin', async ({ request }): Promise<PreviewOut> => {
+  http.post('/api/admin/imports/preview', route('admin', async ({ request, user }): Promise<PreviewOut> => {
     const state = financeStore()
     cleanExpired(state)
     const form = await readForm(request)
@@ -383,17 +384,17 @@ export const financeImportHandlers: HttpHandler[] = [
     if (file.size > MAX_UPLOAD_BYTES) throw new DemoApiError('upload_too_large', 413)
     const bytes = new Uint8Array(await file.arrayBuffer())
     checkPdf(bytes)
-    return previewOut(stage(state, uploadName(file.name), fingerprint(bytes), bytes))
+    return previewOut(stage(state, user.id, uploadName(file.name), fingerprint(bytes), bytes))
   })),
 
-  http.get('/api/admin/imports/:previewId', route('admin', ({ params }): PreviewOut =>
-    previewOut(getPreview(financeStore(), uuidParam(params, 'previewId'))))),
+  http.get('/api/admin/imports/:previewId', route('admin', ({ params, user }): PreviewOut =>
+    previewOut(getPreview(financeStore(), uuidParam(params, 'previewId'), user.id)))),
 
-  http.post('/api/admin/imports/:previewId/account', route('admin', async ({ request, params }): Promise<PreviewOut> => {
+  http.post('/api/admin/imports/:previewId/account', route('admin', async ({ request, params, user }): Promise<PreviewOut> => {
     const id = uuidParam(params, 'previewId')
     const input = parseBody(await readJson(request), body => ({ iban: body.text('iban', { max: 1_000_000 }), version: body.int('version') }))
     const state = financeStore()
-    const preview = getPreview(state, id)
+    const preview = getPreview(state, id, user.id)
     checkVersion(preview, input.version, state)
     if (preview.committedImportId) throw new DemoApiError('import_already_confirmed', 409)
     if (preview.iban !== normalizeIban(input.iban)) throw new DemoApiError('account_mismatch', 409)
@@ -406,14 +407,14 @@ export const financeImportHandlers: HttpHandler[] = [
   // AI classification needs a provider and a real server.
   http.post('/api/admin/imports/:previewId/ai', route('admin', () => demoUnavailable())),
 
-  http.post('/api/admin/imports/:previewId/confirm', route('admin', async ({ request, params }): Promise<ImportOut> => {
+  http.post('/api/admin/imports/:previewId/confirm', route('admin', async ({ request, params, user }): Promise<ImportOut> => {
     const id = uuidParam(params, 'previewId')
     const input = parseBody(await readJson(request), body => ({
       version: body.int('version'),
       decisions: body.list('decisions', { max: 10_000 }, readDecision),
     }))
     const state = financeStore()
-    const preview = getPreview(state, id)
+    const preview = getPreview(state, id, user.id)
     if (preview.committedImportId) {
       const existing = state.imports.find(record => record.id === preview.committedImportId)
       if (!existing) throw new DemoApiError('import_removed', 410)

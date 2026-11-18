@@ -4,14 +4,13 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
-import { Login } from '../admin'
 import { cache } from '../api/client'
-import type { AuthOut, UserAuthOut } from '../api/schema.gen'
-import { ForgotPassword, LoginNoticeProvider, ResidentLogin } from '../auth'
+import type { UserAuthOut } from '../api/schema.gen'
+import { ForgotPassword, Login, LoginNoticeProvider } from '../auth'
 import { I18nRoot, setLanguage } from '../i18n'
 import { en } from '../i18n/locales/en'
 import { es } from '../i18n/locales/es'
-import { signOutResident } from './core'
+import { signInResident, signOutResident } from './core'
 import DemoChrome from './DemoChrome'
 import { resetDemoWelcome } from './DemoWelcome'
 import { resetDemo } from './store'
@@ -35,16 +34,16 @@ afterAll(() => {
 })
 
 function Location() {
-  return <output aria-label="Location">{useLocation().pathname}</output>
+  const { pathname, search } = useLocation()
+  return <output aria-label="Location">{pathname + search}</output>
 }
 
 /** The demo chrome next to the real sign-in screens, against the demo API. */
-function renderDemo(path: string, { login = <ResidentLogin /> }: { login?: ReactNode } = {}) {
+function renderDemo(path: string, { login = <Login /> }: { login?: ReactNode } = {}) {
   return render(<I18nRoot><QueryClientProvider client={cache}><LoginNoticeProvider><MemoryRouter initialEntries={[path]}>
     <main id="content"><Routes>
       <Route path="/login" element={login} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
-      <Route path="/admin/*" element={<Login />} />
       <Route path="*" element={null} />
     </Routes></main>
     <Location />
@@ -90,14 +89,32 @@ describe('demo chrome', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  test('"Open administration" signs the administrator in and opens /admin', async () => {
+  test('the welcome dialog names whoever is signed in', async () => {
+    signInResident(1)
+    renderDemo('/')
+    expect(await within(await welcome()).findByText('You are signed in as James Okafor, a neighbor at Maple Court. The administration is one click away too.'))
+      .toBeInTheDocument()
+  })
+
+  test('"Open administration" signs James Okafor, the administrator, in and opens /admin', async () => {
     const user = userEvent.setup()
     renderDemo('/')
     await user.click(within(await welcome()).getByRole('button', { name: en.demo.welcome.admin }))
     await waitFor(() => expect(location()).toHaveTextContent(/^\/admin$/))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(cache.getQueryData<AuthOut>(['auth'])).toEqual({ authenticated: true, username: 'demo' })
-    expect(cache.getQueryData<UserAuthOut>(['reader-auth'])).toMatchObject({ authenticated: true, kind: 'administrator' })
+    expect(cache.getQueryData<UserAuthOut>(['reader-auth'])).toMatchObject({
+      authenticated: true, administrator: true, user_id: 1, name: 'James Okafor', email: 'james.okafor@example.com',
+    })
+    expect((await demoRequest<UserAuthOut>('GET', '/api/auth/session')).body).toMatchObject({ user_id: 1, administrator: true })
+  })
+
+  test('"Open administration" opens the page of the administration that was asked for', async () => {
+    const user = userEvent.setup()
+    renderDemo('/admin/users?sort=status')
+    await user.click(within(await welcome()).getByRole('button', { name: en.demo.welcome.admin }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(location()).toHaveTextContent(/^\/admin\/users\?sort=status$/)
+    expect(cache.getQueryData<UserAuthOut>(['reader-auth'])).toMatchObject({ administrator: true, user_id: 1 })
   })
 
   test('"Explore as a neighbor" leaves an administration link for the portal', async () => {
@@ -105,6 +122,7 @@ describe('demo chrome', () => {
     renderDemo('/admin/users')
     await user.click(within(await welcome()).getByRole('button', { name: en.demo.welcome.neighbor }))
     await waitFor(() => expect(location()).toHaveTextContent(/^\/$/))
+    expect((await demoRequest<UserAuthOut>('GET', '/api/auth/session')).body).toMatchObject({ user_id: 6, administrator: false })
   })
 
   test('the texts follow the language', async () => {
@@ -116,7 +134,7 @@ describe('demo chrome', () => {
 })
 
 describe('sign-in help', () => {
-  test('the neighbor sign-in arrives filled in with the sample neighbor, and signs in', async () => {
+  test('the sign-in arrives filled in with the sample neighbor, and signs in', async () => {
     const user = userEvent.setup()
     signOutResident()
     renderDemo('/login')
@@ -129,7 +147,7 @@ describe('sign-in help', () => {
     expect(screen.getByLabelText(en.auth.password)).toHaveValue('demo')
     await user.click(screen.getByRole('button', { name: en.auth.login.submit }))
     await waitFor(() => expect(location()).toHaveTextContent(/^\/$/))
-    expect(cache.getQueryData<UserAuthOut>(['reader-auth'])).toMatchObject({ kind: 'resident', user_id: 6 })
+    expect(cache.getQueryData<UserAuthOut>(['reader-auth'])).toMatchObject({ administrator: false, user_id: 6 })
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
   })
 
@@ -145,19 +163,39 @@ describe('sign-in help', () => {
     await user.type(screen.getByLabelText(en.auth.password), password)
     await user.click(screen.getByRole('button', { name: en.auth.login.submit }))
     await waitFor(() => expect(location()).toHaveTextContent(/^\/$/))
-    expect(cache.getQueryData<UserAuthOut>(['reader-auth'])).toMatchObject({ kind: 'resident', user_id: 6 })
+    expect(cache.getQueryData<UserAuthOut>(['reader-auth'])).toMatchObject({ user_id: 6 })
   })
 
-  test('the administration sign-in arrives filled in with demo / demo', async () => {
+  test('signing in to return to the administration arrives filled in with the administrator, James Okafor', async () => {
     const user = userEvent.setup()
-    renderDemo('/admin')
+    signOutResident()
+    renderDemo('/login?next=%2Fadmin%2Fusers')
     await user.click(within(await welcome()).getByRole('button', { name: en.common.close }))
-    expect(await screen.findByRole('note')).toHaveTextContent('Demo: sign in with the username demo and the password demo.')
-    await waitFor(() => expect(screen.getByLabelText(en.auth.admin.username)).toHaveValue('demo'))
+    expect(await screen.findByRole('note')).toHaveTextContent(
+      'Demo: sign in as james.okafor@example.com with the password demo. James Okafor, the president, is also the administrator.',
+    )
+    await waitFor(() => expect(screen.getByLabelText(en.auth.email)).toHaveValue('james.okafor@example.com'))
     expect(screen.getByLabelText(en.auth.password)).toHaveValue('demo')
-    await user.click(screen.getByRole('button', { name: en.auth.admin.submit }))
-    await waitFor(() => expect(cache.getQueryData<AuthOut>(['auth'])).toEqual({ authenticated: true, username: 'demo' }))
+    await user.click(screen.getByRole('button', { name: en.auth.login.submit }))
+    await waitFor(() => expect(location()).toHaveTextContent(/^\/admin\/users$/))
+    expect(cache.getQueryData<UserAuthOut>(['reader-auth'])).toMatchObject({ administrator: true, user_id: 1 })
     await waitFor(() => expect(screen.queryByRole('note')).not.toBeInTheDocument())
+  })
+
+  test('a return to the portal keeps the sample neighbor, and the administrator gets only the email once his password changed', async () => {
+    const user = userEvent.setup()
+    signOutResident()
+    const { unmount } = renderDemo('/login?next=%2Fneighbors')
+    await user.click(within(await welcome()).getByRole('button', { name: en.common.close }))
+    expect(await screen.findByRole('note')).toHaveTextContent('Demo: sign in as olivia.bennett@example.com with the password demo.')
+    unmount()
+
+    signInResident(1)
+    expect(await demoRequest('POST', '/api/auth/profile/password', { body: { current_password: 'demo', password: 'another-password' } })).toMatchObject({ status: 204 })
+    renderDemo('/login?next=%2Fadmin')
+    expect(await screen.findByRole('note')).toHaveTextContent('Demo: sign in as james.okafor@example.com')
+    await waitFor(() => expect(screen.getByLabelText(en.auth.email)).toHaveValue('james.okafor@example.com'))
+    expect(screen.getByLabelText(en.auth.password)).toHaveValue('')
   })
 
   test('other screens get no help, and a form that already has values is left alone', async () => {

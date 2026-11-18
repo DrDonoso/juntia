@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import type {
-  ActionAttachmentOut, ActionHistoryPage, ActionOut, ActorOut, DocumentHistoryPage, StorageOut, StoredAttachmentPage, StoredDocumentVersionOut,
+  ActionAttachmentOut, ActionHistoryPage, ActionOut, DocumentHistoryPage, StorageOut, StoredAttachmentPage, StoredDocumentVersionOut,
   StoredDocumentVersionPage,
 } from '../../api/schema.gen'
+import type { DemoActor } from '../core'
 import { resetDemo } from '../store'
 import { communityStore } from '../store/community'
 import type { DemoActionAttachment } from '../store/community-model'
@@ -11,17 +12,17 @@ import {
   deleteDocument, publishUpload, receiveChunk, sharedDocumentsStore, startUpload, type DemoDocument, type DemoDocumentVersion,
 } from '../store/shared-documents'
 import { COMMUNITY_QUOTA_BYTES, DISK_RESERVE_BYTES, DISK_TOTAL_BYTES, MIB, USER_QUOTA_BYTES } from '../store/storage'
-import { demoFetch, demoRequest, demoUrl } from '../testing'
+import { demoFetch, demoRequest, demoUrl, signInAdmin } from '../testing'
 
 // Thursday 29 October 2026, midday (local time), like the other demo tests.
 const NOW = new Date(2026, 9, 29, 12)
-const ADMIN = { kind: 'administrator', name: 'Technical administrator', user_id: null }
+// The administrator of the cast, the president: administrators write under their own name.
+const JAMES = { kind: 'resident', name: 'James Okafor', user_id: 1 }
 
 beforeEach(() => resetDemo({ now: () => NOW }))
 afterEach(() => resetDemo())
 
 const get = <T = unknown>(path: string) => demoRequest<T>('GET', path)
-const adminLogin = () => demoRequest('POST', '/api/admin/auth/login', { body: { username: 'demo', password: 'demo' } })
 const purge = <T = ActionAttachmentOut>(id: string, body: unknown) => demoRequest<T>('POST', `/api/admin/storage/attachments/${id}/purge`, { body })
 const summary = async () => (await get<StorageOut>('/api/admin/storage')).body
 const withdrawn = async (query = '') => (await get<StoredAttachmentPage>(`/api/admin/storage/withdrawn${query}`)).body
@@ -35,14 +36,16 @@ function withdrawnPdf(author: string): DemoActionAttachment {
 }
 
 describe('access', () => {
-  test('only the administrator sees, opens and purges stored PDFs, even with Actions off', async () => {
+  test('only administrators see, open and purge stored PDFs, even with Actions off', async () => {
     const { id } = withdrawnPdf('Daniel Mensah')
     const files = [`/api/admin/storage/attachments/${id}/preview`, `/api/admin/storage/attachments/${id}/download`]
     for (const path of ['/api/admin/storage', '/api/admin/storage/withdrawn', ...files]) {
-      expect(await get(path), path).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
+      expect(await get(path), path).toMatchObject({ status: 403, body: { code: 'administrator_required' } })
     }
+    expect(await purge(id, { version: 2 })).toMatchObject({ status: 403, body: { code: 'administrator_required' } })
+    await demoRequest('POST', '/api/auth/logout')
     expect(await purge(id, { version: 2 })).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
-    await adminLogin()
+    await signInAdmin()
     expect(await demoRequest('POST', `/api/admin/storage/attachments/${id}/purge`, { body: { version: 2 }, mutationHeader: false }))
       .toMatchObject({ status: 403, body: { code: 'invalid_origin' } })
     coreStore().features.actions = false
@@ -61,7 +64,7 @@ describe('access', () => {
 
 describe('usage', () => {
   test('counts active and withdrawn PDFs per resident and for the community, with the default quotas', async () => {
-    await adminLogin()
+    await signInAdmin()
     const { attachments } = communityStore()
     const usage = await summary()
     const active = attachments.filter(item => item.withdrawnAt === null)
@@ -71,8 +74,10 @@ describe('usage', () => {
       image_bytes: 0, image_files: 0,
     })
     expect([COMMUNITY_QUOTA_BYTES, USER_QUOTA_BYTES]).toEqual([2048 * MIB, 250 * MIB])
-    const administrator = attachments.filter(item => item.author.kind === 'administrator')
-    expect(usage.administrator).toMatchObject({ stored_bytes: bytes(administrator), active_files: administrator.length - 1, withdrawn_files: 1 })
+    // The technical administrator of earlier releases, who had no account, wrote nothing in the demo.
+    expect(usage.administrator).toEqual({
+      stored_bytes: 0, active_bytes: 0, withdrawn_bytes: 0, active_files: 0, withdrawn_files: 0, image_bytes: 0, image_files: 0,
+    })
     expect(usage.resident_quota_bytes).toBe(USER_QUOTA_BYTES)
     expect(usage.residents.map(row => row.stored_bytes)).toEqual(usage.residents.map(row => row.stored_bytes).sort((a, b) => b - a))
     expect(usage.residents.map(row => row.name).sort()).toEqual([
@@ -84,11 +89,25 @@ describe('usage', () => {
       expect(row.active_files + row.withdrawn_files).toBe(own.length)
     }
     expect(usage.residents.find(row => row.name === 'Grace Liu')).toMatchObject({ active_files: 0, withdrawn_files: 1, active_bytes: 0 })
+    // The administrator's account counts like everyone's, with the same quota.
+    expect(usage.residents.find(row => row.name === 'James Okafor')).toMatchObject({ user_id: 1, withdrawn_files: 1, quota_bytes: USER_QUOTA_BYTES })
+    expect(usage.community.stored_bytes).toBe(usage.residents.reduce((sum, row) => sum + row.stored_bytes, 0))
+  })
+
+  test('files of the technical administrator of earlier releases make a line of their own, under its fixed name', async () => {
+    await signInAdmin()
+    const legacy = withdrawnPdf('Grace Liu')
+    legacy.author = { kind: 'administrator', name: 'admin', user_id: null }
+    const usage = await summary()
+    expect(usage.administrator).toMatchObject({ stored_bytes: legacy.size, active_files: 0, withdrawn_files: 1 })
+    expect(usage.residents.find(row => row.user_id === 7)).toBeUndefined()
     expect(usage.community.stored_bytes).toBe(usage.administrator.stored_bytes + usage.residents.reduce((sum, row) => sum + row.stored_bytes, 0))
+    expect((await withdrawn()).items.find(item => item.id === legacy.id)?.author)
+      .toEqual({ kind: 'administrator', name: 'Technical administrator', user_id: null })
   })
 
   test('a synthetic upload volume whose free space follows the stored PDFs', async () => {
-    await adminLogin()
+    await signInAdmin()
     const { disk, community } = await summary()
     expect(disk).toMatchObject({ total_bytes: DISK_TOTAL_BYTES, reserve_bytes: DISK_RESERVE_BYTES })
     expect(DISK_TOTAL_BYTES).toBe(64 * 1024 * MIB)
@@ -101,7 +120,7 @@ describe('usage', () => {
   })
 
   test('residents follow their account: renamed ones by their new name, deleted ones by their last PDF', async () => {
-    await adminLogin()
+    await signInAdmin()
     expect(await demoRequest('PATCH', '/api/admin/users/9', {
       body: { name: 'Emily Clarke-Hughes', email: 'emily.clarke@example.com', dwelling_id: 7, version: 1 },
     })).toMatchObject({ status: 200 })
@@ -112,24 +131,25 @@ describe('usage', () => {
   })
 
   test('residents with the same storage are sorted by name', async () => {
-    await adminLogin()
+    await signInAdmin()
     for (const attachment of communityStore().attachments) attachment.size = 1000
+    const james = communityStore().attachments.filter(item => item.author.user_id === 1).length
     expect((await summary()).residents.map(row => [row.name, row.stored_bytes])).toEqual([
-      ['James Okafor', 3000], ['Daniel Mensah', 2000], ['Chloe Dubois', 1000], ['Emily Clarke', 1000], ['Grace Liu', 1000], ['Olivia Bennett', 1000],
+      ['James Okafor', james * 1000], ['Daniel Mensah', 2000], ['Chloe Dubois', 1000], ['Emily Clarke', 1000], ['Grace Liu', 1000], ['Olivia Bennett', 1000],
     ])
   })
 })
 
 describe('withdrawn PDFs', () => {
   test('lists the withdrawn PDFs still stored, the latest withdrawn first, with their action', async () => {
-    await adminLogin()
+    await signInAdmin()
     const page = await withdrawn()
     expect(page).toMatchObject({ page: 1, pages: 1, total: 3 })
-    expect(page.items.map(item => item.author.name)).toEqual(['Grace Liu', 'Technical administrator', 'Daniel Mensah'])
+    expect(page.items.map(item => item.author.name)).toEqual(['Grace Liu', 'James Okafor', 'Daniel Mensah'])
     expect(page.items.map(item => item.withdrawn_at)).toEqual(page.items.map(item => item.withdrawn_at).sort().reverse())
-    const draft = page.items.find(item => item.author.kind === 'administrator')
+    const draft = page.items.find(item => item.author.user_id === 1)
     expect(draft).toMatchObject({
-      filename: 'Quote - Apex Lifts (draft).pdf', author: ADMIN, version: 2, purged_at: null, withdrawn_at: expect.any(String),
+      filename: 'Quote - Apex Lifts (draft).pdf', author: JAMES, version: 2, purged_at: null, withdrawn_at: expect.any(String),
       action_title: 'Lift modernisation: controller, doors and cabin',
     })
     const lift = communityStore().actions.find(action => action.title.startsWith('Lift modernisation'))
@@ -143,7 +163,7 @@ describe('withdrawn PDFs', () => {
   })
 
   test('pages by 5', async () => {
-    await adminLogin()
+    await signInAdmin()
     const { attachments } = communityStore()
     for (const attachment of attachments) attachment.withdrawnAt ??= NOW.toISOString()
     const first = await withdrawn()
@@ -158,7 +178,7 @@ describe('withdrawn PDFs', () => {
 
 describe('purging a withdrawn PDF', () => {
   test('deletes the file, keeps the record and its history, and frees the storage', async () => {
-    await adminLogin()
+    await signInAdmin()
     const pdf = withdrawnPdf('Grace Liu')
     const path = `/api/actions/items/${pdf.actionId}`
     const action = (await get<ActionOut>(path)).body
@@ -171,7 +191,7 @@ describe('purging a withdrawn PDF', () => {
     })
     const [event] = (await get<ActionHistoryPage>(`${path}/history`)).body.items
     expect(event).toEqual({
-      id: expect.any(Number), kind: 'attachment_purged', author: ADMIN, created_at: NOW.toISOString(), comment_id: null, attachment_id: pdf.id,
+      id: expect.any(Number), kind: 'attachment_purged', author: JAMES, created_at: NOW.toISOString(), comment_id: null, attachment_id: pdf.id,
       changes: [
         { field: 'filename', before: 'Solar subsidies - summary.pdf', after: null },
         { field: 'size', before: String(pdf.size), after: null },
@@ -189,7 +209,7 @@ describe('purging a withdrawn PDF', () => {
   })
 
   test('purging again answers the purged PDF unchanged', async () => {
-    await adminLogin()
+    await signInAdmin()
     const pdf = withdrawnPdf('Daniel Mensah')
     const first = await purge(pdf.id, { version: 2 })
     expect(first).toMatchObject({ status: 200, body: { version: 3, purged_at: NOW.toISOString() } })
@@ -199,18 +219,18 @@ describe('purging a withdrawn PDF', () => {
   })
 
   test('active PDFs cannot be purged, and the version must be the current one', async () => {
-    await adminLogin()
+    await signInAdmin()
     const active = communityStore().attachments.find(item => item.withdrawnAt === null)!
     expect(await purge(active.id, { version: active.version })).toMatchObject({ status: 409, body: { code: 'action_attachment_active' } })
     expect(await purge(active.id, { version: active.version + 1 })).toMatchObject({ status: 409, body: { code: 'action_stale' } })
-    const pdf = withdrawnPdf('Technical administrator')
+    const pdf = withdrawnPdf('James Okafor')
     expect(await purge(pdf.id, { version: 1 })).toMatchObject({ status: 409, body: { code: 'action_stale' } })
     expect(active.purgedAt).toBeNull()
     expect(pdf.purgedAt).toBeNull()
   })
 
   test('unknown PDFs are not found, and the request follows the contract', async () => {
-    await adminLogin()
+    await signInAdmin()
     const { id } = withdrawnPdf('Grace Liu')
     expect(await purge(crypto.randomUUID(), { version: 1 })).toMatchObject({ status: 404, body: { code: 'action_attachment_not_found' } })
     for (const [target, body] of [
@@ -223,13 +243,13 @@ describe('purging a withdrawn PDF', () => {
 })
 
 describe('shared documents', () => {
-  const OLIVIA: ActorOut = { kind: 'resident', name: 'Olivia Bennett', user_id: 6 }
+  const OLIVIA: DemoActor = { kind: 'resident', name: 'Olivia Bennett', user_id: 6, administrator: false }
   const versions = async (query = '') => (await get<StoredDocumentVersionPage>(`/api/admin/storage/document-versions${query}`)).body
   const purgeVersion = (id: string) => demoRequest<StoredDocumentVersionOut>('POST', `/api/admin/storage/document-versions/${id}/purge`)
   const size = (rows: readonly DemoDocumentVersion[]) => rows.reduce((sum, row) => sum + row.size, 0)
 
   /** A file of `bytes` stored by `actor` through the upload operations, or a new version of `document`. */
-  function store(actor: ActorOut, name: string, bytes: Uint8Array<ArrayBuffer>, document?: DemoDocument): DemoDocument {
+  function store(actor: DemoActor, name: string, bytes: Uint8Array<ArrayBuffer>, document?: DemoDocument): DemoDocument {
     const documents = sharedDocumentsStore(), uploadId = crypto.randomUUID(), at = NOW.toISOString()
     startUpload(documents, actor, { uploadId, name, size: bytes.length, folderId: null, documentId: document?.id ?? null }, at)
     receiveChunk(documents, actor, uploadId, 0, bytes, at)
@@ -244,15 +264,16 @@ describe('shared documents', () => {
     return found
   }
 
-  test("the summary counts every stored version by state and by uploader, with the administrator's quotas", async () => {
-    await adminLogin()
+  test("the summary counts every stored version by state and by uploader, with the quotas administrators set", async () => {
+    await signInAdmin()
     const before = await summary()
     const documents = sharedDocumentsStore()
     const stored = documents.versions.filter(item => item.purgedAt === null)
     expect(before.documents).toMatchObject({
       quota_bytes: 20480 * MIB, resident_quota_bytes: 2048 * MIB, stored_bytes: size(stored),
       files: 10, previous_versions: 2, deleted_files: 2, upload_bytes: 0, uploads: 0,
-      administrator_bytes: size(stored.filter(item => item.author.kind === 'administrator')),
+      // Only the technical administrator of earlier releases counts here: administrators' accounts are among the residents.
+      administrator_bytes: 0,
     })
     expect(await demoRequest('PATCH', '/api/admin/settings/documents', { body: { user_quota_mb: 100, community_quota_mb: 1000 } })).toMatchObject({ status: 200 })
     expect((await summary()).documents).toMatchObject({ quota_bytes: 1000 * MIB, resident_quota_bytes: 100 * MIB })
@@ -265,6 +286,7 @@ describe('shared documents', () => {
       expect(row).toMatchObject({ account_deleted: false, stored_bytes: size(own), versions: own.length })
     }
     expect(before.documents.residents.find(row => row.user_id === 9)).toMatchObject({ name: 'Emily Clarke', versions: 2 })
+    expect(before.documents.residents.find(row => row.user_id === 1)).toMatchObject({ name: 'James Okafor', account_deleted: false })
 
     // Uploads in progress count, and the volume's free space follows them.
     const uploadId = crypto.randomUUID()
@@ -281,20 +303,20 @@ describe('shared documents', () => {
   test('lists the earlier versions still stored, the latest uploaded first', async () => {
     const big = store(OLIVIA, 'Survey results.csv', new Uint8Array(5000).fill(0x41))
     store(OLIVIA, 'Survey results.csv', new TextEncoder().encode('fixed\n'), big)
-    await adminLogin()
+    await signInAdmin()
     const latest = await versions()
     expect(latest).toMatchObject({ total: 3, page: 1, pages: 1 })
     expect(latest.items.map(item => [item.document_name, item.number, item.location, item.previewable])).toEqual([
       ['Survey results.csv', 1, [], true], ['Claims log.csv', 1, ['Insurance'], true], ['House rules.pdf', 1, ['Community rules'], true],
     ])
-    expect(latest.items[2]).toMatchObject({ author: ADMIN, extension: 'pdf', media_type: 'application/pdf', purged_at: null })
+    expect(latest.items[2]).toMatchObject({ author: JAMES, extension: 'pdf', media_type: 'application/pdf', purged_at: null })
     expect((await versions('?q=CLAIMS')).items.map(item => item.document_name)).toEqual(['Claims log.csv'])
     expect(await versions('?page=2')).toMatchObject({ items: [], page: 2, pages: 1, total: 3 })
     expect(await get('/api/admin/storage/document-versions?page=0')).toMatchObject({ status: 422, body: { code: 'invalid_request' } })
   })
 
   test("purging an earlier version frees its bytes and keeps the document's history", async () => {
-    await adminLogin()
+    await signInAdmin()
     const earlier = version('House rules.pdf', 1)
     const before = await summary()
     const purged = await purgeVersion(earlier.id)
@@ -311,7 +333,7 @@ describe('shared documents', () => {
     expect(after.disk.free_bytes).toBe(before.disk.free_bytes! + earlier.size)
     expect((await versions()).items.map(item => item.id)).not.toContain(earlier.id)
     const [event] = (await get<DocumentHistoryPage>(`/api/admin/documents/files/${earlier.documentId}/history`)).body.items
-    expect(event).toMatchObject({ kind: 'version_purged', author: ADMIN, name: 'House rules.pdf', number: 1, size: earlier.size })
+    expect(event).toMatchObject({ kind: 'version_purged', author: JAMES, name: 'House rules.pdf', number: 1, size: earlier.size })
     const download = await demoFetch(new Request(demoUrl(`/api/documents/versions/${earlier.id}/download`)))
     expect([download.status, (await download.json() as { code: string }).code]).toEqual([410, 'document_version_purged'])
 
@@ -325,13 +347,13 @@ describe('shared documents', () => {
     expect(await purgeVersion('not-a-uuid')).toMatchObject({ status: 422, body: { code: 'invalid_request' } })
   })
 
-  test('only the administrator sees, opens and purges them, also while Documents is off', async () => {
+  test('only administrators see, open and purge them, also while Documents is off', async () => {
     const { id } = version('Claims log.csv', 1)
     const rules = version('House rules.pdf', 1)
-    expect(await get('/api/admin/storage/document-versions')).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
-    expect(await get(`/api/admin/documents/versions/${rules.id}/preview`)).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
-    expect(await purgeVersion(id)).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
-    await adminLogin()
+    expect(await get('/api/admin/storage/document-versions')).toMatchObject({ status: 403, body: { code: 'administrator_required' } })
+    expect(await get(`/api/admin/documents/versions/${rules.id}/preview`)).toMatchObject({ status: 403, body: { code: 'administrator_required' } })
+    expect(await purgeVersion(id)).toMatchObject({ status: 403, body: { code: 'administrator_required' } })
+    await signInAdmin()
     coreStore().features.documents = false
     expect((await versions()).total).toBe(2)
     const preview = await demoFetch(new Request(demoUrl(`/api/admin/documents/versions/${rules.id}/preview`)))

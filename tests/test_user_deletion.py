@@ -24,6 +24,7 @@ from tests.test_users import (
     database,
     invite,
     login,
+    residents,
     token_from,
     visitor,
 )
@@ -43,7 +44,7 @@ def test_deletion_requires_admin_matching_email_version_and_origin(admin, mailbo
         activate(reader, token)
         assert login(reader).status_code == 200
         user = current_user(admin, user["id"])
-        assert remove(reader, user).status_code == 401
+        assert remove(reader, user).status_code == 403
         assert remove(admin, user, email="someone-else@example.org").status_code == 422
         assert remove(admin, user, version=user["version"] + 1).status_code == 409
         path = f"/api/admin/users/{user['id']}"
@@ -82,13 +83,13 @@ def test_delete_any_resident_state_preserves_dwelling_and_financial_data(
         return (await db.get(State, 1)).revision
     previous_revision = database(config, revision)
     assert remove(admin, user).status_code == 204
-    assert admin.get("/api/admin/users").json() == [other]
+    assert residents(admin) == [other]
     assert admin.get("/api/admin/dwellings").json()[0] == {**unit, "user_count": 1}
     assert admin.get("/api/summary").json() == summary
     assert admin.get("/api/transactions").json() == transactions
     assert admin.get("/api/admin/statements").json() == statements
     assert database(config, revision) == previous_revision
-    assert admin.get("/api/admin/auth/session").json()["authenticated"] is True
+    assert admin.get("/api/auth/session").json()["administrator"] is True
     assert remove(admin, user).status_code == 404
     assert admin.post("/api/auth/activate", json={"token": token, "password": PASSWORD}).status_code == 400
 

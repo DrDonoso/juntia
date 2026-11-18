@@ -18,7 +18,8 @@
 <p align="center">
   <a href="https://demo.juntia.drdonoso.com"><b>Try the live demo →</b> demo.juntia.drdonoso.com</a><br>
   <sub>It runs entirely in your browser with synthetic data for the fictional community "Maple Court". You start signed in as a neighbor;
-  the welcome dialog also opens the administration (sign-in <code>demo</code> / <code>demo</code>). Nothing is saved: a reload starts over.</sub>
+  the welcome dialog also opens the administration, as the community president, who is an administrator too (every active demo
+  account uses the password <code>demo</code>). Nothing is saved: a reload starts over.</sub>
 </p>
 
 <p align="center">
@@ -63,10 +64,10 @@ describes every part in detail.
 
 - Bank statement PDFs are read by a deterministic local parser (no AI) that checks every running
   balance; the IBAN is confirmed on the first import and overlapping statements are deduplicated.
-- Categories, tags, merchants and prioritized rules, plus optional AI suggestions that the
+- Categories, tags, merchants and prioritized rules, plus optional AI suggestions that an
   administrator reviews before saving.
 - An overview with the observed balance, income, expenses, monthly trend, expenses by category and
-  top merchants, and a searchable ledger. Residents read; only the administrator writes.
+  top merchants, and a searchable ledger. Residents read; only administrators write.
 
 **Management: Actions, Events and Documents**
 
@@ -88,17 +89,25 @@ describes every part in detail.
 
 **Administration**
 
-- A separate technical portal at `/admin` for imports, rules, users, dwellings, labels and storage.
-- Invitation-only resident accounts with a password or optional Google sign-in, and email
-  invitations and password recovery.
+- An administration at `/admin` for imports, rules, users, dwellings, labels and storage, which
+  administrators open from their user menu. Administrators are accounts with the administrator
+  role: the first person to open a new installation creates the first one, and administrators give
+  the role to others.
+- Invitation-only accounts with a password or optional Google sign-in, and email invitations and
+  password recovery.
 - Runtime switches for ownership coefficients, Actions, Events and Documents; storage quotas for
-  action PDFs, and limits and quotas for shared documents that the administrator adjusts with
+  action PDFs, and limits and quotas for shared documents that administrators adjust with
   sliders in **Settings > Storage**.
 
 **Languages**
 
 - English and Spanish interface, following the browser and switchable from the user menu or the
   sign-in screens. Server texts such as emails follow `APP_LANGUAGE`.
+
+**What's new**
+
+- After an update, everyone is told once, in plain words and in their language, what changed for
+  them since their last visit; the avatar menu keeps the list.
 
 **Security and privacy**
 
@@ -142,7 +151,7 @@ describes every part in detail.
 
 ```mermaid
 flowchart LR
-  browser["Browser<br/>residents and administrator"] -- "port 7778" --> app["Juntia container<br/>FastAPI API + React app"]
+  browser["Browser<br/>residents and administrators"] -- "port 7778" --> app["Juntia container<br/>FastAPI API + React app"]
   app --> db[("PostgreSQL 18")]
   app --> uploads[("Uploads volume<br/>statement and action PDFs, documents")]
   app -. optional .-> smtp["SMTP server"]
@@ -188,18 +197,17 @@ Without OpenSSL, `python3 -c "import secrets; print(secrets.token_hex(32))"` doe
 
 ### 3. Edit `.env`
 
-Paste the two secrets and choose the administrator's username and password:
+Paste the two secrets:
 
 ```dotenv
 POSTGRES_PASSWORD=<first generated value>
 AUTH_SECRET=<second generated value>
-ADMIN_USERNAME=<administrator username>
-ADMIN_PASSWORD=<at least 15 characters>
 ```
 
 Everything else already works for `http://localhost:7778`. Optionally, set `APP_LANGUAGE=es` for
 Spanish emails and default categories (the web interface follows each browser's language) and `TZ`
-to the community's time zone.
+to the community's time zone. There are no administrator credentials to set: you create the
+administration account in the browser.
 
 ### 4. Start Juntia
 
@@ -208,18 +216,23 @@ docker compose up -d
 docker compose ps    # wait until the api service is healthy
 ```
 
-Open <http://localhost:7778/admin> and sign in with your `ADMIN_USERNAME` and `ADMIN_PASSWORD`. To
-open Juntia from other devices or from the Internet, follow the
-[deployment guide](docs/deployment.md).
+Right away, open <http://localhost:7778>: a new installation shows **Create the administration
+account**. Enter your name, email and a password of at least 10 characters; Juntia signs you in and
+opens the administration. Until that account exists, whoever opens Juntia first can create it,
+so create it before Juntia is reachable from other devices
+([the administration account](docs/deployment.md#the-administration-account)). To open Juntia from
+other devices or from the Internet, follow the [deployment guide](docs/deployment.md).
 
 ### First steps
 
-1. The administration lives at `/admin` and is not linked from the residents' pages. In
-   **Settings > General**, set the community name. In **Settings > Dwellings**, create the dwellings
-   and, with **Arrange dwellings**, lay them out like the building.
-2. In **Settings > Users**, invite the residents. Invitations are sent by email, so they need SMTP
-   and an address residents can open (see the [deployment guide](docs/deployment.md)); each link is
-   valid for 72 hours.
+1. Administrators open the administration with **Administration** in the user menu (the avatar at
+   the top right); it is not linked from the residents' pages. In **Settings > General**, set the
+   community name. In **Settings > Dwellings**, create the dwellings and, with **Arrange
+   dwellings**, lay them out like the building.
+2. In **Settings > Users**, invite the residents, and tick **Administrator** for anyone who should
+   administer the community too. Invitations are sent by email, so they need SMTP and an address
+   residents can open (see the [deployment guide](docs/deployment.md)); each link is valid for 72
+   hours.
 3. In **Finances > Import**, upload a statement PDF, confirm the IBAN on the first import, review and
    save. Optionally, turn on **Events** and **Documents** in **Settings > Features**.
 
@@ -228,7 +241,9 @@ open Juntia from other devices or from the Internet, follow the
 Pin `IMAGE_TAG` in `.env` to a [release](https://github.com/DrDonoso/juntia/releases) (CalVer tags
 such as `20261029`), back up, then run `docker compose pull && docker compose up -d`. Migrations run
 automatically and an older image cannot undo them, so keep the backup until the new version works
-([updating and rolling back](docs/deployment.md#updating)).
+([updating and rolling back](docs/deployment.md#updating)). Upgrading from a release with a
+technical administrator (`ADMIN_USERNAME` in `.env`)? Follow
+[upgrading to administrator accounts](docs/deployment.md#upgrading-to-administrator-accounts).
 
 Back up the database and the uploads volume (statement originals, action PDFs, pasted images and
 shared documents) together, keep the copies encrypted and never commit them
@@ -248,22 +263,22 @@ The most important settings, with the values `.env.example` sets;
 [docs/configuration.md](docs/configuration.md) documents all of them, with their validation rules.
 After changing `.env`, run `docker compose up -d` to recreate the container (a plain restart keeps
 the old values). Feature switches, the community name and the limits of shared documents are not
-environment variables: they are changed in the administration.
+environment variables: they are changed in the administration. Neither are administrators: they
+are accounts, and the `ADMIN_USERNAME` and `ADMIN_PASSWORD` of earlier releases are ignored.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `POSTGRES_PASSWORD` | required | Database password (only initializes a new database). |
 | `AUTH_SECRET` | required | Secret for sessions and account links, at least 32 characters. |
-| `ADMIN_USERNAME`, `ADMIN_PASSWORD` | required | Technical administrator; password of 15+ characters, at most 72 bytes. |
 | `PUBLIC_ORIGIN` | `http://localhost:7778` | The exact address residents open in the browser (comma-separated for several). |
 | `AUTH_COOKIE_SECURE` | `false` | Secure session cookies: `false` for `http://localhost`, `true` when every address uses HTTPS. |
-| `SESSION_HOURS` | `168` | Fixed lifetime of new resident and administrator sessions in hours (1–168). |
+| `SESSION_HOURS` | `168` | Fixed lifetime of new sessions in hours (1–168), administrators' included. |
 | `APP_LANGUAGE` | `en` | Language of emails, first-run defaults, server labels and the OCR of shared documents: `en` or `es`. |
 | `APP_BIND_ADDRESS` | `127.0.0.1` | Host address the app port is published on (`127.0.0.1`: this machine only). |
 | `APP_PORT` | `7778` | Host port; the container always listens on 7778. |
 | `IMAGE_TAG` | `latest` | Image tag to run; pin a CalVer release. |
 | `TZ` | `Europe/Madrid` | Community time zone for events. |
-| `ACTION_STORAGE_USER_QUOTA_MB`, `ACTION_STORAGE_COMMUNITY_QUOTA_MB`, `MIN_FREE_DISK_MB` | `250`, `2048`, `1024` | Storage of action PDFs and pasted images per resident and for the community, and free space to keep on the uploads volume, in MiB. |
+| `ACTION_STORAGE_USER_QUOTA_MB`, `ACTION_STORAGE_COMMUNITY_QUOTA_MB`, `MIN_FREE_DISK_MB` | `250`, `2048`, `1024` | Storage of action PDFs and pasted images per person (administrators included) and for the community, and free space to keep on the uploads volume, in MiB. |
 | `SMTP_HOST`, `SMTP_FROM`, … | empty | Email for invitations and password recovery. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | empty | Optional Google sign-in. |
 | `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL` | empty | Optional AI classification. |

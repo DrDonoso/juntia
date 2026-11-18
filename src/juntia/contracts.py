@@ -23,11 +23,13 @@ class Contract(BaseModel):
 
 
 def reader_route(path: str) -> bool:
+    """A page of the portal or of the administration, where signing in may return."""
     return path in {
         "/", "/transactions", "/neighbors", "/profile", "/actions", "/contacts", "/events",
-        "/documents",
+        "/documents", "/admin",
     } or bool(
         re.fullmatch(r"/(?:actions|events|documents/folders)/[1-9][0-9]{0,9}", path)
+        or re.fullmatch(r"/admin/[a-z]{1,30}(?:-[a-z]{1,30}){0,3}", path)
     )
 
 
@@ -155,7 +157,9 @@ class EmailIn(Contract):
 class UserIn(EmailIn):
     name: str = Field(min_length=1, max_length=150)
     phone: str = Field(default="", max_length=30)
-    dwelling_id: int = Field(ge=1)
+    # Residents live in a dwelling; an administrator may have none.
+    dwelling_id: int | None = Field(default=None, ge=1)
+    administrator: bool = Field(default=False, strict=True)
     _name = field_validator("name")(display_name)
     _phone = field_validator("phone")(contact_phone)
 
@@ -177,7 +181,7 @@ class UserOut(UserIn):
     id: int
     version: int
     status: Literal["pending", "active", "disabled"]
-    dwelling_label: str
+    dwelling_label: str | None
     coefficient: Decimal | None
     last_login_at: datetime | None
     invitation_status: Literal["none", "sending", "sent", "failed", "expired"]
@@ -193,7 +197,8 @@ class UserLoginIn(EmailIn):
 
 class UserAuthOut(Contract):
     authenticated: bool
-    kind: Literal["resident", "administrator"] | None = None
+    # Administrators open the administration; read from the database on every request.
+    administrator: bool = False
     name: str | None = None
     email: str | None = None
     user_id: int | None = None
@@ -210,6 +215,16 @@ class NewPasswordIn(Contract):
         if not value.strip() or len(value.encode("utf-8")) > 72:
             raise ValueError("Password must not be blank or exceed 72 UTF-8 bytes")
         return value
+
+
+class SetupOut(Contract):
+    # A new installation without accounts: the first visitor creates the administration account.
+    available: bool
+
+
+class SetupIn(EmailIn, NewPasswordIn):
+    name: str = Field(min_length=1, max_length=150)
+    _name = field_validator("name")(display_name)
 
 
 class SetPasswordIn(NewPasswordIn):
@@ -259,7 +274,7 @@ class ProfileEdit(Contract):
 class ProfileOut(UserIn):
     id: int
     version: int
-    dwelling_label: str
+    dwelling_label: str | None
     coefficient: Decimal | None
     last_login_at: datetime | None
     has_password: bool
@@ -346,6 +361,9 @@ def action_labels(values: list[str]) -> list[str]:
 
 
 class ActorOut(Contract):
+    # Every account writes as 'resident' with its user ID, administrators included;
+    # 'administrator', without a user ID and with a fixed label, is the technical administrator
+    # of earlier releases.
     kind: Literal["resident", "administrator"]
     user_id: int | None
     name: str
@@ -692,7 +710,7 @@ class DocumentStorageOut(Contract):
 
     quota_bytes: int
     resident_quota_bytes: int
-    # stored = current + previous + deleted: every version until the administrator purges it.
+    # stored = current + previous + deleted: every version until an administrator purges it.
     stored_bytes: int
     current_bytes: int
     previous_bytes: int
@@ -700,16 +718,20 @@ class DocumentStorageOut(Contract):
     files: int
     previous_versions: int
     deleted_files: int
+    # Uploaded by the technical administrator of earlier releases, which had no account.
     administrator_bytes: int
     # Uploads still being received; they are discarded a day after their last chunk.
     upload_bytes: int
     uploads: int
+    # Every account that uploaded, administrators included.
     residents: list[DocumentResidentStorageOut]
 
 
 class StorageOut(Contract):
     community: CommunityStorageOut
+    # Uploaded by the technical administrator of earlier releases, which had no account.
     administrator: StorageUsageOut
+    # Every account that uploaded, administrators included, with the same quota.
     residents: list[ResidentStorageOut]
     resident_quota_bytes: int
     disk: DiskSpaceOut
@@ -1454,3 +1476,18 @@ class SummaryOut(Contract):
     categories: list[CategoryBreakdown]
     merchants: list[MerchantBreakdown]
     daily: list[DailyTotal]
+
+
+# What's new
+# A note's id is its file name in frontend/src/whats-new/notes/: ``YYYY-MM-DD-slug``.
+NOTE_ID_PATTERN = r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$"
+NoteId = Annotated[str, Field(max_length=80, pattern=NOTE_ID_PATTERN)]
+
+
+class WhatsNewOut(Contract):
+    # Notes the account has read (sorted); null until the interface records them for the first time.
+    seen: list[str] | None
+
+
+class WhatsNewSeenIn(Contract):
+    ids: Annotated[list[NoteId], Field(min_length=1, max_length=500)]

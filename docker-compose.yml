@@ -8,14 +8,12 @@ services:
       - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-7778}:7778"
     environment:
       DATABASE_URL: "postgresql+asyncpg://juntia:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/juntia"
-      ADMIN_USERNAME: "${ADMIN_USERNAME:?Set ADMIN_USERNAME}"
-      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}"
       AUTH_SECRET: "${AUTH_SECRET:?Set AUTH_SECRET}"
       PUBLIC_ORIGIN: "${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN}"
       AUTH_COOKIE_SECURE: "${AUTH_COOKIE_SECURE:-true}"
       SESSION_HOURS: "${SESSION_HOURS:-168}"
       UPLOAD_DIR: /app/data/uploads
-      # Action PDF budgets in MiB; withdrawn PDFs count until the administrator purges them.
+      # Action PDF budgets in MiB; withdrawn PDFs count until an administrator purges them.
       ACTION_STORAGE_USER_QUOTA_MB: "${ACTION_STORAGE_USER_QUOTA_MB:-250}"
       ACTION_STORAGE_COMMUNITY_QUOTA_MB: "${ACTION_STORAGE_COMMUNITY_QUOTA_MB:-2048}"
       # Free space (MiB) that PDF uploads and statement imports leave on the uploads volume.

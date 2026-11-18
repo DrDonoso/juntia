@@ -3,11 +3,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { resetDemo } from '../store'
 import { coreStore } from '../store/core'
 import {
-  Body, DemoApiError, IdSequence, Random, actorOf, addDays, addMonths, daysAgo, daysAhead, daysBetween, demoRandom,
+  Body, DemoApiError, IdSequence, Random, SIGNED_OUT, actorOf, addDays, addMonths, daysAgo, daysAhead, daysBetween, demoRandom,
   demoUnavailable, displayName, endOfMonth, hoursFromNow, idParam, instant, isDay, monthsAgo, normalizePhone, now,
   pageCount, pageParam, paginate, parseBody, queryBool, queryChoice, queryDay, queryInt, queryInts, queryText,
-  readerIdentity, requireAdmin, requireAnySession, requireResident, revokeResidentSessions, route, sequenceAfter,
-  setClock, signInAdmin, signOutAdmin, signOutResident, startOfMonth, today, type Access, type RouteOptions,
+  readerSession, requireAdmin, requireAnySession, revokeResidentSessions, route, sequenceAfter, setClock, signInResident,
+  signOutResident, signedInResident, startOfMonth, today, type Access, type RouteOptions,
 } from '.'
 
 // Thursday 29 October 2026, midday (local time).
@@ -115,43 +115,54 @@ describe('ids and pages', () => {
 })
 
 describe('sessions', () => {
-  test('the demo opens with the sample neighbor; the administrator wins when both are signed in', () => {
-    expect(readerIdentity()).toMatchObject({ kind: 'resident', resident: { id: 6, name: 'Olivia Bennett' } })
-    expect(requireResident().email).toBe('olivia.bennett@example.com')
-    signInAdmin()
-    expect(readerIdentity()).toEqual({ kind: 'administrator' })
-    expect(requireAdmin()).toEqual({ kind: 'administrator' })
-    expect(actorOf(requireAnySession())).toEqual({ kind: 'administrator', name: 'Technical administrator', user_id: null })
+  test('the demo opens with the sample neighbor; James Okafor, the president, is the administrator', () => {
+    expect(signedInResident()).toMatchObject({ id: 6, name: 'Olivia Bennett', administrator: false })
+    expect(actorOf(requireAnySession())).toEqual({ kind: 'resident', name: 'Olivia Bennett', user_id: 6, administrator: false })
+    signInResident(1)
+    expect(requireAdmin()).toMatchObject({ id: 1, name: 'James Okafor', administrator: true, dwellingId: 1 })
+    // Administrators write under their own name, like every account.
+    expect(actorOf(requireAdmin())).toEqual({ kind: 'resident', name: 'James Okafor', user_id: 1, administrator: true })
+    expect(readerSession()).toEqual({
+      authenticated: true, administrator: true, name: 'James Okafor', email: 'james.okafor@example.com', user_id: 1,
+      dwelling_id: 1, expires_at: hoursFromNow(168),
+    })
   })
 
   test('guards answer like the backend', async () => {
-    signInAdmin()
-    expect(await failure(requireResident)).toEqual({ code: 'resident_profile_required', status: 403 })
-    signOutAdmin()
-    expect(await failure(requireAdmin)).toEqual({ code: 'authentication_required', status: 401 })
-    expect(actorOf(requireAnySession())).toEqual({ kind: 'resident', name: 'Olivia Bennett', user_id: 6 })
+    expect(await failure(requireAdmin)).toEqual({ code: 'administrator_required', status: 403 })
     signOutResident()
-    expect(readerIdentity()).toBeNull()
+    expect(signedInResident()).toBeNull()
+    expect(readerSession()).toEqual(SIGNED_OUT)
     expect(await failure(requireAnySession)).toEqual({ code: 'authentication_required', status: 401 })
-    expect(await failure(requireResident)).toEqual({ code: 'authentication_required', status: 401 })
+    expect(await failure(requireAdmin)).toEqual({ code: 'authentication_required', status: 401 })
+  })
+
+  test('the role is read on every request: granting or revoking it applies at once, without a new session', async () => {
+    const olivia = requireAnySession()
+    olivia.administrator = true
+    expect(requireAdmin()).toBe(olivia)
+    expect(readerSession()).toMatchObject({ administrator: true, user_id: 6 })
+    olivia.administrator = false
+    expect(await failure(requireAdmin)).toEqual({ code: 'administrator_required', status: 403 })
+    expect(requireAnySession()).toBe(olivia)
   })
 
   test('a session ends when it expires, when the account is disabled or when it is revoked', () => {
     coreStore()
     setClock(() => new Date(NOW.getTime() + 168 * 3_600_000 - 1))
-    expect(readerIdentity()).not.toBeNull()
+    expect(signedInResident()).not.toBeNull()
     setClock(() => new Date(NOW.getTime() + 168 * 3_600_000))
-    expect(readerIdentity()).toBeNull()
+    expect(signedInResident()).toBeNull()
 
     setClock(() => NOW)
-    const resident = requireResident()
+    const resident = requireAnySession()
     resident.disabled = true
-    expect(readerIdentity()).toBeNull()
+    expect(signedInResident()).toBeNull()
     resident.disabled = false
     revokeResidentSessions(5)
-    expect(readerIdentity()).not.toBeNull()
+    expect(signedInResident()).not.toBeNull()
     revokeResidentSessions(6)
-    expect(readerIdentity()).toBeNull()
+    expect(signedInResident()).toBeNull()
   })
 })
 
@@ -228,14 +239,27 @@ describe('requests', () => {
   test('writes need the X-Juntia-Request header, before any other check', async () => {
     const post = handler('post', 'admin', () => ({ ok: true }), { status: 201 })
     expect(await answer(post, 'POST', '/api/test/1')).toEqual({ status: 403, body: { code: 'invalid_origin' } })
+    expect(await answer(post, 'POST', '/api/test/1', { 'X-Juntia-Request': '1' })).toEqual({ status: 403, body: { code: 'administrator_required' } })
+    signOutResident()
     expect(await answer(post, 'POST', '/api/test/1', { 'X-Juntia-Request': '1' })).toEqual({ status: 401, body: { code: 'authentication_required' } })
-    signInAdmin()
+    signInResident(1)
     expect(await answer(post, 'POST', '/api/test/1', { 'X-Juntia-Request': '1' })).toEqual({ status: 201, body: { ok: true } })
+  })
+
+  test('resolvers get the signed-in account of each request', async () => {
+    const own = http.get('/api/test/:id', route('session', ({ user }) => ({ id: user.id, administrator: user.administrator })))
+    const anyone = http.get('/api/test/:id', route('public', ({ user }) => user?.id ?? null))
+    expect(await answer(own, 'GET', '/api/test/1')).toEqual({ status: 200, body: { id: 6, administrator: false } })
+    signInResident(1)
+    expect(await answer(own, 'GET', '/api/test/1')).toEqual({ status: 200, body: { id: 1, administrator: true } })
+    expect(await answer(anyone, 'GET', '/api/test/1')).toEqual({ status: 200, body: 1 })
+    signOutResident()
+    expect(await answer(anyone, 'GET', '/api/test/1')).toEqual({ status: 200, body: null })
+    expect(await answer(own, 'GET', '/api/test/1')).toEqual({ status: 401, body: { code: 'authentication_required' } })
   })
 
   test('sessions, features, no-content answers and errors', async () => {
     expect(await answer(handler('get', 'session', () => null), 'GET', '/api/test/1')).toEqual({ status: 200, body: null })
-    expect(await answer(handler('get', 'resident', () => [1]), 'GET', '/api/test/1')).toEqual({ status: 200, body: [1] })
     const feature = handler('get', 'session', () => ({}), { feature: 'events' })
     coreStore().features.events = false
     expect(await answer(feature, 'GET', '/api/test/1')).toEqual({ status: 404, body: { code: 'events_disabled' } })

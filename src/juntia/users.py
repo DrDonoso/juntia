@@ -14,10 +14,11 @@ from . import mail, queries
 from .auth import (
     DB,
     USER_COOKIE,
-    Resident,
+    Administrator,
+    CurrentUser,
     access_hash,
-    administrator,
-    resident_session,
+    account_session,
+    administrator_session,
     revoke_user,
     revoke_user_access,
     settings,
@@ -46,15 +47,15 @@ from .contracts import (
     UserStatusIn,
     VersionIn,
 )
-from .db import Dwelling, State, User, UserToken, aware, utcnow
+from .db import Dwelling, State, User, UserToken, aware, lock_state, utcnow
 from .errors import AppError
 
 log = logging.getLogger(__name__)
 router = APIRouter(
-    prefix="/api/admin", tags=["Residents"], dependencies=[Depends(administrator)]
+    prefix="/api/admin", tags=["Users"], dependencies=[Depends(administrator_session)]
 )
 public_router = APIRouter(prefix="/api/auth", tags=["Account invitations and recovery"])
-profile_router = APIRouter(prefix="/api/auth/profile", tags=["Resident profile"])
+profile_router = APIRouter(prefix="/api/auth/profile", tags=["Profile"])
 
 
 async def save(db: AsyncSession) -> None:
@@ -76,7 +77,7 @@ async def dwelling_out(db: AsyncSession, dwelling: Dwelling) -> DwellingOut:
     )
 
 
-def render_user(user: User, dwelling: Dwelling, coefficient_enabled: bool) -> UserOut:
+def render_user(user: User, dwelling: Dwelling | None, coefficient_enabled: bool) -> UserOut:
     status = "disabled" if user.disabled else "active" if user.activated else "pending"
     invitation = user.invitation_delivery
     if (
@@ -87,9 +88,10 @@ def render_user(user: User, dwelling: Dwelling, coefficient_enabled: bool) -> Us
         invitation = "expired"
     return UserOut(
         id=user.id, name=user.name, email=user.email, phone=user.phone,
-        dwelling_id=user.dwelling_id,
-        version=user.version, status=status, dwelling_label=dwelling.label,
-        coefficient=dwelling.coefficient if coefficient_enabled else None,
+        dwelling_id=user.dwelling_id, administrator=user.administrator,
+        version=user.version, status=status,
+        dwelling_label=dwelling.label if dwelling else None,
+        coefficient=dwelling.coefficient if dwelling and coefficient_enabled else None,
         last_login_at=aware(user.last_login_at) if user.last_login_at else None,
         invitation_status=invitation,
         invitation_expires_at=(
@@ -103,7 +105,7 @@ def render_user(user: User, dwelling: Dwelling, coefficient_enabled: bool) -> Us
 async def user_out(db: AsyncSession, user_id: int) -> UserOut:
     row = (
         await db.execute(
-            select(User, Dwelling).join(Dwelling, User.dwelling_id == Dwelling.id)
+            select(User, Dwelling).outerjoin(Dwelling, User.dwelling_id == Dwelling.id)
             .where(User.id == user_id).execution_options(populate_existing=True)
         )
     ).one_or_none()
@@ -132,9 +134,39 @@ async def clear_presidency(db: AsyncSession, user_id: int) -> None:
     )
 
 
+def active_administrator(user: User) -> bool:
+    return user.administrator and user.activated and not user.disabled
+
+
+async def require_administrator_remains(db: AsyncSession) -> None:
+    """Refuse a change that would leave no active administrator. The state row's lock serializes
+    these changes, so two of them cannot each remove the other's last colleague."""
+    # The count includes the change being checked; one that conflicts (an email address in use)
+    # is refused here, as the commit would refuse it.
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise AppError("record_conflict", 409) from None
+    await lock_state(db)
+    remaining = await db.scalar(select(func.count()).select_from(User).where(
+        User.administrator.is_(True), User.activated.is_(True), User.disabled.is_(False),
+    ))
+    if not remaining:
+        raise AppError("last_administrator", 409)
+
+
+def refuse_self(editor_id: int | None, user_id: int) -> None:
+    """Nobody changes their own role or status, or deletes their own account."""
+    if editor_id == user_id:
+        raise AppError("cannot_modify_self", 409)
+
+
 async def current_profile_user(request: Request, db: AsyncSession, user_id: int) -> User:
+    """The signed-in account's row, locked until the transaction ends, once its session is
+    confirmed again under that lock."""
     user = await locked_user(db, user_id)
-    identity = await resident_session(request, db)
+    identity = await account_session(request, db)
     if identity is None or identity.user_id != user_id:
         raise AppError("authentication_required", 401)
     return user
@@ -148,14 +180,14 @@ def clear_resident_cookie(request: Request, response: Response) -> None:
 
 
 @profile_router.get("", response_model=ProfileOut)
-async def profile(user_id: Resident, request: Request, db: DB) -> ProfileOut:
+async def profile(user_id: CurrentUser, request: Request, db: DB) -> ProfileOut:
     await current_profile_user(request, db, user_id)
     return ProfileOut.model_validate(await user_out(db, user_id))
 
 
 @profile_router.patch("", response_model=ProfileOut)
 async def edit_profile(
-    body: ProfileEdit, user_id: Resident, request: Request, db: DB
+    body: ProfileEdit, user_id: CurrentUser, request: Request, db: DB
 ) -> ProfileOut:
     user = await current_profile_user(request, db, user_id)
     if user.version != body.version:
@@ -170,7 +202,7 @@ async def edit_profile(
 
 @profile_router.post("/password", status_code=204)
 async def change_password(
-    body: ChangePasswordIn, user_id: Resident, request: Request, response: Response, db: DB
+    body: ChangePasswordIn, user_id: CurrentUser, request: Request, response: Response, db: DB
 ) -> None:
     stored_hash, version = await verify_current_password(
         db, user_id, body.current_password, request,
@@ -190,7 +222,7 @@ async def change_password(
 
 @profile_router.delete("/sessions", status_code=204)
 async def close_all_sessions(
-    user_id: Resident, request: Request, response: Response, db: DB
+    user_id: CurrentUser, request: Request, response: Response, db: DB
 ) -> None:
     user = await current_profile_user(request, db, user_id)
     await revoke_user(db, user)
@@ -198,8 +230,12 @@ async def close_all_sessions(
     clear_resident_cookie(request, response)
 
 
-async def require_dwelling(db: AsyncSession, dwelling_id: int) -> None:
-    if await db.get(Dwelling, dwelling_id) is None:
+async def require_dwelling(db: AsyncSession, body: UserIn) -> None:
+    """Residents live in an existing dwelling; an administrator may have none."""
+    if body.dwelling_id is None:
+        if not body.administrator:
+            raise AppError("dwelling_required", 422)
+    elif await db.get(Dwelling, body.dwelling_id) is None:
         raise AppError("dwelling_not_found", 422)
 
 
@@ -211,10 +247,10 @@ async def prepare_invitation(db: AsyncSession, request: Request, email: str) -> 
 
 
 async def issue_token(
-    db: AsyncSession, request: Request, user: User, purpose: mail.Purpose
+    db: AsyncSession, config: Settings, user: User, purpose: mail.Purpose
 ) -> str:
     raw = secrets.token_hex(32)
-    hashed = access_hash(settings(request), purpose, raw)
+    hashed = access_hash(config, purpose, raw)
     expires = utcnow() + timedelta(hours=72 if purpose == "invitation" else 1)
     await db.execute(delete(UserToken).where(
         UserToken.user_id == user.id, UserToken.purpose == purpose
@@ -351,7 +387,7 @@ async def edit_dwelling(
 async def users(db: DB) -> list[UserOut]:
     flags = await queries.feature_flags(db)
     rows = (await db.execute(
-        select(User, Dwelling).join(Dwelling, User.dwelling_id == Dwelling.id)
+        select(User, Dwelling).outerjoin(Dwelling, User.dwelling_id == Dwelling.id)
         .order_by(User.name, User.id)
     )).all()
     return [render_user(*row, flags.coefficient) for row in rows]
@@ -366,12 +402,14 @@ async def read_presidency(db: DB) -> PresidencyOut:
 async def update_presidency(body: PresidencyIn, db: DB) -> PresidencyOut:
     statement = update(State).where(State.id == 1, State.presidency_version == body.version)
     if body.user_id is not None:
+        # Only an active neighbor, an account with a dwelling, can hold the presidency.
         user = await locked_user(db, body.user_id)
-        if user.disabled or not user.activated:
+        if user.disabled or not user.activated or user.dwelling_id is None:
             raise AppError("presidency_inactive", 409)
         # SQLite has no row locks; also check eligibility in the atomic update.
         statement = statement.where(select(User.id).where(
             User.id == body.user_id, User.disabled.is_(False), User.activated.is_(True),
+            User.dwelling_id.is_not(None),
         ).exists())
     version = await db.scalar(
         statement.values(
@@ -387,10 +425,12 @@ async def update_presidency(body: PresidencyIn, db: DB) -> PresidencyOut:
 
 
 @router.delete("/users/{user_id}", status_code=204)
-async def delete_user(user_id: int, body: UserDeleteIn, db: DB) -> None:
+async def delete_user(user_id: int, body: UserDeleteIn, db: DB, editor: Administrator) -> None:
+    refuse_self(editor.user_id, user_id)
     user = await locked_user(db, user_id, body.version)
     if body.email != user.email:
         raise AppError("user_delete_confirmation_required", 422)
+    was_administrator = active_administrator(user)
     await clear_presidency(db, user_id)
     await revoke_user_access(db, user_id)
     removed = await db.scalar(
@@ -401,13 +441,15 @@ async def delete_user(user_id: int, body: UserDeleteIn, db: DB) -> None:
     if removed is None:
         await db.rollback()
         raise AppError("record_stale", 409)
+    if was_administrator:
+        await require_administrator_remains(db)
     await db.commit()
 
 
 @router.post("/users", response_model=UserOut, status_code=201)
 async def invite_user(body: UserIn, request: Request, db: DB) -> UserOut:
     await prepare_invitation(db, request, body.email)
-    await require_dwelling(db, body.dwelling_id)
+    await require_dwelling(db, body)
     value = User(**body.model_dump())
     db.add(value)
     try:
@@ -415,7 +457,7 @@ async def invite_user(body: UserIn, request: Request, db: DB) -> UserOut:
     except IntegrityError:
         await db.rollback()
         raise AppError("record_conflict", 409) from None
-    token = await issue_token(db, request, value, "invitation")
+    token = await issue_token(db, settings(request), value, "invitation")
     await save(db)
     await send_token(db, settings(request), value, token, "invitation")
     return await user_out(db, value.id)
@@ -433,28 +475,39 @@ async def resend_invitation(
     if user.disabled or user.activated:
         raise AppError("invitation_not_pending", 409)
     user.version += 1
-    token = await issue_token(db, request, user, "invitation")
+    token = await issue_token(db, settings(request), user, "invitation")
     await save(db)
     await send_token(db, settings(request), user, token, "invitation")
     return await user_out(db, user_id)
 
 
 @router.patch("/users/{user_id}", response_model=UserOut)
-async def edit_user(user_id: int, body: UserEdit, request: Request, db: DB) -> UserOut:
+async def edit_user(
+    user_id: int, body: UserEdit, request: Request, db: DB, editor: Administrator,
+) -> UserOut:
     previous = (await db.execute(
-        select(User.email, User.disabled).where(User.id == user_id)
+        select(User.email, User.disabled, User.administrator).where(User.id == user_id)
     )).one_or_none()
     if previous is None:
         raise AppError("user_not_found", 404)
+    if (previous.email, previous.administrator) != (body.email, body.administrator):
+        # Changing the email address also signs the account out until it is activated again.
+        refuse_self(editor.user_id, user_id)
     if previous.email != body.email and not previous.disabled:
         await prepare_invitation(db, request, body.email)
     user = await locked_user(db, user_id, body.version)
-    await require_dwelling(db, body.dwelling_id)
+    if (user.email, user.administrator) != (body.email, body.administrator):
+        refuse_self(editor.user_id, user_id)
+    await require_dwelling(db, body)
+    was_administrator = active_administrator(user)
     email_changed = user.email != body.email
     user.name = body.name
     if "phone" in body.model_fields_set:
         user.phone = body.phone
     user.dwelling_id = body.dwelling_id
+    user.administrator = body.administrator
+    if user.dwelling_id is None:
+        await clear_presidency(db, user_id)
     user.version += 1
     token = None
     if email_changed:
@@ -469,7 +522,9 @@ async def edit_user(user_id: int, body: UserEdit, request: Request, db: DB) -> U
         user.invitation_expires_at = None
         user.invitation_sent_at = None
         if not user.disabled:
-            token = await issue_token(db, request, user, "invitation")
+            token = await issue_token(db, settings(request), user, "invitation")
+    if was_administrator and not active_administrator(user):
+        await require_administrator_remains(db)
     await save(db)
     if token:
         await send_token(db, settings(request), user, token, "invitation")
@@ -478,8 +533,9 @@ async def edit_user(user_id: int, body: UserEdit, request: Request, db: DB) -> U
 
 @router.patch("/users/{user_id}/status", response_model=UserOut)
 async def change_status(
-    user_id: int, body: UserStatusIn, request: Request, db: DB
+    user_id: int, body: UserStatusIn, request: Request, db: DB, editor: Administrator,
 ) -> UserOut:
+    refuse_self(editor.user_id, user_id)
     previous = (await db.execute(
         select(User.email, User.activated).where(User.id == user_id)
     )).one_or_none()
@@ -488,6 +544,7 @@ async def change_status(
     if not body.disabled and not previous.activated:
         await prepare_invitation(db, request, previous.email)
     user = await locked_user(db, user_id, body.version)
+    was_administrator = active_administrator(user)
     token = None
     if user.disabled != body.disabled:
         user.disabled = body.disabled
@@ -500,7 +557,9 @@ async def change_status(
         user.invitation_expires_at = None
         user.invitation_sent_at = None
         if not user.disabled and not user.activated:
-            token = await issue_token(db, request, user, "invitation")
+            token = await issue_token(db, settings(request), user, "invitation")
+    if was_administrator and not active_administrator(user):
+        await require_administrator_remains(db)
     await save(db)
     if token:
         await send_token(db, settings(request), user, token, "invitation")
@@ -517,7 +576,7 @@ async def forgot_password(
         return RecoveryOut()
     try:
         mail.require_smtp(settings(request))
-        token = await issue_token(db, request, user, "recovery")
+        token = await issue_token(db, settings(request), user, "recovery")
         await db.commit()
         background.add_task(
             deliver_recovery, request.app.state.sessions, settings(request), user.id, token

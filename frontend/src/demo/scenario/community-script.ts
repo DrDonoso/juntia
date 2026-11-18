@@ -4,23 +4,26 @@
  * chronological order through the same operations as the API, so ids follow the dates and every
  * history entry matches the data it describes.
  */
-import type { ActorOut } from '../../api/schema.gen'
-import { ADMINISTRATOR_ACTOR_NAME, castResident } from '../cast'
+import { ADMINISTRATOR_ID, castResident } from '../cast'
 import { daysAgo, hoursFromNow, instant } from '../core/clock'
 import { IdSequence } from '../core/ids'
 import { demoRandom } from '../core/random'
+import type { DemoActor } from '../core/session'
 import type { CommunityState, DemoAction, DemoActionAttachment, DemoActionComment, DemoContact, DemoEvent } from '../store/community-model'
 
-/** A neighbor of the cast (by id) or the administrator. */
-export type Who = number | 'admin'
+/**
+ * A neighbor of the cast, by id. What the administration does is done by James Okafor (1), the
+ * president, whose account is the administrator's: like every account, under his own name.
+ */
+export type Who = number
 
 /** `[days ago, 'HH:MM']` in the visitor's time, or a few hours before now, to the minute (recent activity). */
 export type When = readonly [daysAgo: number, time: string] | { readonly hoursAgo: number }
 
-export function actor(who: Who): ActorOut {
-  if (who === 'admin') return { kind: 'administrator', name: ADMINISTRATOR_ACTOR_NAME, user_id: null }
+/** The actor of a cast account, with its role (backend `actor_of`). */
+export function actor(who: Who): DemoActor {
   const resident = castResident(who)
-  return { kind: 'resident', name: resident.name, user_id: resident.id }
+  return { kind: 'resident', name: resident.name, user_id: resident.id, administrator: resident.id === ADMINISTRATOR_ID }
 }
 
 export function at(when: When): string {

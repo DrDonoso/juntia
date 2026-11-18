@@ -2,6 +2,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from juntia import auth
+from tests.support import ADMINISTRATOR
 from tests.test_users import (
     PASSWORD,
     activate,
@@ -16,10 +17,13 @@ from tests.test_users import (
 )
 
 
-def test_profile_requires_a_resident_and_only_exposes_own_data(admin, config, mailbox):
+def test_profile_requires_a_session_and_only_exposes_own_data(admin, config, mailbox):
     user, token = invite(admin, mailbox)
     other, _ = invite(admin, mailbox, "other@example.org", user["dwelling_id"])
-    assert admin.get("/api/auth/profile").status_code == 403
+    own = admin.get("/api/auth/profile", params={"user_id": user["id"]}).json()
+    assert (own["email"], own["administrator"], own["dwelling_id"]) == (
+        ADMINISTRATOR["email"], True, None,
+    )
     with visitor(config) as reader:
         assert reader.get("/api/auth/profile").status_code == 401
         activate(reader, token)
@@ -29,9 +33,9 @@ def test_profile_requires_a_resident_and_only_exposes_own_data(admin, config, ma
         profile = result.json()
         assert set(profile) == {
             "id", "email", "name", "phone", "dwelling_id", "dwelling_label", "coefficient",
-            "last_login_at", "version", "has_password", "google_linked",
+            "last_login_at", "version", "has_password", "google_linked", "administrator",
         }
-        assert profile["id"] == user["id"]
+        assert (profile["id"], profile["administrator"]) == (user["id"], False)
         assert profile["email"] == user["email"]
         assert profile["dwelling_label"] == "1 A"
         assert profile["coefficient"] == "1.23"
@@ -54,6 +58,7 @@ def test_profile_requires_a_resident_and_only_exposes_own_data(admin, config, ma
         for field, value in [
             ("email", "forged@example.org"), ("dwelling_id", 999), ("coefficient", "99"),
             ("disabled", False), ("id", other["id"]), ("role", "administrator"),
+            ("administrator", True),
         ]:
             assert reader.patch("/api/auth/profile", json={
                 "name": "Invalid change", "version": saved["version"], field: value,
@@ -122,7 +127,7 @@ def test_closing_sessions_affects_only_the_resident_and_preserves_password(
         assert login(first).status_code == 200
 
 
-def test_profile_mutations_keep_csrf_and_technical_admin_boundaries(admin, config, mailbox):
+def test_profile_mutations_keep_csrf_and_only_change_the_own_account(admin, config, mailbox):
     _, token = invite(admin, mailbox)
     with visitor(config) as reader:
         activate(reader, token)
@@ -139,7 +144,10 @@ def test_profile_mutations_keep_csrf_and_technical_admin_boundaries(admin, confi
             assert reader.request(method, path, json=body, headers={
                 "origin": "https://attacker.invalid",
             }).status_code == 403
-            assert admin.request(method, path, json=body).status_code == 403
+        own = admin.get("/api/auth/profile").json()
+        assert admin.patch("/api/auth/profile", json={
+            "name": "Renamed Administrator", "version": own["version"],
+        }).json()["id"] == own["id"]
         assert reader.get("/api/auth/profile").json()["name"] == profile["name"]
         assert reader.get("/api/summary").status_code == 200
 

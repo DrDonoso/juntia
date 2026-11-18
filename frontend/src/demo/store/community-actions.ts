@@ -8,8 +8,8 @@ import type {
   ActionAttachmentOut, ActionChange, ActionCommentOut, ActionEventOut, ActionLabelOut, ActionOut, ActionSummaryOut, ActorOut,
 } from '../../api/schema.gen'
 import {
-  actorOut, compareText, type ActionEventKind, type ActionStatus, type CommunityState, type DemoAction, type DemoActionAttachment,
-  type DemoActionComment, type DemoActionEvent, type DemoActionLabel,
+  actorOut, authorship, compareText, type ActionEventKind, type ActionStatus, type CommunityState, type DemoAction,
+  type DemoActionAttachment, type DemoActionComment, type DemoActionEvent, type DemoActionLabel,
 } from './community-model'
 import { casefold, labelKey } from './community-text'
 
@@ -68,7 +68,7 @@ function addEvent(
 ): void {
   action.updatedAt = at
   state.actionHistory.push({
-    id: state.sequences.actionHistory.next(), actionId: action.id, kind, author: { ...actor }, createdAt: at, changes,
+    id: state.sequences.actionHistory.next(), actionId: action.id, kind, author: authorship(actor), createdAt: at, changes,
     commentId: references.commentId ?? null, attachmentId: references.attachmentId ?? null,
   })
 }
@@ -84,7 +84,7 @@ export interface ActionInput {
 export function createAction(state: CommunityState, actor: ActorOut, input: ActionInput, at: string): DemoAction {
   const action: DemoAction = {
     id: state.sequences.action.next(), title: input.title, description: input.description, status: input.status,
-    labelIds: [], author: { ...actor }, version: 1, createdAt: at, updatedAt: at,
+    labelIds: [], author: authorship(actor), version: 1, createdAt: at, updatedAt: at,
   }
   state.actions.push(action)
   const labels = resolveLabels(state, input.labels)
@@ -155,7 +155,7 @@ export function editLabel(state: CommunityState, actor: ActorOut, label: DemoAct
 
 export function addComment(state: CommunityState, actor: ActorOut, action: DemoAction, body: string, at: string): DemoActionComment {
   const comment: DemoActionComment = {
-    id: state.sequences.comment.next(), actionId: action.id, body, author: { ...actor }, version: 1,
+    id: state.sequences.comment.next(), actionId: action.id, body, author: authorship(actor), version: 1,
     createdAt: at, updatedAt: at, withdrawnAt: null,
   }
   state.comments.push(comment)
@@ -193,7 +193,7 @@ export interface UploadedPdf {
 export function addAttachment(state: CommunityState, actor: ActorOut, action: DemoAction, file: UploadedPdf, at: string): DemoActionAttachment {
   const attachment: DemoActionAttachment = {
     id: file.id, actionId: action.id, filename: file.filename, displayFilename: null, size: file.bytes.length, sha256: file.sha256,
-    bytes: file.bytes, author: { ...actor }, version: 1, createdAt: at, withdrawnAt: null, purgedAt: null,
+    bytes: file.bytes, author: authorship(actor), version: 1, createdAt: at, withdrawnAt: null, purgedAt: null,
   }
   state.attachments.push(attachment)
   addEvent(state, action, actor, 'attachment_added', [

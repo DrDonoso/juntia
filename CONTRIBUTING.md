@@ -44,11 +44,12 @@ can agree on the approach before you invest time in it.
 | `src/juntia/` | FastAPI backend: application factory (`app.py`), API routes, SQLAlchemy models (`db.py`), settings (`config.py`), the bank-statement PDF parser (`parser.py`) and the import pipeline (`imports.py`) |
 | `alembic/` | Database migrations, numbered in `alembic/versions/` |
 | `tests/` | Backend tests (pytest) |
-| `scripts/` | OpenAPI export, dependency audit and the synthetic server used by the browser tests |
+| `scripts/` | OpenAPI export, dependency audit, the synthetic server used by the browser tests and the *What's new* section of each release |
 | `frontend/src/` | React and TypeScript application |
 | `frontend/src/i18n/` | Translation runtime and messages: `locales/en/` (the source of truth) and `locales/es/` |
 | `frontend/src/api/` | API client, OpenAPI contract (`openapi.json`) and the types generated from it (`schema.gen.ts`) |
 | `frontend/src/demo/` | Static demo: mock API handlers and synthetic data that run in the browser |
+| `frontend/src/whats-new/` | The in-app What's new: one JSON note per change people will notice |
 | `frontend/e2e/` | Playwright browser tests |
 | `docs/` | Documentation, including the [security model](docs/security-model.md) |
 
@@ -89,13 +90,15 @@ cp .env.example .env    # set POSTGRES_PASSWORD and AUTH_SECRET
 docker compose -f docker-compose.local.yml up -d --build
 ```
 
-Generate each secret with `openssl rand -hex 32`. Open
-<http://localhost:7778>; the administration is at <http://localhost:7778/admin>
-with the fixed local credentials `admin` / `admin`. This stack is only published
-on `127.0.0.1`: never expose it through a proxy, tunnel or shared network. The
-[README](README.md#deploy-with-docker) and [docs/deployment.md](docs/deployment.md)
-cover server deployment, and [docs/configuration.md](docs/configuration.md)
-describes every setting.
+Generate each secret with `openssl rand -hex 32`. Open <http://localhost:7778>:
+on a new database, the first visit shows **Create the administration account**.
+Create it with a [synthetic](#synthetic-data-only) name and email and a password
+of at least 10 characters; it opens the administration, which administrators
+reach from the user menu. There are no fixed local credentials. This stack is
+only published on `127.0.0.1`: never expose it through a proxy, tunnel or shared
+network. The [README](README.md#deploy-with-docker) and
+[docs/deployment.md](docs/deployment.md) cover server deployment, and
+[docs/configuration.md](docs/configuration.md) describes every setting.
 
 ### With hot reload
 
@@ -109,7 +112,6 @@ docker run -d --name juntia-dev-db -p 127.0.0.1:5433:5432 \
   postgres:18-alpine
 
 export DATABASE_URL=postgresql+asyncpg://juntia:juntia-dev@127.0.0.1:5433/juntia
-export ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ALLOW_INSECURE_LOCAL_ADMIN=true
 export AUTH_SECRET="$(openssl rand -hex 32)"
 export PUBLIC_ORIGIN=http://localhost:5173 AUTH_COOKIE_SECURE=false
 uv run --no-sync alembic upgrade head
@@ -117,8 +119,8 @@ uv run --no-sync python seed.py
 uv run --no-sync uvicorn juntia.app:app --reload --reload-dir src --port 7778
 ```
 
-In a second terminal, start Vite and open <http://localhost:5173> (the
-administration is at `/admin`, with `admin` / `admin`):
+In a second terminal, start Vite and open <http://localhost:5173> (on a new
+database, the first visit creates the administration account, as above):
 
 ```bash
 cd frontend
@@ -178,10 +180,12 @@ npm run build:demo           # the static demo, into dist-demo/
 npm run e2e:demo             # browser tests of the built demo
 ```
 
-`npm run e2e` tests the output of the last `npm run build`, served by a
-disposable server with synthetic data that runs from the repository's `.venv` on
-port 7889 (set `E2E_PORT` to change it). In the same way, `npm run e2e:demo`
-tests the output of the last `npm run build:demo` and refuses to run without it.
+`npm run e2e` tests the output of the last `npm run build`, served by two
+disposable servers with synthetic data that run from the repository's `.venv`:
+one on port 7889 (set `E2E_PORT` to change it), and one without accounts, for
+the first-run screen, on the next port (set `E2E_FIRST_RUN_PORT` to change it).
+In the same way, `npm run e2e:demo` tests the output of the last
+`npm run build:demo` and refuses to run without it.
 Run a single file with `npm run e2e -- events.spec.ts`. If Playwright cannot
 download its browser, set `PLAYWRIGHT_CHANNEL=msedge` or
 `PLAYWRIGHT_CHANNEL=chrome` to use an installed one.
@@ -208,6 +212,15 @@ The interface is available in English (the default) and Spanish.
   `locales/en/errors.ts` and `locales/es/errors.ts`.
 - Server-generated texts, such as emails and first-run defaults, exist in English
   and Spanish and follow the `APP_LANGUAGE` setting: update both.
+
+### What's new
+
+A change people will notice comes with a note for the in-app **What's new**, in
+plain words and in both languages: a JSON file in
+`frontend/src/whats-new/notes/`. See
+[docs/development.md](docs/development.md#whats-new-notes) for how to write it.
+Dependency updates, refactoring, CI, documentation and fixes nobody noticed need
+none.
 
 ### API changes
 
@@ -254,10 +267,11 @@ Tests, fixtures, demo data, screenshots and examples must be fictitious:
 ### Security
 
 Keep the [security model](docs/security-model.md) in mind: the separation
-between residents and the administrator, origin and anti-CSRF checks on every
-mutation, request size limits, and private storage of statements and
-attachments. Never weaken these controls, never log personal or financial data,
-and update the security model when a change affects it.
+between residents and administrators (the administrator role, which the server
+checks on every request), origin and anti-CSRF checks on every mutation, request
+size limits, and private storage of statements and attachments. Never weaken
+these controls, never log personal or financial data, and update the security
+model when a change affects it.
 
 ## Commit messages
 

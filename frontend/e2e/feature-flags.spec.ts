@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
+import { signInAsAdministrator } from './support'
 
 test.afterEach(async ({ page }) => {
   if (process.env.E2E_BASE_URL || page.url() === 'about:blank') return
@@ -13,10 +14,7 @@ test.afterEach(async ({ page }) => {
 test('administrator switches update open resident pages and retain data without a reload', async ({ page, browser }) => {
   test.skip(Boolean(process.env.E2E_BASE_URL), 'Requires the disposable synthetic application')
   test.setTimeout(120_000)
-  await page.goto('/admin/features')
-  await page.getByLabel('Username', { exact: true }).fill('browser-test')
-  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-test-password')
-  await page.getByRole('button', { name: 'Sign in to administration' }).click()
+  await signInAsAdministrator(page, '/admin/features')
   await expect(page.getByRole('heading', { name: 'Features', exact: true })).toBeVisible()
   const coefficient = page.getByRole('switch', { name: 'Ownership coefficients' })
   const actions = page.getByRole('switch', { name: 'Actions', exact: true })

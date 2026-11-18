@@ -37,12 +37,12 @@ const DELEGATION = "If you can't attend, you can delegate your vote to another n
 
 const SCRIPTS: readonly EventScript[] = [
   {
-    key: 'led', at: [110, '12:00'], by: 'admin', action: 'led', schedule: { day: -104, days: 2 },
+    key: 'led', at: [110, '12:00'], by: 1, action: 'led', schedule: { day: -104, days: 2 },
     title: 'LED installation in the stairwells', location: 'Stairwells, all floors',
     description: 'Bright Spark Electrical will work floor by floor. The stairwell light may be off for up to an hour on each landing.',
   },
   {
-    key: 'pest', at: [58, '10:00'], by: 'admin', action: 'pest', schedule: { day: -52, from: '09:00', to: '11:00' },
+    key: 'pest', at: [58, '10:00'], by: 1, action: 'pest', schedule: { day: -52, from: '09:00', to: '11:00' },
     title: 'Pest control treatment', location: 'Basement and bin store',
     description: 'Pest Away Services will treat the basement corridor, the storage rooms, the bin store and the drains. Keep pets away from these areas until the afternoon.',
   },
@@ -56,7 +56,7 @@ const SCRIPTS: readonly EventScript[] = [
     }],
   },
   {
-    key: 'lift-inspection', at: [32, '11:00'], by: 'admin', action: 'lift', schedule: { day: -25, from: '09:30', to: '12:00' },
+    key: 'lift-inspection', at: [32, '11:00'], by: 1, action: 'lift', schedule: { day: -25, from: '09:30', to: '12:00' },
     title: 'Lift inspection', location: 'Lift machine room',
     description: 'Annual inspection by the certification body. The lift will be out of service during the visit.',
   },
@@ -66,10 +66,10 @@ const SCRIPTS: readonly EventScript[] = [
     description: "Bring gloves! We'll prune the hedges, rake the leaves and plant spring bulbs. Coffee and pastries for everyone who joins.",
   },
   {
-    key: 'water', at: [14, '16:20'], by: 'admin', schedule: { day: -9, from: '09:00', to: '12:00' },
+    key: 'water', at: [14, '16:20'], by: 1, schedule: { day: -9, from: '09:00', to: '12:00' },
     title: 'Water supply cut for pipe works', location: 'Whole building',
     description: 'Riverside Water is replacing a valve in the street. There will be no water in any dwelling during the works: fill a few bottles the night before.',
-    updates: [{ at: [12, '08:45'], by: 'admin', schedule: { day: -9, from: '09:00', to: '13:00' } }],
+    updates: [{ at: [12, '08:45'], by: 1, schedule: { day: -9, from: '09:00', to: '13:00' } }],
   },
   {
     key: 'vote', at: [12, '20:30'], by: 1, action: 'lift', schedule: { day: 6, from: '19:00', to: '20:30' },
@@ -87,23 +87,23 @@ const SCRIPTS: readonly EventScript[] = [
     updates: [{ at: [5, '18:30'], by: 13, schedule: { day: -3, days: 8 } }],
   },
   {
-    key: 'extinguishers', at: [8, '09:45'], by: 'admin', action: 'extinguishers', schedule: { day: 2, from: '10:00', to: '12:00' },
+    key: 'extinguishers', at: [8, '09:45'], by: 1, action: 'extinguishers', schedule: { day: 2, from: '10:00', to: '12:00' },
     title: 'Fire extinguisher replacement', location: 'Landings and car park',
     description: 'Firesafe Services will replace the four expired extinguishers and check the others.',
   },
   {
-    key: 'gate', at: [7, '12:00'], by: 'admin', schedule: { day: 1, from: '15:00', to: '16:00' },
+    key: 'gate', at: [7, '12:00'], by: 1, schedule: { day: 1, from: '15:00', to: '16:00' },
     title: 'Car park gate repair visit', location: 'Car park',
     description: 'A technician will adjust the gate closer. The gate will stay open during the visit.',
-    deleted: { at: [2, '09:15'], by: 'admin' },
+    deleted: { at: [2, '09:15'], by: 1 },
   },
   {
-    key: 'windows', at: [6, '11:15'], by: 'admin', schedule: { day: 3, from: '08:00', to: '12:00' },
+    key: 'windows', at: [6, '11:15'], by: 1, schedule: { day: 3, from: '08:00', to: '12:00' },
     title: 'Window cleaning in the common areas', location: 'Stairwells and entrance',
     description: 'Sparkle Cleaning Services will clean the stairwell windows and the glass of the entrance door. Please keep the landings clear of shoes and plants.',
   },
   {
-    key: 'access', at: [5, '12:40'], by: 'admin', action: 'access', schedule: { day: 12, days: 1 },
+    key: 'access', at: [5, '12:40'], by: 1, action: 'access', schedule: { day: 12, days: 1 },
     title: 'Access control installation', location: 'Street door and car park door',
     description: 'Fortis Door Systems will install the fob readers. The doors will stay open with someone watching them during the works. Collect your fobs from the president in the evening.',
   },
@@ -118,7 +118,7 @@ const SCRIPTS: readonly EventScript[] = [
     description: 'Bring something to share; drinks are on the community. Children welcome!',
   },
   {
-    key: 'boiler', at: [1, '10:20'], by: 'admin', schedule: { day: 24, from: '09:00', to: '11:00' },
+    key: 'boiler', at: [1, '10:20'], by: 1, schedule: { day: 24, from: '09:00', to: '11:00' },
     title: 'Boiler room maintenance', location: 'Boiler room',
     description: 'Heatwise Boilers will service the hot water pumps. Hot water may be cut for up to two hours.',
   },

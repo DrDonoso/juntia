@@ -24,17 +24,17 @@ interface ContactScript extends ContactFields {
 
 const SCRIPTS: readonly ContactScript[] = [
   {
-    key: 'manager', at: [410, '10:00'], by: 'admin', tags: ['Administration'],
+    key: 'manager', at: [410, '10:00'], by: 1, tags: ['Administration'],
     name: 'Sarah Lane', company: 'Harper & Lane Property Management', email: 's.lane@example.com', phone: '+442079460148',
     notes: 'Prepares the annual accounts and the minutes of the meetings. Office hours: Monday to Friday, 9:00 to 14:00.',
     updates: [{ at: [150, '12:10'], by: 1, email: 'sarah.lane@example.com' }],
   },
   {
-    key: 'lift', at: [405, '11:30'], by: 'admin', tags: ['Lift', 'Emergency'],
+    key: 'lift', at: [405, '11:30'], by: 1, tags: ['Lift', 'Emergency'],
     name: 'Apex Lifts service desk', company: 'Apex Lifts', email: 'apexlifts.service@example.com', phone: '+442079460125',
     notes: 'Maintenance contract ML-20417. If someone is trapped in the lift, call the 24-hour line: they arrive within 45 minutes.',
     updates: [{
-      at: [24, '16:00'], by: 'admin',
+      at: [24, '16:00'], by: 1,
       notes: 'Maintenance contract ML-20417. If someone is trapped in the lift, call the 24-hour line: they arrive within 45 minutes.\n\nLast inspection passed with remarks: the controller is at the end of its life (see the lift modernisation action).',
     }],
   },
@@ -46,19 +46,19 @@ const SCRIPTS: readonly ContactScript[] = [
     deleted: { at: [198, '18:30'], by: 4 },
   },
   {
-    key: 'old-cleaning', at: [395, '17:00'], by: 'admin', tags: ['Cleaning'],
+    key: 'old-cleaning', at: [395, '17:00'], by: 1, tags: ['Cleaning'],
     name: 'Laura Mills', company: 'Shine & Co Cleaning', email: 'laura.mills@example.com', phone: '+442079460248',
     notes: 'Cleaning on Tuesdays and Fridays.',
-    updates: [{ at: [122, '10:20'], by: 'admin', notes: 'Cleaning on Tuesdays and Fridays.\nContract ended: replaced by Sparkle Cleaning Services.' }],
-    deleted: { at: [120, '10:30'], by: 'admin' },
+    updates: [{ at: [122, '10:20'], by: 1, notes: 'Cleaning on Tuesdays and Fridays.\nContract ended: replaced by Sparkle Cleaning Services.' }],
+    deleted: { at: [120, '10:30'], by: 1 },
   },
   {
-    key: 'gas', at: [390, '20:00'], by: 'admin', tags: ['Emergency'],
+    key: 'gas', at: [390, '20:00'], by: 1, tags: ['Emergency'],
     name: 'Gas emergencies', company: 'City Gas Network', email: null, phone: '+442079460199',
     notes: "If you smell gas: open the windows, don't touch any switches, leave the building and call this number.",
   },
   {
-    key: 'water', at: [390, '20:05'], by: 'admin', tags: ['Emergency', 'Plumbing'],
+    key: 'water', at: [390, '20:05'], by: 1, tags: ['Emergency', 'Plumbing'],
     name: 'Water emergencies', company: 'Riverside Water', email: null, phone: '+442079460203',
     notes: 'Leaks in the street or no water supply. Customer number of the community: RW-77812.',
   },
@@ -69,12 +69,12 @@ const SCRIPTS: readonly ContactScript[] = [
     updates: [{ at: [60, '10:00'], by: 3, phone: '+442079460102' }],
   },
   {
-    key: 'insurance', at: [370, '12:00'], by: 'admin', tags: ['Insurance', 'Emergency'],
+    key: 'insurance', at: [370, '12:00'], by: 1, tags: ['Insurance', 'Emergency'],
     name: 'Claims line', company: 'Meridian Home Insurance', email: 'claims.meridian@example.com', phone: '+442079460156',
     notes: 'Policy MC-558201 covers the building and the common areas. Report water damage within 7 days, with photos.',
   },
   {
-    key: 'boilers', at: [330, '09:20'], by: 'admin', tags: ['Plumbing'],
+    key: 'boilers', at: [330, '09:20'], by: 1, tags: ['Plumbing'],
     name: 'Nadia Petrova', company: 'Heatwise Boilers', email: 'nadia.petrova@example.com', phone: '+442079460226',
     notes: 'Services the hot water pumps of the boiler room once a year.',
   },
@@ -100,7 +100,7 @@ const SCRIPTS: readonly ContactScript[] = [
     notes: 'Installed the LED lighting and motion sensors in the stairwells. Two-year guarantee on the installation.',
   },
   {
-    key: 'cleaning', at: [121, '09:40'], by: 'admin', tags: ['Cleaning'],
+    key: 'cleaning', at: [121, '09:40'], by: 1, tags: ['Cleaning'],
     name: 'Joanna Price', company: 'Sparkle Cleaning Services', email: 'joanna.price@example.com', phone: '+442079460133',
     notes: 'Cleaning on Mondays and Thursdays from 9:00 to 12:00. Windows of the common areas every three months.',
   },
@@ -110,7 +110,7 @@ const SCRIPTS: readonly ContactScript[] = [
     notes: 'Cleans outside windows with rope access. Quote per dwelling on request.',
   },
   {
-    key: 'pests', at: [62, '10:10'], by: 'admin', tags: [],
+    key: 'pests', at: [62, '10:10'], by: 1, tags: [],
     name: 'Kevin Shaw', company: 'Pest Away Services', email: 'kevin.shaw@example.com', phone: '+442079460189',
     notes: 'Treated the basement and the bin store. A follow-up visit within three months is included.',
   },
@@ -135,7 +135,7 @@ export function contactSteps(): ScenarioStep[] {
   const rename = step([20, '10:00'], (state, _refs, instant) => {
     const tag = findContactTagByName(state, 'Building')
     if (!tag) throw new Error('The community scenario has no Building tag')
-    editContactTag(state, actor('admin'), tag, { name: 'Building works', color: tag.color }, instant)
+    editContactTag(state, actor(1), tag, { name: 'Building works', color: tag.color }, instant)
   })
   return [rename, ...SCRIPTS.flatMap(script => {
     const { key, at: when, by, tags, updates = [], deleted, ...fields } = script

@@ -36,49 +36,52 @@ test.each([
   ['request_busy', 503, 'operations are in progress'],
   ['request_storage_error', 503, 'could not be received'],
 ])('request limit error %s is localized and does not sign out the user', async (code, status, message) => {
-  cache.setQueryData(['reader-auth'], { ...signedOut, authenticated: true, kind: 'resident', user_id: 1 })
+  cache.setQueryData(['reader-auth'], { ...signedOut, authenticated: true, user_id: 1 })
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ code }), { status })))
   await expect(api('/contacts', 'POST', {})).rejects.toThrow(message)
   expect(cache.getQueryData(['reader-auth'])).toMatchObject({ authenticated: true, user_id: 1 })
 })
 
-test('expired admin sessions clear the privileged cache', async () => {
-  cache.setQueryData(['auth'], { authenticated: true })
+test('an expired session also clears the administration cache', async () => {
+  cache.setQueryData(['reader-auth'], { ...signedOut, authenticated: true, administrator: true, user_id: 1 })
   cache.setQueryData(['admin', 'rules'], [{ name: 'Private' }])
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: 'authentication_required' }), { status: 401 })))
   await expect(api('/admin/rules')).rejects.toThrow('session')
   expect(cache.getQueryData(['admin', 'rules'])).toBeUndefined()
-  expect(cache.getQueryData(['auth'])).toEqual({ authenticated: false, username: null })
+  expect(cache.getQueryData(['reader-auth'])).toEqual(signedOut)
 })
 
 test('expired reader sessions clear every private cache and authentication state', async () => {
-  cache.setQueryData(['reader-auth'], { ...signedOut, authenticated: true, kind: 'resident', user_id: 1 })
+  cache.setQueryData(['reader-auth'], { ...signedOut, authenticated: true, user_id: 1 })
   for (const key of ['summary', 'transactions', 'catalog', 'neighbors', 'actions', 'contacts']) cache.setQueryData([key], { private: true })
   cache.setQueryData(['general-settings'], { community_name: 'Public branding' })
   cache.setQueryData(['features'], { coefficient: false })
+  cache.setQueryData(['setup'], { available: false })
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: 'authentication_required' }), { status: 401 })))
   await expect(api('/summary')).rejects.toThrow('session')
   expect(cache.getQueryData(['reader-auth'])).toEqual(signedOut)
   for (const key of ['summary', 'transactions', 'catalog', 'neighbors', 'actions', 'contacts']) expect(cache.getQueryData([key])).toBeUndefined()
   expect(cache.getQueryData(['general-settings'])).toEqual({ community_name: 'Public branding' })
   expect(cache.getQueryData(['features'])).toEqual({ coefficient: false })
+  expect(cache.getQueryData(['setup'])).toEqual({ available: false })
 })
 
-test('a failed administrator request does not sign out a resident', async () => {
-  const resident = { ...signedOut, authenticated: true, kind: 'resident', user_id: 1 }
-  cache.setQueryData(['reader-auth'], resident)
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: 'authentication_required' }), { status: 401 })))
-  await expect(api('/admin/users')).rejects.toThrow('session')
-  expect(cache.getQueryData(['reader-auth'])).toEqual(resident)
+test('a revoked administrator role refreshes the session without signing out', async () => {
+  const account = { ...signedOut, authenticated: true, administrator: true, user_id: 1 }
+  cache.setQueryData(['reader-auth'], account)
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: 'administrator_required' }), { status: 403 })))
+  await expect(api('/admin/users')).rejects.toThrow('Only administrators can do this.')
+  expect(cache.getQueryData(['reader-auth'])).toEqual(account)
+  expect(cache.getQueryState(['reader-auth'])?.isInvalidated).toBe(true)
 })
 
-test.each(['/summary', '/neighbors', '/actions/items', '/contacts', '/contact-tags', '/contact-history', '/auth/profile', '/auth/session', '/admin/auth/session'])('an old response to %s cannot cross an identity change', async path => {
+test.each(['/summary', '/neighbors', '/actions/items', '/contacts', '/contact-tags', '/contact-history', '/auth/profile', '/auth/session', '/admin/users'])('an old response to %s cannot cross an identity change', async path => {
   const response = deferredResponse()
   vi.stubGlobal('fetch', vi.fn().mockReturnValue(response.promise))
   const pending = api(path)
   const rejected = expect(pending).rejects.toThrow('session has changed')
   await clearPrivateData()
-  cache.setQueryData(['reader-auth'], { ...signedOut, authenticated: true, kind: 'resident', user_id: 2 })
+  cache.setQueryData(['reader-auth'], { ...signedOut, authenticated: true, user_id: 2 })
   response.resolve(new Response(JSON.stringify({ private: 'previous user data' })))
   await rejected
   expect(cache.getQueryData(['reader-auth'])).toMatchObject({ user_id: 2, authenticated: true })

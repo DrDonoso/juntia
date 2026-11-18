@@ -25,12 +25,21 @@ lasts until the page is reloaded; a reload starts again from the same scenario. 
   (`onUnhandledRequest: 'bypass'`, quiet) before the first render. Without service workers
   (insecure origin, some private windows) it shows a translated explanation instead of the app.
 - **Chrome.** `DemoChrome.tsx` adds a persistent banner (`DemoBanner`), a welcome dialog once per
-  page load (`DemoWelcome`: "Explore as a neighbor" / "Open administration"), the credentials on
-  the `/login` and `/admin` sign-in screens, filled in (`DemoSignInNotice`), and serves plain links
-  to API files through the demo API (`DemoApiLinks`: navigations bypass the service worker; clicks
-  the app handles itself, such as its file viewer, are left alone). The viewer shows PDFs from a
-  copy read through the demo API, since frames bypass the worker too. Texts live in the `demo` i18n
-  namespace (English and Spanish).
+  page load (`DemoWelcome`: "Explore as a neighbor" / "Open administration", which signs in James
+  Okafor, the administrator, through `POST /api/auth/login` and opens `/admin` or the page of it
+  that was asked for), the credentials on the `/login` sign-in screen, filled in
+  (`DemoSignInNotice`: the sample neighbor's, or James Okafor's when signing in returns to the
+  administration, `/login?next=/admin…`, where the app sends whoever opens it signed out), and
+  serves plain links to API files through the demo API (`DemoApiLinks`: navigations bypass the
+  service worker; clicks the app handles itself, such as its file viewer, are left alone). The
+  viewer shows PDFs from a copy read through the demo API, since frames bypass the worker too.
+  Texts live in the `demo` i18n namespace (English and Spanish).
+- **Sessions.** One per browser, like the backend's single `juntia_user` cookie (`core/session.ts`):
+  the visitor starts as the sample neighbor, signing in with any account (the administrator's too)
+  replaces the session, and signing out ends it. Administrators are accounts with the
+  `administrator` flag, read on every request: `/api/admin/*` answers 401
+  `authentication_required` without a session and 403 `administrator_required` to anyone else.
+  The first-run setup of a new installation is never available: the demo always has accounts.
 - **Static host.** `vite.config.ts` writes `dist-demo/_headers` (the backend's CSP and security
   headers plus `worker-src 'self'` and `frame-src 'self' blob:`; `no-cache` for the worker,
   immutable `/assets/*`) and a
@@ -51,8 +60,8 @@ level, with no Preview-specific bindings.
 
 ```
 src/demo/
-  config.ts            IS_DEMO, demo credentials (demo / demo), seed, repository URL
-  cast.ts              Maple Court: dwellings, neighbors, president, sample neighbor (shared contract)
+  config.ts            IS_DEMO, the demo password (demo), seed, repository URL
+  cast.ts              Maple Court: dwellings, neighbors, president (the administrator), sample neighbor
   core/                shared toolkit, re-exported by core/index.ts
     clock.ts           the demo's "now" and calendar helpers (today(), daysAgo(), instant()…)
     random.ts          seeded PRNG: demoRandom('<domain>:<topic>')
@@ -63,16 +72,16 @@ src/demo/
     pagination.ts      paginate(): {items, page, pages, total}
     pdf.ts             demoPdf(), pdfResponse(), looksLikePdf(): synthetic PDFs and file answers
     zip.ts             zipArchive(), readZip(), readZipMember(): stored ZIP archives, read back
-    session.ts         sessions, guards (requireResident/requireAdmin/requireAnySession), actorOf()
+    session.ts         the session: signedInResident(), requireAnySession(), requireAdmin(), actorOf()
   scenario/<domain>.ts initial data, deterministic and relative to today
   store/<domain>.ts    the data of this page load: <domain>Store() and reset<Domain>Store()
-  store/core.ts        shared state: session, features, general settings, account, dwellings, neighbors
+  store/core.ts        shared state: session, features, general settings, account, dwellings, accounts, the What's new notes each account has read
   store/storage.ts     storage of PDFs, images and documents, from their stores (no state of its own)
   store/index.ts       resetDemo(): every store back to its scenario
   handlers/<domain>.ts the MSW handlers of each domain (an exported array)
   handlers/index.ts    all handlers, UNAVAILABLE_IN_DEMO and the /api catch-all (501, console error)
   handlers/coverage.test.ts  the OpenAPI coverage guard
-  testing.ts           Vitest helpers: demoRequest(), stubFetchWithDemo()
+  testing.ts           Vitest helpers: demoRequest(), signInAdmin() and signInAs(), stubFetchWithDemo()
 ```
 
 Domains are `core` (this foundation), `finance`, `community`, `people`, `storage` and `documents`
@@ -90,12 +99,15 @@ UK fiction phone numbers stored normalized (`+442079460xxx`):
 - 15 active, 2 pending invitations (Ethan Brooks, 4B: sent yesterday; Hannah Schmidt, 4C:
   expired), and 1 disabled account (Noah Patel); some dwellings have two neighbors, and every
   dwelling has an active one (Lucas Moreau, id 17, in 4B and Zara Ahmed, id 18, in 4C).
-- President: **James Okafor** (id 1, 1A). Sample neighbor (the visitor): **Olivia Bennett** (id 6,
-  2B, `olivia.bennett@example.com`).
-- Every active neighbor signs in with the password `demo`, or with the one they choose in My
-  profile during the visit (`demo` then stops working for them until a reload, and the sign-in
-  screen only fills in the sample neighbor's email); the administrator is `demo` / `demo`.
-  Administrators always appear as **Technical administrator** (`ADMINISTRATOR_ACTOR_NAME`).
+- President and only administrator: **James Okafor** (id 1, 1A, `james.okafor@example.com`;
+  `PRESIDENT_ID`, `ADMINISTRATOR_ID`). Sample neighbor (the visitor): **Olivia Bennett** (id 6, 2B,
+  `olivia.bennett@example.com`).
+- Every active account, the administrator's included, signs in with its email and the password
+  `demo`, or with the one chosen in My profile during the visit (`demo` then stops working for it
+  until a reload, and the sign-in screen fills in only its email). Everybody writes under their own
+  name, administrators included; **Technical administrator** (`ADMINISTRATOR_ACTOR_NAME`) only names
+  the authors of the technical administrator of earlier releases (`kind: 'administrator'`, without
+  an account), which the API still shows for old data and the demo does not have.
 
 Never change an id or a name: the domains build on them. Add people at the end if needed.
 
@@ -110,11 +122,15 @@ Never change an id or a name: the domains build on them. Add people at the end i
    (never from `msw` directly: the MSW version stays a core detail), `../cast`, `../store/core` and
    the generated types of `../../api/schema.gen`. Wrap every resolver in
    `route(access, resolver, options)`:
-   - `access`: `'public'`, `'session'` (any reader: finance, neighbors, contacts, actions, events,
-     documents), `'resident'` (own profile: 403 `resident_profile_required` for the
-     administrator) or `'admin'` (`/api/admin/*`). `route` also refuses writes without
-     `X-Juntia-Request` (403 `invalid_origin`) and turns thrown `DemoApiError`s into the backend's
-     error JSON.
+   - `access`: `'public'`, `'session'` (any signed-in account: finance, neighbors, contacts,
+     actions, events, documents and the own profile) or `'admin'` (a signed-in administrator:
+     `/api/admin/*`; 403 `administrator_required` for anyone else). `route` also refuses writes
+     without `X-Juntia-Request` (403 `invalid_origin`) and turns thrown `DemoApiError`s into the
+     backend's error JSON.
+   - The resolver gets `{ request, params, url, user }`: `user` is the signed-in account
+     (`DemoResident`; `user.id` is its user id, `user.administrator` its role), read for this
+     request and never null on `session` and `admin` routes, so data kept per person keys on
+     `user.id` (statement previews belong to the administrator who uploaded them).
    - `options.feature: 'actions' | 'events' | 'documents'` answers 404 `actions_disabled` /
      `events_disabled` / `documents_disabled` while the feature is off; `options.status: 201 | 204`
      for creations and deletions.
@@ -137,11 +153,13 @@ Never change an id or a name: the domains build on them. Add people at the end i
      `pdfResponse(bytes, filename, 'attachment' | 'inline')` (the backend's Content-Disposition
      forms); check uploads with `looksLikePdf(bytes)` like the backend. The app downloads with
      `fetch`, and plain `<a href="/api/…">` links are fetched by `DemoApiLinks`.
-3. **Shared state.** Neighbors and dwellings live in `coreStore()` (`DemoResident`, `DemoDwelling`):
+3. **Shared state.** Accounts and dwellings live in `coreStore()` (`DemoResident`, `DemoDwelling`):
    change them in place and bump `version`. Call `revokeResidentSessions(id)` when an account is
    disabled or deleted or its email or password changes; `findResident`, `residentStatus`,
-   `invitationStatus` and `canSignIn` follow the backend. Author fields come from
-   `actorOf(identity)`. Feature flags (`coreStore().features`), the community name
+   `invitationStatus` and `canSignIn` follow the backend. Authors come from `actorOf(user)`, a
+   `DemoActor`: the author (`resident`, the account's id and name, administrators included) plus
+   the role, which lets administrators change what others wrote; records keep only
+   `authorship(actor)`. Feature flags (`coreStore().features`), the community name
    (`coreStore().general`) and the account (`coreStore().account`) are changed by their admin
    routes (see the table).
 4. **Unavailable features.** Anything that needs real infrastructure answers `demoUnavailable()`
@@ -157,18 +175,21 @@ Never change an id or a name: the domains build on them. Add people at the end i
    outside `src/i18n/locales/es`.
 6. **Tests.** Next to your module (`handlers/<domain>.test.ts`, `scenario/<domain>.test.ts`…):
    `beforeEach(() => resetDemo({ now: () => new Date(2026, 9, 29, 12) }))` pins the clock, and
-   `demoRequest(method, path, { body })` from `../testing` answers through every handler. UI tests
-   can route the app's own requests to the demo with `stubFetchWithDemo()` (then
-   `vi.unstubAllGlobals()` in `afterEach`). Run `npx vitest run src/demo`.
+   `demoRequest(method, path, { body })` from `../testing` answers through every handler, as the
+   sample neighbor until a test signs in someone else: `signInAs(id)` (a cast account, password
+   `demo`), `signInAdmin()` (James Okafor) or `asAdministrator(action)` (back to the previous
+   session afterwards). UI tests can route the app's own requests to the demo with
+   `stubFetchWithDemo()` (then `vi.unstubAllGlobals()` in `afterEach`). Run
+   `npx vitest run src/demo`.
 
 ## Who answers which route
 
 Every operation of `src/api/openapi.json` belongs to exactly one module (`{x}` is `:x` in MSW).
 
 - **core** (`handlers/core.ts`): `GET /api/auth/session`, `POST /api/auth/login`,
-  `POST /api/auth/logout`, `GET /api/admin/auth/session`, `POST /api/admin/auth/login`,
-  `POST /api/admin/auth/logout`, `GET /api/features`, `GET /api/settings/general`,
-  `GET /api/version`, `GET /api/account`, `GET /health`.
+  `POST /api/auth/logout`, `GET|POST /api/auth/setup` (never available: `{"available": false}`, and
+  a valid account is refused with 409 `setup_unavailable`), `GET /api/features`,
+  `GET /api/settings/general`, `GET /api/version`, `GET /api/account`, `GET /health`.
 - **finance**: `GET /api/transactions`, `GET /api/summary`, `GET /api/catalog/{kind}`,
   `PATCH /api/admin/account`, `POST /api/admin/catalog/{kind}`,
   `PATCH|DELETE /api/admin/catalog/{kind}/{item_id}`, `GET|POST /api/admin/rules`,
@@ -221,26 +242,27 @@ starting with `[demo] Unhandled API request:`. Two guards keep it that way:
   the operations to add. Today every operation has a handler, and the list holds Google sign-in,
   linking and unlinking and AI classification.
 - **Every page in the browser** (`e2e/demo.spec.ts`): as the sample neighbor (welcome dialog,
-  "Explore as a neighbor") and as the administrator ("Open administration"), in English and in
-  Spanish (the browser's language), the crawl opens every link of the "Main navigation" and
-  "Administration navigation" landmarks as found on screen, so new pages are covered without
-  editing the test, plus My profile, the actions' Kanban board and an action with a withdrawn PDF.
-  Each page must load its data, show a visible `h1` with `<html lang>` in the right language and
-  pass axe's WCAG 2 A and AA rules with no serious or critical violation (`KNOWN_VIOLATIONS` may
-  tolerate a rule on one element of an app component, with a comment, until its owner fixes it;
-  it is empty). In every test, an unserved request, an `/api` answer of 500 or more, an `/api`
-  response that did not come from the service worker, a console error or an uncaught error fails.
+  "Explore as a neighbor") and as the administrator, James Okafor ("Open administration"), in
+  English and in Spanish (the browser's language), the crawl opens every link of the "Main
+  navigation" and "Administration navigation" landmarks as found on screen, so new pages are
+  covered without editing the test, plus My profile, the actions' Kanban board and an action with a
+  withdrawn PDF. Each page must load its data, show a visible `h1` with `<html lang>` in the right
+  language and pass axe's WCAG 2 A and AA rules with no serious or critical violation
+  (`KNOWN_VIOLATIONS` may tolerate a rule on one element of an app component, with a comment, until
+  its owner fixes it; it is empty). In every test, an unserved request, an `/api` answer of 500 or
+  more, an `/api` response that did not come from the service worker, a console error or an
+  uncaught error fails.
 
 ## Storage of action PDFs and images (SEC-03)
 
 `store/storage.ts` computes everything from the community store's attachments and images: active
-and withdrawn PDFs and every image use storage until the administrator purges them. The backend's
-default settings apply: 250 MiB per resident (`ACTION_STORAGE_USER_QUOTA_MB`), 2048 MiB for the
-community (`ACTION_STORAGE_COMMUNITY_QUOTA_MB`; the administrator has no quota of their own) and a
-1024 MiB disk reserve (`MIN_FREE_DISK_MB`). The upload volume is synthetic: 64 GiB, about 41.3 GiB
-free, minus the PDFs, images and shared documents stored now, so uploads and purges move it. Shared
-documents have budgets of their own (see [Shared documents](#shared-documents)); the summary reports
-them in its `documents` block, and their earlier versions are listed and purged on the same page.
+and withdrawn PDFs and every image use storage until an administrator purges them. The backend's
+default settings apply: 250 MiB per account, administrators included (`ACTION_STORAGE_USER_QUOTA_MB`),
+2048 MiB for the community (`ACTION_STORAGE_COMMUNITY_QUOTA_MB`) and a 1024 MiB disk reserve
+(`MIN_FREE_DISK_MB`). The upload volume is synthetic: 64 GiB, about 41.3 GiB free, minus the PDFs,
+images and shared documents stored now, so uploads and purges move it. Shared documents have
+budgets of their own (see [Shared documents](#shared-documents)); the summary reports them in its
+`documents` block, and their earlier versions are listed and purged on the same page.
 
 - Uploads of PDFs and images check the uploader's quota, then the community's (409
   `action_storage_user_quota` / `action_storage_community_quota`), after the other checks and never
@@ -250,19 +272,22 @@ them in its `documents` block, and their earlier versions are listed and purged 
   their bytes, recognized from their header like the backend (PNG, JPEG, GIF, WebP, 10 MiB, 16,384
   pixels a side, 40 megapixels) and served by the section they were uploaded to. The scenario has
   none.
-- The storage page lists the residents who store PDFs (largest first; deleted accounts by the
-  author name of their latest PDF) and the withdrawn PDFs still stored (the latest withdrawn first,
-  five per page, `q` searching their names without case or accents), which the administrator can
-  open (`/preview`, `/download`) also while Actions is off. The scenario has three, by different
-  authors: Daniel Mensah's quote attached by mistake (CCTV), the administrator's draft quote (lift)
-  and Grace Liu's outdated subsidy summary (solar panels).
-- A purge (`{version}`, administrator only) answers 409 `action_attachment_active` for active PDFs
+- The storage page lists the accounts that store PDFs, administrators included (largest first;
+  deleted accounts by the author name of their latest PDF), and the withdrawn PDFs still stored (the
+  latest withdrawn first, five per page, `q` searching their names without case or accents), which
+  administrators can open (`/preview`, `/download`) also while Actions is off. The scenario has
+  three, by different authors: Daniel Mensah's quote attached by mistake (CCTV), James Okafor's
+  draft quote (lift) and Grace Liu's outdated subsidy summary (solar panels). The summary's
+  `administrator` line counts only files of the technical administrator of earlier releases
+  (`kind: 'administrator'`, without an account): the demo has none.
+- A purge (`{version}`, administrators only) answers 409 `action_attachment_active` for active PDFs
   and 409 `action_stale` for another version, and the purged PDF unchanged when repeated. It sets
   `purged_at`, bumps the PDF's version, empties its bytes and records an `attachment_purged` entry
-  by the Technical administrator (`filename`, `size` and `sha256` to null); the action's activity
-  date moves, not its version. Downloads and previews then answer 410 `action_attachment_purged`.
+  under the administrator's own name (`filename`, `size` and `sha256` to null); the action's
+  activity date moves, not its version. Downloads and previews then answer 410
+  `action_attachment_purged`.
 - The images list (the newest first, five per page, `q` by name) shows every stored image, and the
-  administrator's copy (`/file`) answers while Actions or Events is off. An image purge (no body)
+  administration's copy (`/file`) answers while Actions or Events is off. An image purge (no body)
   empties its bytes and sets `purged_at`; repeating it answers the purged image unchanged, and its
   addresses then answer 410 `image_purged`.
 
@@ -274,32 +299,32 @@ history and uploads in progress, and mirrors `community_documents.py`;
 checks). The scenario (`scenario/shared-documents.ts`) is a list of dated steps replayed through the
 same operations as the API, so the history matches the data: the house rules and their revised
 version, meeting minutes in year folders (one moved there), an insurance folder renamed by the
-administrator with a claims log in two versions, a renamed scan, a Word letter, the sample
-neighbor's garden folder and rota, and two deletions waiting for the administrator (Daniel Mensah's
-draft and Chloe Dubois's photos folder). Documents is on in the demo, and its settings are a new
-installation's defaults: the `creator` policy, 50 MiB per file, 1 GiB per video, 2 GiB per resident
-and 20 GiB for the community.
+administrator (James Okafor) with a claims log in two versions, a renamed scan, a Word letter, the
+sample neighbor's garden folder and rota, and two deletions waiting for administrators (Daniel
+Mensah's draft and Chloe Dubois's photos folder). Documents is on in the demo, and its settings are
+a new installation's defaults: the `creator` policy, 50 MiB per file, 1 GiB per video, 2 GiB per
+account and 20 GiB for the community.
 
 - Rules as on the server: names unique per folder ignoring case and Unicode forms (409
   `document_name_taken`), `document_name_invalid`, ten levels of folders, a thousand items per
   folder, `document_move_into_itself`, `document_stale`, the management policy
   (`document_permission_required`, `document_folder_not_owned`), and the history entries with their
-  details. Administrators appear as **Technical administrator**.
+  details. Administrators manage every item whatever the policy, and write under their own name.
 - Uploads arrive in chunks of at most 4 MiB (`PUT …/content?offset=` with raw bytes; 413
   `request_too_large` above), resume from `received`, expire a day after their last chunk, and each
   person keeps four open. Completing checks the bytes like the backend (PDF, pictures, ISO-BMFF
   videos, OOXML and OpenDocument with their macro checks, text) and numbers names already taken.
   Files stay in the page's memory, and uploads and stored versions take their bytes from the
   synthetic volume's free space.
-- The limits are not fixed: the administrator sets them with the policy, in Settings > Storage
+- The limits are not fixed: administrators set them with the policy, in Settings > Storage
   (`GET|PATCH /api/admin/settings/documents`, in whole MiB): the largest file and the largest video
-  (1 MiB to 10 GiB, so a single file always fits in a ZIP download) and the quotas of each resident
-  author and of the community (1 MiB to 10 TiB; every stored version counts until it is purged). A
-  `PATCH` changes only the settings it sends and answers all of them; an empty body, `null`, an
-  unknown key or anything but a whole number in range answers 422 `invalid_request`. A change
-  applies at once to the `limits` of browsing, to the size check when an upload starts, to both
-  quota checks (when an upload starts and when it completes) and to the storage summary's
-  `quota_bytes` and `resident_quota_bytes`.
+  (1 MiB to 10 GiB, so a single file always fits in a ZIP download) and the quotas of each author,
+  administrators included, and of the community (1 MiB to 10 TiB; every stored version counts until
+  it is purged). A `PATCH` changes only the settings it sends and answers all of them; an empty
+  body, `null`, an unknown key or anything but a whole number in range answers 422
+  `invalid_request`. A change applies at once to the `limits` of browsing, to the size check when an
+  upload starts, to both quota checks (when an upload starts and when it completes) and to the
+  storage summary's `quota_bytes` and `resident_quota_bytes`.
 - Downloads and previews answer single `Range` requests with 206, and earlier versions download as
   `Name (version N).ext`. Text and CSV files preview as `text/plain`, for the portal's own viewer.
   Archives are ZIPs with stored entries built in memory by `core/zip.ts`.
@@ -311,11 +336,11 @@ and 20 GiB for the community.
   without text are read as empty and waiting for OCR. Uploads queue their text and replace the
   earlier version's, and purges forget it; the search, the file info and the reading page read
   what is waiting first, so their `pending` is 0. The search lists the folders, the files found by
-  name, then those found by their text with an excerpt. The administrator's reading page
+  name, then those found by their text with an excerpt. The administration's reading page
   (`/api/admin/documents/text…`, also while Documents is off) counts, filters and pages the files,
   reads one again (409 `document_text_unsupported` for videos and HEIC pictures, 404 for deleted
   files) and retries the failed ones.
-- The administrator restores deletions (at the top level when their folder is gone, numbered when
+- Administrators restore deletions (at the top level when their folder is gone, numbered when
   the name is taken) or purges them, lists the earlier versions on the storage page (the latest
   uploaded first, five per page, `q` by document name, with `previewable`), opens and purges them,
   and sets the policy and the limits; these routes work while Documents is off.

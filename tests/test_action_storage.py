@@ -20,7 +20,7 @@ from juntia.community_action_files import MAX_ACTIVE_PDFS
 from juntia.config import MAX_STORAGE_MB, Settings
 from juntia.db import Preview
 from juntia.errors import AppError
-from tests.support import statement_pdf
+from tests.support import ADMINISTRATOR, statement_pdf
 from tests.test_action_migration import migrate
 from tests.test_action_pdfs import quote_pdf, upload
 from tests.test_community_actions import actors as actors
@@ -67,6 +67,10 @@ def created(response):
     return response.json()
 
 
+def administrator_id(client):
+    return client.get("/api/auth/session").json()["user_id"]
+
+
 def refused(response, status, code):
     assert (response.status_code, response.json()) == (status, {"code": code})
 
@@ -102,10 +106,8 @@ def local_settings(monkeypatch):
     for name in STORAGE_FIELDS:
         monkeypatch.delenv(name, raising=False)
     return {
-        "database_url": "sqlite+aiosqlite:///:memory:", "admin_username": "admin",
-        "admin_password": "admin", "auth_secret": secrets.token_urlsafe(32),
+        "database_url": "sqlite+aiosqlite:///:memory:", "auth_secret": secrets.token_urlsafe(32),
         "public_origin": "http://localhost:7778", "auth_cookie_secure": False,
-        "allow_insecure_local_admin": True,
     }
 
 
@@ -181,10 +183,11 @@ def test_community_quota_counts_every_author_after_the_resident_quota(actors, ad
     refused(upload(b, create_item(b)), 409, "action_storage_community_quota")
     config.action_storage_user_quota_mb = 1
     refused(upload(a, value, sized_pdf(500_000)), 409, "action_storage_user_quota")
-    # The technical administrator only has the community budget.
+    # Administrators have the same budget as everyone else.
     config.action_storage_community_quota_mb = 10
-    for _ in range(2):
-        created(upload(admin, shared, sized_pdf(MIB)))
+    refused(upload(admin, shared, sized_pdf(MIB)), 409, "action_storage_user_quota")
+    config.action_storage_user_quota_mb = 2
+    created(upload(admin, shared, sized_pdf(MIB)))
 
 
 def test_retried_uploads_are_counted_once_and_keep_their_ownership(actors, admin, config):
@@ -360,14 +363,16 @@ def test_storage_administration_requires_an_administrator_and_same_origin(actors
     withdraw(a, value, attachment)
     endpoint = f"/api/admin/storage/attachments/{attachment['id']}/purge"
     with visitor(config) as anonymous:
-        for client in (anonymous, a):
+        for client, status, code in (
+            (anonymous, 401, "authentication_required"), (a, 403, "administrator_required"),
+        ):
             for route in (
                 "/api/admin/storage", "/api/admin/storage/withdrawn",
                 f"/api/admin/storage/attachments/{attachment['id']}/preview",
                 f"/api/admin/storage/attachments/{attachment['id']}/download",
             ):
-                refused(client.get(route), 401, "authentication_required")
-            refused(purge(client, attachment["id"], 2), 401, "authentication_required")
+                refused(client.get(route), status, code)
+            refused(purge(client, attachment["id"], 2), status, code)
     for headers in ({"origin": "https://untrusted.example"}, {"x-juntia-request": "0"}):
         refused(admin.post(endpoint, json={"version": 2}, headers=headers), 403, "invalid_origin")
     current = a.get(item_path(value) + f"/attachments/{attachment['id']}").json()
@@ -412,7 +417,7 @@ def test_purge_deletes_the_file_and_keeps_the_record_and_its_history(actors, adm
     assert event["kind"] == "attachment_purged"
     assert event["attachment_id"] == attachment["id"]
     assert event["author"] == {
-        "kind": "administrator", "user_id": None, "name": "Technical administrator",
+        "kind": "resident", "user_id": administrator_id(admin), "name": ADMINISTRATOR["name"],
     }
     assert event["changes"] == [
         {"field": "filename", "before": "Final quote.pdf", "after": None},
@@ -529,8 +534,20 @@ def test_storage_summary_reports_usage_quotas_and_free_space(
     rename("Current Neighbor")
     retired = created(upload(admin, shared, sized_pdf(100_000)))
     withdraw(admin, shared, retired)
-    summary = admin.get("/api/admin/storage").json()
     resident_quota = 250 * MIB
+    # The administrator's account counts like everyone else's.
+    assert admin.get("/api/admin/storage").json()["residents"][2] == {
+        "user_id": administrator_id(admin), "name": ADMINISTRATOR["name"],
+        "account_deleted": False, "quota_bytes": resident_quota, "stored_bytes": 100_000,
+        "active_bytes": 0, "withdrawn_bytes": 100_000, "active_files": 0, "withdrawn_files": 1,
+        "image_bytes": 0, "image_files": 0,
+    }
+    # What the technical administrator of earlier releases uploaded keeps a line of its own.
+    execute(
+        config, "UPDATE action_attachments SET author_kind = 'administrator', "
+        "author_user_id = NULL, author_name = 'admin' WHERE id = :id", id=retired["id"],
+    )
+    summary = admin.get("/api/admin/storage").json()
     assert summary == {
         "community": {
             "stored_bytes": 750_000, "active_bytes": 450_000, "withdrawn_bytes": 300_000,

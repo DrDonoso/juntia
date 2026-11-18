@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
-  ADMINISTRATOR_ACTOR_NAME, COMMUNITY, DWELLINGS, PRESIDENT_ID, RESIDENTS, SAMPLE_NEIGHBOR_ID, activeResidents, castDwelling,
-  castResident, castResidentsOf,
+  ADMINISTRATOR_ACTOR_NAME, ADMINISTRATOR_ID, COMMUNITY, DWELLINGS, PRESIDENT_ID, RESIDENTS, SAMPLE_NEIGHBOR_ID, activeResidents,
+  castDwelling, castResident, castResidentsOf,
 } from './cast'
 
 /** ISO 13616 check: the IBAN moved four characters left, letters as numbers, modulo 97 is 1. */
@@ -55,8 +55,9 @@ describe('the cast', () => {
     for (const resident of RESIDENTS.filter(item => item.status !== 'pending')) expect(resident.invitedDaysAgo).toBeNull()
   })
 
-  test('the president and the sample neighbor are active neighbors', () => {
+  test('the president, who is also the administrator, and the sample neighbor are active neighbors', () => {
     expect(castResident(PRESIDENT_ID).status).toBe('active')
+    expect(ADMINISTRATOR_ID).toBe(PRESIDENT_ID)
     expect(castResident(SAMPLE_NEIGHBOR_ID)).toMatchObject({ status: 'active', name: 'Olivia Bennett', email: 'olivia.bennett@example.com' })
     expect(PRESIDENT_ID).not.toBe(SAMPLE_NEIGHBOR_ID)
     expect(ADMINISTRATOR_ACTOR_NAME).toBe('Technical administrator')

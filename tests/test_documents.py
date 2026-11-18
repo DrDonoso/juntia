@@ -19,6 +19,7 @@ from juntia.document_files import (
 )
 from juntia.errors import AppError
 from juntia.middleware import body_limit
+from tests.support import ADMINISTRATOR
 from tests.test_action_migration import migrate
 from tests.test_action_storage import MIB, execute, free_space
 from tests.test_community_actions import actors as actors
@@ -41,6 +42,12 @@ def enabled(admin):
 
 def refused(response, status, code):
     assert (response.status_code, response.json()["code"]) == (status, code), response.text
+
+
+def administrator(client):
+    """How the tests' administrator appears as an author: by its account, like everyone."""
+    session = client.get("/api/auth/session").json()
+    return {"kind": "resident", "user_id": session["user_id"], "name": ADMINISTRATOR["name"]}
 
 
 def set_limits(admin, **values):
@@ -311,8 +318,7 @@ def test_the_administrator_sets_the_limits_of_documents(admin, config, monkeypat
     # The environment no longer sets them: leftover variables are ignored.
     monkeypatch.setenv("DOCUMENT_MAX_FILE_MB", "0")
     local = {
-        "database_url": "sqlite+aiosqlite:///:memory:", "admin_username": "admin",
-        "admin_password": "a-long-synthetic-password", "auth_secret": "s" * 32,
+        "database_url": "sqlite+aiosqlite:///:memory:", "auth_secret": "s" * 32,
         "auth_cookie_secure": False,
     }
     assert not hasattr(Settings(_env_file=None, **local), "document_max_file_mb")
@@ -385,9 +391,7 @@ def test_uploads_arrive_in_chunks_resume_and_complete_once(enabled, config):
     assert (document["kind"], document["previewable"], document["version_count"]) == (
         "pdf", True, 1,
     )
-    assert document["author"] == {
-        "kind": "administrator", "user_id": None, "name": "Technical administrator",
-    }
+    assert document["author"] == administrator(enabled)
     current = document["current"]
     assert (current["id"], current["number"], current["size"], current["media_type"]) == (
         upload_id, 1, 2500, "application/pdf",
@@ -494,7 +498,7 @@ def test_type_size_and_storage_limits(actors, enabled, config, monkeypatch):
 def test_folders_names_moves_and_history(enabled):
     minutes = folder(enabled, "Actas")
     year = folder(enabled, "2026", minutes["id"])
-    assert year["author"]["name"] == "Technical administrator"
+    assert year["author"] == administrator(enabled)
     refused(enabled.post("/api/documents/folders", json={"name": "ACTAS"}), 409,
             "document_name_taken")
     response = enabled.post("/api/documents/folders", json={"name": "a/b"})
@@ -577,7 +581,7 @@ def test_who_manages_items_follows_the_administrators_policy(actors, enabled):
     assert (seen_by_a["can_manage"], seen_by_a["can_delete"]) == (True, False)
     refused(remove(a, shared, "folders"), 403, "document_folder_not_owned")
     response = b.patch("/api/admin/settings/documents", json={"manage_policy": "everyone"})
-    assert response.status_code == 401
+    assert response.status_code == 403
     assert enabled.patch("/api/admin/settings/documents", json={
         "manage_policy": "administrator",
     }).json() == {"manage_policy": "administrator", **LIMITS}
@@ -620,7 +624,7 @@ def test_deleting_hides_items_until_the_administrator_restores_or_purges_them(
                 "document_not_found")
         refused(client.get(f"/api/documents/versions/{policy['current']['id']}/download"), 404,
                 "document_not_found")
-        refused(client.get("/api/admin/documents/deleted"), 401, "authentication_required")
+        refused(client.get("/api/admin/documents/deleted"), 403, "administrator_required")
     listed = deletions(enabled)
     assert [(item["name"], item["location"], item["file_count"], item["folder_count"],
              item["file_kind"], item["author"]["user_id"]) for item in listed] == [
@@ -654,7 +658,7 @@ def test_deleting_hides_items_until_the_administrator_restores_or_purges_them(
     assert (restored["file_count"], restored["folder_count"]) == (1, 1)
     assert history(b, restored, "folders")[0] | {"id": 0, "created_at": ""} == {
         "id": 0, "created_at": "", "kind": "restored",
-        "author": {"kind": "administrator", "user_id": None, "name": "Technical administrator"},
+        "author": administrator(enabled),
         "name": "Seguros (2)", "previous_name": "Seguros", "location": [],
         "previous_location": None, "number": None, "size": None, "folder": None,
     }
@@ -926,6 +930,16 @@ def test_storage_summary_reports_documents(actors, enabled, config):
     assert enabled.request("DELETE", f"/api/admin/users/{second['id']}", json={
         "version": current["version"], "email": current["email"],
     }).status_code == 204
+    # The administrator's account counts like everyone else's.
+    assert enabled.get("/api/admin/storage").json()["documents"]["residents"][1] == {
+        "user_id": administrator(enabled)["user_id"], "name": ADMINISTRATOR["name"],
+        "account_deleted": False, "stored_bytes": 500, "versions": 1,
+    }
+    # What the technical administrator of earlier releases uploaded is counted apart.
+    execute(
+        config, "UPDATE document_versions SET author_kind = 'administrator', "
+        "author_user_id = NULL, author_name = 'admin' WHERE document_id = :id", id=gone["id"],
+    )
     documents = enabled.get("/api/admin/storage").json()["documents"]
     assert documents == {
         "quota_bytes": 20480 * MIB, "resident_quota_bytes": 2048 * MIB,

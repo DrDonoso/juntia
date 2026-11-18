@@ -10,7 +10,7 @@ import { MAX_IMAGE_BYTES, imageFormat, uploadedImageName } from '../store/commun
 import { coreStore } from '../store/core'
 import { sha256Hex } from '../store/community-sha256'
 import { USER_QUOTA_BYTES } from '../store/storage'
-import { demoFetch, demoRequest, demoUrl } from '../testing'
+import { demoFetch, demoRequest, demoUrl, signInAdmin, signInAs } from '../testing'
 
 const NOW = new Date(2026, 9, 29, 12)
 const OLIVIA = { kind: 'resident', name: 'Olivia Bennett', user_id: 6 }
@@ -18,9 +18,6 @@ const BOUNDARY = '----juntia-demo-image-boundary'
 
 beforeEach(() => resetDemo({ now: () => NOW }))
 afterEach(() => resetDemo())
-
-const adminLogin = () => demoRequest('POST', '/api/admin/auth/login', { body: { username: 'demo', password: 'demo' } })
-const adminLogout = () => demoRequest('POST', '/api/admin/auth/logout')
 
 /** A PNG header of the given size, padded with `extra` bytes: the demo reads headers only, like the backend. */
 function png(width = 32, height = 24, extra = 0): Uint8Array<ArrayBuffer> {
@@ -197,7 +194,7 @@ describe('uploads', () => {
       { name: 'Roof leak.png', bytes: png(10, 10) }, { name: 'Other.png', bytes },
     ]) expect(await upload(retry, { uploadId })).toMatchObject({ status: 409, body: { code: 'image_upload_conflict' } })
     expect(await upload({ name: 'Roof leak.png', bytes }, { uploadId, scope: 'events' })).toMatchObject({ status: 409, body: { code: 'image_upload_conflict' } })
-    await adminLogin()
+    await signInAdmin()
     expect(await upload({ name: 'Roof leak.png', bytes }, { uploadId })).toMatchObject({ status: 409, body: { code: 'image_upload_conflict' } })
     expect(communityStore().images).toHaveLength(1)
   })
@@ -242,13 +239,13 @@ describe('uploads', () => {
 describe('administration', () => {
   test('lists, shows and purges images, also while their section is off', async () => {
     const first = (await upload({ name: 'first.png', bytes: png(10, 10, 500) })).body
-    await demoRequest('POST', '/api/auth/login', { body: { email: 'james.okafor@example.com', password: 'demo' } })
+    await demoRequest('POST', '/api/auth/login', { body: { email: 'grace.liu@example.com', password: 'demo' } })
     const second = (await upload({ name: 'second.png', bytes: png(10, 10, 50) }, { scope: 'events' })).body
     communityStore().images[1].createdAt = new Date(NOW.getTime() + 1000).toISOString()
     for (const path of ['/api/admin/storage/images', `/api/admin/storage/images/${first.id}/file`]) {
-      expect((await demoRequest('GET', path)).status, path).toBe(401)
+      expect((await demoRequest('GET', path)).status, path).toBe(403)
     }
-    await adminLogin()
+    await signInAdmin()
     const page = (await demoRequest<StoredImagePage>('GET', '/api/admin/storage/images')).body
     expect(page).toMatchObject({ total: 2, page: 1, pages: 1 })
     expect(page.items.map(item => item.id)).toEqual([second.id, first.id])
@@ -265,9 +262,9 @@ describe('administration', () => {
     expect(await demoRequest('POST', `/api/admin/storage/images/${first.id}/purge`)).toEqual({ ...purged, headers: expect.any(Headers) })
     expect(await demoRequest('GET', `/api/admin/storage/images/${first.id}/file`)).toMatchObject({ status: 410, body: { code: 'image_purged' } })
     coreStore().features.actions = true
-    await adminLogout()
+    await signInAs(6)
     expect(await demoRequest('GET', first.url)).toMatchObject({ status: 410, body: { code: 'image_purged' } })
-    await adminLogin()
+    await signInAdmin()
     expect((await demoRequest<StoredImagePage>('GET', '/api/admin/storage/images')).body.total).toBe(1)
     expect((await demoRequest<StorageOut>('GET', '/api/admin/storage')).body.community.image_bytes).toBe(second.size)
     expect(await demoRequest('POST', `/api/admin/storage/images/${crypto.randomUUID()}/purge`)).toMatchObject({ status: 404, body: { code: 'image_not_found' } })

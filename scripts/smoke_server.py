@@ -12,25 +12,37 @@ from email.message import EmailMessage
 from pathlib import Path
 from typing import get_args
 
+import bcrypt
 import uvicorn
 from fastapi import Request
-from sqlalchemy import delete
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from juntia import auth, google_auth, mail
 from juntia.app import create_app
 from juntia.bootstrap import seed
 from juntia.config import Language, Settings
-from juntia.db import AuthLimit
+from juntia.db import AuthLimit, State, User
 from juntia.errors import AppError
 
 ROOT = Path(__file__).resolve().parents[1]
+# The browser tests' administrator (frontend/e2e/support.ts), an account without a dwelling.
+ADMIN_EMAIL = "browser-test@example.org"
+ADMIN_PASSWORD = "synthetic-browser-test-password"
+ADMIN_NAME = "Browser Test"
 
 
-async def initialize(url, language):
+async def initialize(url, language, first_run):
     engine = create_async_engine(url, hide_parameters=True)
     async with async_sessionmaker(engine)() as db:
         await seed(db, language)
+        if not first_run and await db.scalar(select(User.id).limit(1)) is None:
+            db.add(User(
+                email=ADMIN_EMAIL, name=ADMIN_NAME, administrator=True, activated=True,
+                password_hash=bcrypt.hashpw(ADMIN_PASSWORD.encode(), bcrypt.gensalt()).decode(),
+            ))
+            await db.execute(update(State).where(State.id == 1).values(setup_open=False))
+            await db.commit()
     await engine.dispose()
 
 
@@ -42,6 +54,10 @@ def main():
     parser.add_argument(
         "--language", choices=get_args(Language), default="en",
         help="APP_LANGUAGE for emails and first-run defaults (the web UI follows the browser)",
+    )
+    parser.add_argument(
+        "--first-run", action="store_true",
+        help="Start without the administrator, so the login page offers to create it",
     )
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
@@ -59,13 +75,11 @@ def main():
             [sys.executable, "-m", "alembic", "upgrade", "head"],
             env={**os.environ, "DATABASE_URL": url}, check=True,
         )
-        asyncio.run(initialize(url, args.language))
+        asyncio.run(initialize(url, args.language, args.first_run))
         config = Settings(
             _env_file=None,
             database_url=url,
             app_language=args.language,
-            admin_username="browser-test",
-            admin_password="synthetic-browser-test-password",
             auth_secret="synthetic-browser-secret-not-for-production-123",
             public_origin=f"http://127.0.0.1:{args.port}",
             auth_cookie_secure=False,
@@ -109,9 +123,11 @@ def main():
 
         @app.post("/api/admin/test-reset-login-attempts", status_code=204)
         async def reset_login_attempts(request: Request, db: auth.DB, admin: auth.Admin) -> None:
-            keys = auth.throttle_keys(
-                request, "admin-login", config.admin_username, per_client_identity=True,
-            )
+            # Browser tests sign in often: their client and the administrator start afresh.
+            keys = {
+                *auth.throttle_keys(request, "login", ADMIN_EMAIL),
+                *auth.throttle_keys(request, "login", ADMIN_EMAIL, per_client_identity=True),
+            }
             await db.execute(delete(AuthLimit).where(AuthLimit.key.in_(keys)))
             await db.commit()
 

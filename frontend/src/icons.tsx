@@ -48,9 +48,16 @@ const paths = {
   info: <><circle cx="12" cy="12" r="8.6" /><path d="M12 11v5.4M12 7.8h.02" /></>,
   history: <><path d="M3.4 12a8.6 8.6 0 1 0 2.5-6.1L3.4 8.4" /><path d="M3.4 3.6v4.8h4.8" /><path d="M12 7.6V12l3 1.8" /></>,
   'more-vertical': <><circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" /></>,
+  sparkles: <><path d="M10.4 3.4c.6 4.2 2.1 5.7 6.3 6.3-4.2.6-5.7 2.1-6.3 6.3-.6-4.2-2.1-5.7-6.3-6.3 4.2-.6 5.7-2.1 6.3-6.3Z" /><path d="M18 14.6c.3 1.8.9 2.4 2.7 2.7-1.8.3-2.4.9-2.7 2.7-.3-1.8-.9-2.4-2.7-2.7 1.8-.3 2.4-.9 2.7-2.7Z" /></>,
+  'trending-up': <><path d="M3.4 17.4 9.2 11.6l3.8 3.8 7.6-7.6" /><path d="M15 7.8h5.6v5.6" /></>,
 }
 
 export type IconName = keyof typeof paths
+
+/** Whether `name` is one of the icons above (the What's new notes name theirs in JSON). */
+export function isIconName(name: string): name is IconName {
+  return Object.hasOwn(paths, name)
+}
 
 export function Icon({ name, size = 20, className }: { name: IconName; size?: number; className?: string }) {
   return <svg className={className ? `icon ${className}` : 'icon'} viewBox="0 0 24 24" width={size} height={size}

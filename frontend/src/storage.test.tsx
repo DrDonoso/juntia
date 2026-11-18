@@ -204,6 +204,16 @@ test('the summary shows the community, administrator and disk usage with accessi
   expect(requests.filter(request => /^\/api\/admin\/storage\/(withdrawn|images|document-versions)/.test(request))).toEqual([])
 })
 
+test('without files of the technical administrator of earlier releases, the summary leaves them out', async () => {
+  summary.administrator = { stored_bytes: 0, active_bytes: 0, withdrawn_bytes: 0, active_files: 0, withdrawn_files: 0, image_bytes: 0, image_files: 0 }
+  summary.documents.administrator_bytes = 0
+  renderPage()
+  const documents = await findRegion('Documents')
+  expect(documents.getByText('Deleted, not purged')).toBeVisible()
+  expect(documents.queryByText('Uploaded by the technical administrator')).toBeNull()
+  expect(screen.queryByRole('region', { name: 'Technical administrator' })).toBeNull()
+})
+
 test.each([
   { name: 'a full community quota', change: (value: StorageOut) => { value.community.stored_bytes = 2100 * MiB }, alert: 'The community quota is full, so new PDFs and images are refused. Delete withdrawn PDFs or images permanently, or raise the quota.' },
   { name: 'free space below the reserve', change: (value: StorageOut) => { value.disk.free_bytes = 512 * MiB }, alert: 'The free space is below the reserve, so uploads of PDFs, images and documents and statement imports are refused. Free space on the server or delete withdrawn PDFs or images permanently.' },

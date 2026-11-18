@@ -60,7 +60,7 @@ class State(Base):
     feature_events: Mapped[bool] = mapped_column(default=False, server_default=false())
     feature_documents: Mapped[bool] = mapped_column(default=False, server_default=false())
     # Who may rename, move, replace and delete shared documents: "creator", "administrator" or
-    # "everyone". The technical administrator always may.
+    # "everyone". Administrators always may.
     documents_manage_policy: Mapped[str] = mapped_column(
         String(20), default="creator", server_default="creator"
     )
@@ -72,6 +72,10 @@ class State(Base):
     documents_community_quota_mb: Mapped[int] = mapped_column(
         default=20480, server_default="20480"
     )
+    # First run: the login page offers to create the administration account while this is set
+    # and no account exists. Only seeding a new installation sets it (migration 0024 leaves
+    # upgraded ones closed), and creating that account clears it.
+    setup_open: Mapped[bool] = mapped_column(default=False, server_default=false())
 
 
 class Account(Base):
@@ -80,13 +84,6 @@ class Account(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     iban: Mapped[str] = mapped_column(String(24), unique=True)
     name: Mapped[str] = mapped_column(String(150))
-
-
-class Session(Base):
-    __tablename__ = "sessions"
-    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
-    credential_version: Mapped[str] = mapped_column(String(64))
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class Dwelling(Base):
@@ -102,12 +99,18 @@ class Dwelling(Base):
 
 class User(Base):
     __tablename__ = "users"
-    __table_args__ = {"sqlite_autoincrement": True}
+    __table_args__ = (
+        # Residents live in a dwelling; an administrator may have none.
+        CheckConstraint("administrator OR dwelling_id IS NOT NULL", name="user_dwelling"),
+        {"sqlite_autoincrement": True},
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(254), unique=True)
     name: Mapped[str] = mapped_column(String(150))
     phone: Mapped[str] = mapped_column(String(16), default="", server_default="")
-    dwelling_id: Mapped[int] = mapped_column(ForeignKey("dwellings.id"), index=True)
+    dwelling_id: Mapped[int | None] = mapped_column(ForeignKey("dwellings.id"), index=True)
+    # Administrators open the administration and may manage what others wrote.
+    administrator: Mapped[bool] = mapped_column(default=False, server_default=false())
     password_hash: Mapped[str | None] = mapped_column(String(100))
     activated: Mapped[bool] = mapped_column(default=False, server_default=false())
     google_subject: Mapped[str | None] = mapped_column(String(255), unique=True)
@@ -119,6 +122,9 @@ class User(Base):
     invitation_token_hash: Mapped[str | None] = mapped_column(String(64))
     invitation_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     invitation_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Ids of the "What's new" notes the account has read (see ``whats_new``); NULL until the
+    # interface records them for the first time.
+    whats_new_seen: Mapped[list[str] | None] = mapped_column(JSON(none_as_null=True))
 
 
 class UserSession(Base):
@@ -260,7 +266,10 @@ class ImportRow(Base):
 
 
 class Authorship:
-    # Historical identity snapshots survive account deletion; resident IDs are never reused.
+    # Historical identity snapshots survive account deletion; account IDs are never reused.
+    # Every account writes as 'resident' with its user ID, administrators included; rows with
+    # 'administrator' and no user ID were written by the technical administrator of releases
+    # before accounts could administer, and keep showing its fixed label.
     author_user_id: Mapped[int | None] = mapped_column()
     author_kind: Mapped[str] = mapped_column(String(20))
     author_name: Mapped[str] = mapped_column(String(150))

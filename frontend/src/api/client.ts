@@ -7,7 +7,7 @@ export const cache = new QueryClient({
 })
 
 export const signedOut: UserAuthOut = {
-  authenticated: false, kind: null, name: null, email: null, user_id: null,
+  authenticated: false, administrator: false, name: null, email: null, user_id: null,
   dwelling_id: null, expires_at: null,
 }
 let identityGeneration = 0
@@ -21,11 +21,15 @@ export async function refreshEventData(enabled: boolean) {
   else cache.removeQueries({ queryKey: ['events'] })
 }
 
+// Public data that outlives every session: the branding, the features and whether the installation
+// still waits for its first administrator (a sign-in page may be showing it).
+const PUBLIC_QUERIES = ['general-settings', 'features', 'setup']
+
 export async function clearPrivateData(includeAuth = false) {
   identityGeneration += 1
   const predicate = (query: { queryKey: readonly unknown[] }) =>
-    !['auth', 'reader-auth', 'general-settings', 'features'].includes(String(query.queryKey[0]))
-  await cache.cancelQueries({ predicate: includeAuth ? query => !['general-settings', 'features'].includes(String(query.queryKey[0])) : predicate })
+    !['reader-auth', ...PUBLIC_QUERIES].includes(String(query.queryKey[0]))
+  await cache.cancelQueries({ predicate: includeAuth ? query => !PUBLIC_QUERIES.includes(String(query.queryKey[0])) : predicate })
   cache.removeQueries({ predicate })
 }
 
@@ -69,8 +73,7 @@ async function request(path: string, method: string, body?: unknown, signal?: Ab
   // A feature change must not turn an acknowledged write into an apparent failed save.
   const eventRevision = method === 'GET' && /^\/events(?:\/|\?|$)/.test(path) ? eventGeneration : null
   const privateRequest = path.startsWith('/auth/profile') || path === '/auth/google/link'
-    || !path.startsWith('/auth/') && !path.startsWith('/admin/auth/')
-      && path !== '/settings/general' && path !== '/version' && path !== '/features'
+    || !path.startsWith('/auth/') && path !== '/settings/general' && path !== '/version' && path !== '/features'
   const identityBound = privateRequest || path.endsWith('/auth/session')
   const multipart = body instanceof FormData
   // Raw bytes, such as the chunks of a document upload.
@@ -92,19 +95,13 @@ async function request(path: string, method: string, body?: unknown, signal?: Ab
   if (!response.ok) {
     if (response.status === 401 && !path.endsWith('/login')) {
       await clearPrivateData(true)
-      if (path.startsWith('/admin/')) {
-        cache.setQueryData(['auth'], { authenticated: false, username: null })
-        if (cache.getQueryData<UserAuthOut>(['reader-auth'])?.kind === 'administrator') {
-          cache.setQueryData(['reader-auth'], signedOut)
-        }
-      } else {
-        cache.setQueryData(['auth'], { authenticated: false, username: null })
-        cache.setQueryData(['reader-auth'], signedOut)
-      }
+      cache.setQueryData(['reader-auth'], signedOut)
     }
     const payload: unknown = await response.json().catch(() => null)
     const code = payload && typeof payload === 'object' && 'code' in payload
       && typeof payload.code === 'string' ? payload.code : ''
+    // The role was revoked: the session shows it, and the administration closes.
+    if (code === 'administrator_required') void cache.invalidateQueries({ queryKey: ['reader-auth'] })
     if (code === 'actions_disabled') {
       cache.setQueryData<FeatureFlagsOut>(['features'], previous => previous ? { ...previous, actions: false } : previous)
       await cache.cancelQueries({ queryKey: ['actions'] })

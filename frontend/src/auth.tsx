@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useId, useState, type FormEvent, 
 import { useQuery } from '@tanstack/react-query'
 import { Link, Navigate, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { api, cache, clearPrivateData, errorMessage, signedOut } from './api/client'
-import type { AuthOut, UserAuthOut } from './api/schema.gen'
+import type { SetupOut, UserAuthOut } from './api/schema.gen'
 import { MIN_PASSWORD_LENGTH, Notice, focusFormField, hasControlCharacters, useAction, validateNewPassword, type NewPasswordError } from './shared'
 import { GoogleResult, GoogleSignIn } from './google'
 import { LanguageSelect, useI18n } from './i18n'
@@ -24,31 +24,32 @@ export function useLoginNotice() {
   return value
 }
 
-export function useAdminAuth() {
-  return useQuery({
-    queryKey: ['auth'], queryFn: () => api<AuthOut>('/admin/auth/session'), retry: false,
-    refetchInterval: query => query.state.data?.authenticated ? 30_000 : false,
-  })
-}
-
+/**
+ * The signed-in account, checked every 30 seconds: whether it is an administrator is read from
+ * the server each time, so a granted or revoked role shows at once.
+ */
 export function useReaderAuth() {
   return useQuery({
-    queryKey: ['reader-auth'], queryFn: async () => {
-      const next = await api<UserAuthOut>('/auth/session')
+    queryKey: ['reader-auth'], queryFn: async ({ signal }) => {
+      const next = await api<UserAuthOut>('/auth/session', 'GET', undefined, signal)
+      // A newer check (several refused requests ask for one each) replaces this one: only the
+      // latest may clear the private data, or the newer check would see a changed session.
+      signal.throwIfAborted()
       const previous = cache.getQueryData<UserAuthOut>(['reader-auth'])
       if (previous && (previous.authenticated !== next.authenticated
-        || previous.kind !== next.kind || previous.user_id !== next.user_id)) await clearPrivateData()
+        || previous.user_id !== next.user_id || previous.administrator !== next.administrator)) await clearPrivateData()
       return next
     }, retry: false,
     refetchInterval: query => query.state.data?.authenticated ? 30_000 : false,
   })
 }
 
-export function useSessionLifecycle(reader: UserAuthOut | undefined, administrator: boolean | undefined) {
-  useEffect(() => {
-    // The administrator session check also migrates the legacy cookie path.
-    if (administrator) void cache.invalidateQueries({ queryKey: ['reader-auth'] })
-  }, [administrator])
+/** Whether this is a new installation, where the first visitor creates the administration account. */
+export function useSetup() {
+  return useQuery({ queryKey: ['setup'], queryFn: () => api<SetupOut>('/auth/setup'), retry: false, staleTime: 0 })
+}
+
+export function useSessionLifecycle(reader: UserAuthOut | undefined) {
   useEffect(() => {
     if (!reader?.authenticated || !reader.expires_at) return
     const remaining = new Date(reader.expires_at).getTime() - Date.now()
@@ -59,25 +60,26 @@ export function useSessionLifecycle(reader: UserAuthOut | undefined, administrat
       }
       void clearPrivateData(true)
       cache.setQueryData(['reader-auth'], signedOut)
-      if (reader.kind === 'administrator') cache.setQueryData(['auth'], { authenticated: false, username: null })
     }, Math.min(2_147_483_647, Math.max(0, remaining)))
     return () => window.clearTimeout(timer)
-  }, [reader?.authenticated, reader?.expires_at, reader?.kind])
+  }, [reader?.authenticated, reader?.expires_at])
 }
 
 export function safeReturnPath(value: string | null): string {
   if (!value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\') || hasControlCharacters(value)) return '/'
   const parsed = new URL(value, window.location.origin)
-  const readerRoute = ['/', '/transactions', '/profile', '/neighbors', '/actions', '/contacts', '/events', '/documents'].includes(parsed.pathname)
+  // The pages of the portal and of the administration (backend: contracts.reader_route).
+  const readerRoute = ['/', '/transactions', '/profile', '/neighbors', '/actions', '/contacts', '/events', '/documents', '/admin'].includes(parsed.pathname)
     || /^\/(?:actions|events|documents\/folders)\/[1-9][0-9]{0,9}$/.test(parsed.pathname)
+    || /^\/admin\/[a-z]{1,30}(?:-[a-z]{1,30}){0,3}$/.test(parsed.pathname)
   if (parsed.origin !== window.location.origin || !readerRoute) return '/'
   return parsed.pathname + parsed.search
 }
 
 export function ReaderGate() {
   const { t } = useI18n()
-  const reader = useReaderAuth(), admin = useAdminAuth(), location = useLocation()
-  if (reader.isPending || admin.isPending || admin.data?.authenticated && !reader.data?.authenticated && reader.isFetching) return <Notice>{t('auth.checkingSession')}</Notice>
+  const reader = useReaderAuth(), location = useLocation()
+  if (reader.isPending) return <Notice>{t('auth.checkingSession')}</Notice>
   if (reader.error) return <Notice error>{errorMessage(reader.error)}</Notice>
   if (!reader.data?.authenticated) {
     return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
@@ -93,14 +95,58 @@ export function AuthCardHeader({ eyebrow }: { eyebrow?: string }) {
   </div>
 }
 
-export function ResidentLogin() {
+/** First run: the first visitor creates the administration account, then opens the administration. */
+function Setup({ onCreated }: { onCreated: (account: UserAuthOut) => void }) {
+  const { t } = useI18n()
+  const [name, setName] = useState(''), [email, setEmail] = useState('')
+  const [password, setPassword] = useState(''), [confirmation, setConfirmation] = useState('')
+  const [error, setError] = useState<NewPasswordError | null>(null)
+  const errorId = useId()
+  const action = useAction()
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const invalid = validateNewPassword(password, confirmation)
+    setError(invalid)
+    if (invalid) { focusFormField(event.currentTarget, invalid.field); return }
+    void action.run(async () => {
+      const result = await api<UserAuthOut>('/auth/setup', 'POST', { name: name.trim(), email: email.trim(), password })
+      setPassword(''); setConfirmation('')
+      await clearPrivateData(true)
+      onCreated(result)
+    })
+  }
+  return <section className="card login"><AuthCardHeader eyebrow={t('auth.setup.eyebrow')} /><h1>{t('auth.setup.title')}</h1>
+    <p className="muted">{t('auth.setup.help')}</p>
+    <form className="password-form" onSubmit={submit}>
+      <label>{t('auth.setup.name')}<input name="name" autoComplete="name" required maxLength={150} value={name} onChange={event => setName(event.target.value)} disabled={action.busy} /></label>
+      <label>{t('auth.email')}<input name="email" type="email" autoComplete="username" required maxLength={254} value={email} onChange={event => setEmail(event.target.value)} disabled={action.busy} /></label>
+      <label>{t('auth.password')}<input name="password" type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)} disabled={action.busy} aria-invalid={error?.field === 'password' || undefined} aria-describedby={error?.field === 'password' ? errorId : undefined} /></label>
+      <label>{t('auth.link.repeatPassword')}<input name="confirmation" type="password" autoComplete="new-password" value={confirmation} onChange={event => setConfirmation(event.target.value)} disabled={action.busy} aria-invalid={error?.field === 'confirmation' || undefined} aria-describedby={error?.field === 'confirmation' ? errorId : undefined} /></label>
+      <p className="muted">{t('auth.setup.passwordHelp', { min: MIN_PASSWORD_LENGTH })}</p>
+      {error && <Notice id={errorId} error>{error.message}</Notice>}{action.notice}
+      <button disabled={action.busy}>{action.busy ? t('auth.setup.submitting') : t('auth.setup.submit')}</button>
+    </form>
+  </section>
+}
+
+export function Login() {
   const { t } = useI18n()
   const [email, setEmail] = useState(''), [password, setPassword] = useState('')
   const [params] = useSearchParams()
-  const navigate = useNavigate(), reader = useReaderAuth(), action = useAction()
+  const navigate = useNavigate(), reader = useReaderAuth(), setup = useSetup(), action = useAction()
   const { notice, setNotice } = useLoginNotice()
+  // The new administration account opens the administration, never the return path of the sign-in.
+  const [created, setCreated] = useState<UserAuthOut | null>(null)
+  useEffect(() => {
+    if (!created) return
+    cache.setQueryData(['reader-auth'], created)
+    cache.setQueryData<SetupOut>(['setup'], { available: false })
+  }, [created])
   const target = safeReturnPath(params.get('next'))
+  if (created) return <Navigate to="/admin" replace />
   if (reader.data?.authenticated) return <Navigate to={target} replace />
+  if (setup.isPending) return <Notice>{t('auth.checkingSession')}</Notice>
+  if (setup.data?.available) return <Setup onCreated={setCreated} />
   return <section className="card login"><AuthCardHeader eyebrow={t('auth.login.eyebrow')} /><h1>{t('auth.login.title')}</h1>
     {notice === 'password-updated' && <Notice>{t('auth.login.passwordUpdated')}</Notice>}
     {notice === 'sessions-closed' && <Notice>{t('auth.login.sessionsClosed')}</Notice>}

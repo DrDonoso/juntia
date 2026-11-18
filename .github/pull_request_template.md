@@ -35,6 +35,7 @@ Report security vulnerabilities privately (see SECURITY.md), never in a pull req
 - [ ] Frontend checks pass: `npm run gen:api -- --check`, `lint`, `test`, `build`, `e2e` and `e2e:demo`.
 - [ ] API changes: `openapi.json` and `schema.gen.ts` are regenerated and committed.
 - [ ] New or changed interface text is translated in both `locales/en` and `locales/es`.
+- [ ] Changes people will notice come with a What's new note (`frontend/src/whats-new/notes/`).
 - [ ] New or changed API operations have demo handlers, or are marked as unavailable in the demo.
 - [ ] Documentation is updated (README, `docs/`, `.env.example`).
 - [ ] Schema changes include a new Alembic migration with a downgrade, and tests.

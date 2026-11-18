@@ -253,7 +253,7 @@ function ActionsListing() {
 
 export function ActionsPage() {
   const reader = useReaderAuth()
-  return <ActionFeatureGate><ActionsListing key={`${reader.data?.kind}:${reader.data?.user_id}`} /></ActionFeatureGate>
+  return <ActionFeatureGate><ActionsListing key={`${reader.data?.user_id}:${reader.data?.administrator}`} /></ActionFeatureGate>
 }
 
 function WithdrawDialog({ title, description, kept, endpoint, version, close }: {
@@ -651,7 +651,7 @@ function ActionDetailLoader() {
   if (!valid) return <Notice error>{t('actions.detail.notFound')}</Notice>
   if (query.isPending) return <Notice>{t('actions.detail.loading')}</Notice>
   if (query.error) return <Notice error>{errorMessage(query.error)}</Notice>
-  return <ActionDetail key={`${id}:${reader.data?.kind}:${reader.data?.user_id}`} item={query.data} reader={reader.data}
+  return <ActionDetail key={`${id}:${reader.data?.user_id}:${reader.data?.administrator}`} item={query.data} reader={reader.data}
     basePath="/actions" search={location.search} />
 }
 

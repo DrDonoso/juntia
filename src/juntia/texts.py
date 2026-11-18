@@ -1,7 +1,7 @@
 """Server-generated texts in the language configured by APP_LANGUAGE.
 
 The web interface follows each browser's language; these texts cover what the server writes
-itself: emails, first-run defaults, fallback labels and the administrator's author label.
+itself: emails, first-run defaults, fallback labels and the technical administrator's author label.
 """
 
 from dataclasses import dataclass
@@ -10,7 +10,6 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from .config import Language
-from .contracts import UserAuthOut
 
 
 @dataclass(frozen=True)
@@ -125,12 +124,6 @@ ServerLanguage = Annotated[Language, Depends(configured_language)]
 
 
 def author_name(kind: str | None, name: str | None, language: Language) -> str:
-    # Residents never see the administrator's login name, only this fixed label.
+    # What the technical administrator of earlier releases wrote shows this fixed label, never
+    # its login name; accounts, administrators included, write as residents with their names.
     return texts(language).administrator if kind == "administrator" else name or ""
-
-
-def public_actor(identity: UserAuthOut, language: Language) -> UserAuthOut:
-    """The session identity as stored in authorship snapshots."""
-    return identity.model_copy(
-        update={"name": author_name(identity.kind, identity.name, language)}
-    )

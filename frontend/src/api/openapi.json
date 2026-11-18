@@ -1051,31 +1051,6 @@
         "title": "ApplyRule",
         "type": "object"
       },
-      "AuthOut": {
-        "additionalProperties": false,
-        "properties": {
-          "authenticated": {
-            "title": "Authenticated",
-            "type": "boolean"
-          },
-          "username": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Username"
-          }
-        },
-        "required": [
-          "authenticated"
-        ],
-        "title": "AuthOut",
-        "type": "object"
-      },
       "Body_upload_action_image_api_actions_images_post": {
         "properties": {
           "file": {
@@ -5283,27 +5258,6 @@
         "title": "ImportOut",
         "type": "object"
       },
-      "LoginIn": {
-        "additionalProperties": false,
-        "properties": {
-          "password": {
-            "maxLength": 1000,
-            "title": "Password",
-            "type": "string"
-          },
-          "username": {
-            "maxLength": 150,
-            "title": "Username",
-            "type": "string"
-          }
-        },
-        "required": [
-          "username",
-          "password"
-        ],
-        "title": "LoginIn",
-        "type": "object"
-      },
       "MerchantBreakdown": {
         "additionalProperties": false,
         "properties": {
@@ -5709,6 +5663,11 @@
       "ProfileOut": {
         "additionalProperties": false,
         "properties": {
+          "administrator": {
+            "default": false,
+            "title": "Administrator",
+            "type": "boolean"
+          },
           "coefficient": {
             "anyOf": [
               {
@@ -5722,13 +5681,27 @@
             "title": "Coefficient"
           },
           "dwelling_id": {
-            "minimum": 1.0,
-            "title": "Dwelling Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dwelling Id"
           },
           "dwelling_label": {
-            "title": "Dwelling Label",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dwelling Label"
           },
           "email": {
             "format": "email",
@@ -5780,7 +5753,6 @@
         "required": [
           "email",
           "name",
-          "dwelling_id",
           "id",
           "version",
           "dwelling_label",
@@ -6333,6 +6305,50 @@
           "token"
         ],
         "title": "SetPasswordIn",
+        "type": "object"
+      },
+      "SetupIn": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "format": "email",
+            "maxLength": 254,
+            "title": "Email",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 150,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 72,
+            "minLength": 10,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "password",
+          "email",
+          "name"
+        ],
+        "title": "SetupIn",
+        "type": "object"
+      },
+      "SetupOut": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "available"
+        ],
+        "title": "SetupOut",
         "type": "object"
       },
       "StorageOut": {
@@ -7016,6 +7032,11 @@
       "UserAuthOut": {
         "additionalProperties": false,
         "properties": {
+          "administrator": {
+            "default": false,
+            "title": "Administrator",
+            "type": "boolean"
+          },
           "authenticated": {
             "title": "Authenticated",
             "type": "boolean"
@@ -7053,21 +7074,6 @@
               }
             ],
             "title": "Expires At"
-          },
-          "kind": {
-            "anyOf": [
-              {
-                "enum": [
-                  "resident",
-                  "administrator"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Kind"
           },
           "name": {
             "anyOf": [
@@ -7123,10 +7129,22 @@
       "UserEdit": {
         "additionalProperties": false,
         "properties": {
+          "administrator": {
+            "default": false,
+            "title": "Administrator",
+            "type": "boolean"
+          },
           "dwelling_id": {
-            "minimum": 1.0,
-            "title": "Dwelling Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dwelling Id"
           },
           "email": {
             "format": "email",
@@ -7155,7 +7173,6 @@
         "required": [
           "email",
           "name",
-          "dwelling_id",
           "version"
         ],
         "title": "UserEdit",
@@ -7164,10 +7181,22 @@
       "UserIn": {
         "additionalProperties": false,
         "properties": {
+          "administrator": {
+            "default": false,
+            "title": "Administrator",
+            "type": "boolean"
+          },
           "dwelling_id": {
-            "minimum": 1.0,
-            "title": "Dwelling Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dwelling Id"
           },
           "email": {
             "format": "email",
@@ -7190,8 +7219,7 @@
         },
         "required": [
           "email",
-          "name",
-          "dwelling_id"
+          "name"
         ],
         "title": "UserIn",
         "type": "object"
@@ -7221,6 +7249,11 @@
       "UserOut": {
         "additionalProperties": false,
         "properties": {
+          "administrator": {
+            "default": false,
+            "title": "Administrator",
+            "type": "boolean"
+          },
           "coefficient": {
             "anyOf": [
               {
@@ -7234,13 +7267,27 @@
             "title": "Coefficient"
           },
           "dwelling_id": {
-            "minimum": 1.0,
-            "title": "Dwelling Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dwelling Id"
           },
           "dwelling_label": {
-            "title": "Dwelling Label",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dwelling Label"
           },
           "email": {
             "format": "email",
@@ -7336,7 +7383,6 @@
         "required": [
           "email",
           "name",
-          "dwelling_id",
           "id",
           "version",
           "status",
@@ -7444,6 +7490,51 @@
           "build_date"
         ],
         "title": "VersionOut",
+        "type": "object"
+      },
+      "WhatsNewOut": {
+        "additionalProperties": false,
+        "properties": {
+          "seen": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seen"
+          }
+        },
+        "required": [
+          "seen"
+        ],
+        "title": "WhatsNewOut",
+        "type": "object"
+      },
+      "WhatsNewSeenIn": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "items": {
+              "maxLength": 80,
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}-[a-z0-9]+(-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "WhatsNewSeenIn",
         "type": "object"
       }
     }
@@ -8956,82 +9047,6 @@
         ]
       }
     },
-    "/api/admin/auth/login": {
-      "post": {
-        "operationId": "login_api_admin_auth_login_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LoginIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Login",
-        "tags": [
-          "Administrator authentication"
-        ]
-      }
-    },
-    "/api/admin/auth/logout": {
-      "post": {
-        "operationId": "logout_api_admin_auth_logout_post",
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Logout",
-        "tags": [
-          "Administrator authentication"
-        ]
-      }
-    },
-    "/api/admin/auth/session": {
-      "get": {
-        "operationId": "current_session_api_admin_auth_session_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Current Session",
-        "tags": [
-          "Administrator authentication"
-        ]
-      }
-    },
     "/api/admin/catalog/{kind}": {
       "post": {
         "operationId": "create_catalog_api_admin_catalog__kind__post",
@@ -9443,7 +9458,7 @@
     },
     "/api/admin/documents/deleted": {
       "get": {
-        "description": "What residents deleted and the administrator can still restore or purge, newest first.",
+        "description": "What was deleted and administrators can still restore or purge, newest first.",
         "operationId": "deleted_documents_api_admin_documents_deleted_get",
         "parameters": [
           {
@@ -9963,7 +9978,7 @@
         },
         "summary": "Dwellings",
         "tags": [
-          "Residents"
+          "Users"
         ]
       },
       "post": {
@@ -10002,7 +10017,7 @@
         },
         "summary": "Create Dwelling",
         "tags": [
-          "Residents"
+          "Users"
         ]
       }
     },
@@ -10043,7 +10058,7 @@
         },
         "summary": "Update Dwelling Layout",
         "tags": [
-          "Residents"
+          "Users"
         ]
       }
     },
@@ -10095,7 +10110,7 @@
         },
         "summary": "Edit Dwelling",
         "tags": [
-          "Residents"
+          "Users"
         ]
       }
     },
@@ -10359,7 +10374,7 @@
         },
         "summary": "Read Presidency",
         "tags": [
-          "Residents"
+          "Users"
         ]
       },
       "put": {
@@ -10398,7 +10413,7 @@
         },
         "summary": "Update Presidency",
         "tags": [
-          "Residents"
+          "Users"
         ]
       }
     },
@@ -11453,7 +11468,7 @@
         },
         "summary": "Users",
         "tags": [
-          "Residents"
+          "Users"
         ]
       },
       "post": {
@@ -11492,7 +11507,7 @@
         },
         "summary": "Invite User",
         "tags": [
-          "Residents"
+          "Users"
         ]
       }
     },
@@ -11537,7 +11552,7 @@
         },
         "summary": "Delete User",
         "tags": [
-          "Residents"
+          "Users"
         ]
       },
       "patch": {
@@ -11587,7 +11602,7 @@
         },
         "summary": "Edit User",
         "tags": [
-          "Residents"
+          "Users"
         ]
       }
     },
@@ -11639,7 +11654,7 @@
         },
         "summary": "Resend Invitation",
         "tags": [
-          "Residents"
+          "Users"
         ]
       }
     },
@@ -11691,7 +11706,7 @@
         },
         "summary": "Change Status",
         "tags": [
-          "Residents"
+          "Users"
         ]
       }
     },
@@ -11886,7 +11901,7 @@
     },
     "/api/auth/login": {
       "post": {
-        "operationId": "user_login_api_auth_login_post",
+        "operationId": "login_api_auth_login_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -11919,23 +11934,23 @@
             "description": "Validation Error"
           }
         },
-        "summary": "User Login",
+        "summary": "Login",
         "tags": [
-          "Resident authentication"
+          "Authentication"
         ]
       }
     },
     "/api/auth/logout": {
       "post": {
-        "operationId": "user_logout_api_auth_logout_post",
+        "operationId": "logout_api_auth_logout_post",
         "responses": {
           "204": {
             "description": "Successful Response"
           }
         },
-        "summary": "User Logout",
+        "summary": "Logout",
         "tags": [
-          "Resident authentication"
+          "Authentication"
         ]
       }
     },
@@ -11956,7 +11971,7 @@
         },
         "summary": "Profile",
         "tags": [
-          "Resident profile"
+          "Profile"
         ]
       },
       "patch": {
@@ -11995,7 +12010,7 @@
         },
         "summary": "Edit Profile",
         "tags": [
-          "Resident profile"
+          "Profile"
         ]
       }
     },
@@ -12029,7 +12044,7 @@
         },
         "summary": "Change Password",
         "tags": [
-          "Resident profile"
+          "Profile"
         ]
       }
     },
@@ -12043,7 +12058,7 @@
         },
         "summary": "Close All Sessions",
         "tags": [
-          "Resident profile"
+          "Profile"
         ]
       }
     },
@@ -12083,7 +12098,7 @@
     },
     "/api/auth/session": {
       "get": {
-        "operationId": "current_reader_session_api_auth_session_get",
+        "operationId": "current_session_api_auth_session_get",
         "responses": {
           "200": {
             "content": {
@@ -12096,9 +12111,70 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Current Reader Session",
+        "summary": "Current Session",
         "tags": [
-          "Resident authentication"
+          "Authentication"
+        ]
+      }
+    },
+    "/api/auth/setup": {
+      "get": {
+        "operationId": "setup_status_api_auth_setup_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Setup Status",
+        "tags": [
+          "Authentication"
+        ]
+      },
+      "post": {
+        "description": "First run: the first visitor of a new installation creates the administration account,\nwith no dwelling, and is signed in.",
+        "operationId": "setup_api_auth_setup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserAuthOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Setup",
+        "tags": [
+          "Authentication"
         ]
       }
     },
@@ -14719,6 +14795,69 @@
           }
         },
         "summary": "Version"
+      }
+    },
+    "/api/whats-new": {
+      "get": {
+        "operationId": "whats_new_api_whats_new_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhatsNewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Whats New",
+        "tags": [
+          "What's new"
+        ]
+      }
+    },
+    "/api/whats-new/seen": {
+      "post": {
+        "description": "Add ``ids`` to the notes the account has read (ids already there change nothing).",
+        "operationId": "mark_seen_api_whats_new_seen_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WhatsNewSeenIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhatsNewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark Seen",
+        "tags": [
+          "What's new"
+        ]
       }
     },
     "/health": {

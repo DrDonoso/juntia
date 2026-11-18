@@ -27,11 +27,13 @@ async function mockImport(page: Page, { count = 62, initialAccount = false, fail
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname.replace('/api', '')
     const json = (value: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) })
-    if (path === '/admin/auth/session') return json({ authenticated: true, username: 'browser-test' })
-    if (path === '/auth/session') return json({ authenticated: true, kind: 'administrator', name: 'browser-test', email: null, user_id: null, dwelling_id: null, expires_at: '2099-01-01T00:00:00Z' })
+    if (path === '/auth/session') return json({ authenticated: true, administrator: true, name: 'Browser Test', email: 'browser-test@example.org', user_id: 1, dwelling_id: null, expires_at: '2099-01-01T00:00:00Z' })
     if (path === '/settings/general') return json({ community_name: 'Synthetic community' })
     if (path === '/features') return json({ actions: true, coefficient: true, events: false, documents: false, google_login: false })
     if (path === '/version') return json({ version: 'development', build_date: '' })
+    // What's new, as for a new account: nothing to show, and every note is marked as read.
+    if (path === '/whats-new') return json({ seen: null })
+    if (path === '/whats-new/seen') return json({ seen: [] })
     if (path === '/account') return json(initialAccount && !state.confirmation ? null : { iban: preview.iban, name: 'Community account' })
     if (path === '/catalog/categories') return json([{ id: 1, name: 'Cleaning', color: '#08735a' }, { id: 2, name: 'Maintenance', color: '#21639f' }])
     if (path === '/catalog/tags') return json([{ id: 1, name: 'Recurring', color: '#64748b' }])

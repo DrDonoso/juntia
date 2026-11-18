@@ -100,7 +100,7 @@ function DocumentsBrowser() {
   const { t } = useI18n()
   const params = useParams()
   const reader = useReaderAuth()
-  const identity = reader.data?.authenticated ? `${reader.data.kind}:${reader.data.user_id ?? ''}` : null
+  const identity = reader.data?.authenticated ? String(reader.data.user_id) : null
   useEffect(() => { if (identity !== null) uploads.claim(identity) }, [identity])
   const folderId = folderParam(params.folderId)
   if (folderId === undefined) return <section className="card"><Notice error>{t('errors.codes.document_folder_not_found')}</Notice>

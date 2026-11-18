@@ -205,7 +205,7 @@ export const documents = {
   admin: {
     policy: {
       title: 'Who can change shared documents',
-      description: 'Every neighbor can upload files and create folders. Choose who can rename, move, replace (upload a new version) and delete them. The technical administrator always can, and the history records who did each change.',
+      description: 'Every neighbor can upload files and create folders. Choose who can rename, move, replace (upload a new version) and delete them. Administrators always can, and the history records who did each change.',
       limits: 'The largest files and the space documents can use are set in <link>Storage</link>.',
       loading: 'Loading the setting…',
       legend: 'Who can change documents',
@@ -216,8 +216,8 @@ export const documents = {
           description: 'Each neighbor changes the files and folders they created. A folder can only be deleted by whoever created everything inside it.',
         },
         administrator: {
-          label: 'Only the technical administrator',
-          description: 'Neighbors can add files and folders, but only the technical administrator changes or deletes them.',
+          label: 'Only administrators',
+          description: 'Neighbors can add files and folders, but only administrators change or delete them.',
         },
         everyone: {
           label: 'Every neighbor',
@@ -248,11 +248,11 @@ export const documents = {
         },
         user_quota_mb: {
           label: 'Documents quota per neighbor',
-          help: 'The space each neighbor can use with the documents they upload. Every version counts, current, earlier and deleted ones, until you delete it permanently. What the technical administrator uploads only counts towards the community quota. Default: 2 GiB.',
+          help: 'The space each person can use with the documents they upload, administrators included. Every version counts, current, earlier and deleted ones, until you delete it permanently. Default: 2 GiB.',
         },
         community_quota_mb: {
           label: 'Community documents quota',
-          help: 'The space all shared documents can use together, every version and the technical administrator\'s uploads included. When it is full, new uploads are refused until you raise it or delete documents permanently. Default: 20 GiB.',
+          help: 'The space all shared documents can use together, every version included. When it is full, new uploads are refused until you raise it or delete documents permanently. Default: 20 GiB.',
         },
       },
     },

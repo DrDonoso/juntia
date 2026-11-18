@@ -18,6 +18,8 @@ from starlette.responses import FileResponse
 from . import queries
 from .auth import (
     DB,
+    Actor,
+    actor_of,
     administrator,
     mutation_session,
     reader_session,
@@ -57,7 +59,6 @@ from .contracts import (
     ActionPage,
     ActionStatus,
     ActionSummaryOut,
-    UserAuthOut,
     VersionIn,
 )
 from .db import (
@@ -105,29 +106,20 @@ def author(value: Authorship, language: Language) -> ActionActorOut:
     })
 
 
-def authorship(value: ActionActorOut) -> dict[str, str | int | None]:
+def authorship(value: Actor) -> dict[str, str | int | None]:
     return {
         "author_kind": value.kind, "author_user_id": value.user_id, "author_name": value.name,
     }
 
 
-def session_actor(identity: UserAuthOut, language: Language) -> ActionActorOut:
-    return ActionActorOut(
-        kind="resident" if identity.kind == "resident" else "administrator",
-        user_id=identity.user_id,
-        name=author_name(identity.kind, identity.name, language),
-    )
-
-
-async def mutation_actor(
-    request: Request, db: AsyncSession, language: Language,
-) -> ActionActorOut:
+async def mutation_actor(request: Request, db: AsyncSession) -> Actor:
     await require_actions_enabled(db)
-    return session_actor(await mutation_session(request, db), language)
+    return actor_of(await mutation_session(request, db))
 
 
-def require_owner(value: Authorship, actor: ActionActorOut) -> None:
-    if actor.kind != "administrator" and (
+def require_owner(value: Authorship, actor: Actor) -> None:
+    """Comments and PDFs change only by their authors and administrators."""
+    if not actor.administrator and (
         value.author_kind != actor.kind or value.author_user_id != actor.user_id
     ):
         raise AppError("action_owner_required", 403)
@@ -161,7 +153,7 @@ def check_version(current: int, expected: int) -> None:
 def add_event(
     db: AsyncSession,
     item: CommunityAction,
-    actor: ActionActorOut,
+    actor: Actor,
     kind: ActionEventKind,
     changes: list[ActionChange],
     *,
@@ -384,9 +376,9 @@ async def read_label(label_id: ItemId, db: DB) -> ActionLabelOut:
 
 @admin_router.patch("/{label_id}", response_model=ActionLabelOut)
 async def edit_label(
-    label_id: ItemId, body: ActionLabelEdit, db: DB, request: Request, language: ServerLanguage,
+    label_id: ItemId, body: ActionLabelEdit, db: DB, request: Request,
 ) -> ActionLabelOut:
-    actor = session_actor(await mutation_session(request, db), language)
+    actor = actor_of(await mutation_session(request, db))
     # Label assignment and renaming share this lock, always before locking actions.
     await lock_state(db)
     value = await db.get(ActionLabel, label_id, populate_existing=True)
@@ -442,7 +434,7 @@ async def item(item_id: ItemId, db: DB, language: ServerLanguage) -> ActionOut:
 async def create_item(
     body: ActionIn, db: DB, request: Request, language: ServerLanguage,
 ) -> ActionOut:
-    actor = await mutation_actor(request, db, language)
+    actor = await mutation_actor(request, db)
     if body.labels:
         await lock_state(db)
     value = CommunityAction(
@@ -466,7 +458,7 @@ async def create_item(
 async def edit_item(
     item_id: ItemId, body: ActionEdit, db: DB, request: Request, language: ServerLanguage,
 ) -> ActionOut:
-    actor = await mutation_actor(request, db, language)
+    actor = await mutation_actor(request, db)
     if body.labels is not None:
         await lock_state(db)
     value = await lock_action(db, item_id)
@@ -525,7 +517,7 @@ async def comments(
 async def add_comment(
     item_id: ItemId, body: ActionCommentIn, db: DB, request: Request, language: ServerLanguage,
 ) -> ActionCommentOut:
-    actor = await mutation_actor(request, db, language)
+    actor = await mutation_actor(request, db)
     value = await lock_action(db, item_id)
     comment = ActionComment(action_id=item_id, body=body.body, **authorship(actor))
     db.add(comment)
@@ -538,7 +530,7 @@ async def add_comment(
 
 
 async def editable_comment(
-    db: AsyncSession, item_id: int, comment_id: int, actor: ActionActorOut, version: int,
+    db: AsyncSession, item_id: int, comment_id: int, actor: Actor, version: int,
 ) -> ActionComment:
     comment = await db.get(ActionComment, comment_id, populate_existing=True)
     if comment is None or comment.action_id != item_id:
@@ -566,7 +558,7 @@ async def edit_comment(
     item_id: ItemId, comment_id: ItemId, body: ActionCommentEdit, db: DB, request: Request,
     language: ServerLanguage,
 ) -> ActionCommentOut:
-    actor = await mutation_actor(request, db, language)
+    actor = await mutation_actor(request, db)
     value = await lock_action(db, item_id)
     comment = await editable_comment(db, item_id, comment_id, actor, body.version)
     if comment.body != body.body:
@@ -583,9 +575,8 @@ async def edit_comment(
 @router.delete("/items/{item_id}/comments/{comment_id}", status_code=204)
 async def withdraw_comment(
     item_id: ItemId, comment_id: ItemId, body: VersionIn, db: DB, request: Request,
-    language: ServerLanguage,
 ) -> None:
-    actor = await mutation_actor(request, db, language)
+    actor = await mutation_actor(request, db)
     value = await lock_action(db, item_id)
     comment = await editable_comment(db, item_id, comment_id, actor, body.version)
     add_event(db, value, actor, "comment_withdrawn", [
@@ -666,7 +657,7 @@ async def upload_attachment(
         # database below, and its temporary copy is discarded. Anyone else is refused before
         # anything is written.
         stored = await db.get(ActionAttachment, str(upload_id))
-        requester = await mutation_actor(request, db, language)
+        requester = await mutation_actor(request, db)
         if (
             stored is None or stored.action_id != item_id or stored.withdrawn_at is not None
             or stored.author_kind != requester.kind
@@ -679,7 +670,7 @@ async def upload_attachment(
     )
     committed = False
     try:
-        actor = await mutation_actor(request, db, language)
+        actor = await mutation_actor(request, db)
         value = await lock_action(db, item_id)
         # Serializes uploads across all actions: the retry lookup and the byte budgets below
         # see every committed PDF, and two uploads cannot both pass the same budget check.
@@ -744,7 +735,7 @@ async def rename_attachment(
     item_id: ItemId, attachment_id: UUID, body: ActionAttachmentEdit, db: DB, request: Request,
     language: ServerLanguage,
 ) -> ActionAttachmentOut:
-    actor = await mutation_actor(request, db, language)
+    actor = await mutation_actor(request, db)
     value = await lock_action(db, item_id)
     attachment = await get_attachment(db, item_id, attachment_id)
     require_owner(attachment, actor)
@@ -765,9 +756,8 @@ async def rename_attachment(
 @router.delete("/items/{item_id}/attachments/{attachment_id}", status_code=204)
 async def withdraw_attachment(
     item_id: ItemId, attachment_id: UUID, body: VersionIn, db: DB, request: Request,
-    language: ServerLanguage,
 ) -> None:
-    actor = await mutation_actor(request, db, language)
+    actor = await mutation_actor(request, db)
     value = await lock_action(db, item_id)
     attachment = await get_attachment(db, item_id, attachment_id)
     require_owner(attachment, actor)

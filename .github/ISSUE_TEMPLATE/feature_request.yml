@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for suggesting an improvement! Juntia serves a single residential community: its residents and one technical administrator. Explaining the problem behind your idea helps find the best solution for every community.
+        Thanks for suggesting an improvement! Juntia serves a single residential community: its residents and the administrators who manage it. Explaining the problem behind your idea helps find the best solution for every community.
 
         Please use synthetic data only in examples, mockups and screenshots.
   - type: textarea
@@ -20,7 +20,7 @@ body:
     id: proposal
     attributes:
       label: Proposed solution
-      description: What you would like Juntia to do, and who would use it (residents, the administrator or both).
+      description: What you would like Juntia to do, and who would use it (residents, administrators or both).
     validations:
       required: true
   - type: textarea

@@ -18,17 +18,22 @@ stored, and reloading the page starts the demo again.
 
 - The demo opens signed in as **Olivia Bennett**, a neighbor of the fictional community
   **Maple Court**. A welcome dialog, shown once per page load, offers **Explore as a neighbor** or
-  **Open administration**, which signs in the demo administrator.
+  **Open administration**, which signs in **James Okafor**, the president, whose account is also
+  the community's administrator, and opens the administration.
 - A banner at the bottom reminds that the data is synthetic and that changes are lost on reload, and
   links to the source code.
-- Credentials, shown and filled in on the sign-in screens:
-  - administration (`/admin`): `demo` / `demo`;
-  - residents (`/login`): the email of any active neighbor, such as `olivia.bennett@example.com`,
-    with the password `demo`.
+- Credentials, shown and filled in on the sign-in screen (`/login`): the email of any active
+  neighbor, such as `olivia.bennett@example.com`, with the password `demo`. The administration
+  opens with James Okafor's account, `james.okafor@example.com` and `demo`: opening `/admin` while
+  signed out leads to the sign-in screen with his credentials filled in, and once signed in, the user
+  menu (the avatar, top right) offers **Administration** and, from there, **Community portal**.
+  Other neighbors have no administration: `/admin` shows "Page not found." to them.
 - Everything can be changed: actions, comments and PDFs, events, contacts, shared documents and
-  their folders, profiles, users, dwellings and their layout, rules, categories, imports and settings.
-  Changes last until the page is reloaded.
+  their folders, profiles, users and their administrator role, dwellings and their layout, rules,
+  categories, imports and settings. Changes last until the page is reloaded.
 - The language selector switches between English and Spanish, like in a real installation.
+- **What's new** in the avatar menu lists every note. The demo starts with nothing to catch up on,
+  like a new account, so its window never opens by itself.
 
 ## The data
 
@@ -37,7 +42,8 @@ recent:
 
 - **Maple Court**: twelve dwellings, `1A` to `4C`, with ownership coefficients adding up to 100, and
   their neighbors: active accounts, pending invitations and a deactivated account. **James Okafor**
-  (`1A`) is the president. Emails use `example.com`, phone numbers the UK fiction range
+  (`1A`) is the president and the administrator: what the administration did in the scenario, he
+  did under his own name. Emails use `example.com`, phone numbers the UK fiction range
   `+44 20 7946 0xxx`, and the bank account a checksum-valid IBAN on the non-existent bank code
   `9999`.
 - **Finances**: thirteen months of statements with monthly fees by ownership coefficient, utilities,
@@ -48,7 +54,7 @@ recent:
   edits and a few deleted ones.
 - **Documents**: shared folders and files (house rules with a revised version, meeting minutes by
   year, insurance papers, a Word letter and the sample neighbor's garden folder) with their history,
-  and two deletions that the administrator can restore or purge.
+  and two deletions that an administrator can restore or purge.
 
 ## What needs a real server
 
@@ -61,12 +67,14 @@ Features that depend on real infrastructure are simulated or explain that they n
   invited neighbors stay pending; password recovery answers as usual without sending anything.
 - **Google sign-in** and linking answer "This feature needs a real server, so it is not available in
   the demo."
-- **Storage administration** shows invented disk figures; the PDF quotas and permanent deletion
-  behave as on a real server, and so do the limits of shared documents (the largest file and video,
-  and the quotas of each resident and of the community), which the administrator adjusts in
-  **Settings > Storage**.
+- **Storage administration** shows invented disk figures; permanent deletion and the PDF quotas
+  behave as on a real server (every account has one, administrators included), and so do the limits
+  of shared documents (the largest file and video, and the quotas of each account and of the
+  community), which administrators adjust in **Settings > Storage**.
 - **Shared documents** stay in the browser's memory: uploads (resumable, in chunks), previews and
   ZIP downloads work as on a real server, but archives are limited to 4 GiB.
+- **First run:** a new installation lets its first visitor create the administration account. The
+  demo always has accounts, so its sign-in screen never offers it.
 
 ## Running it locally
 
@@ -77,7 +85,7 @@ In `frontend/` (no backend or database needed):
 | `npm run dev:demo` | Vite development server in demo mode. |
 | `npm run build:demo` | Type-checks and builds the demo into `dist-demo/` (never touches `dist/`). |
 | `npm run preview:demo` | Serves `dist-demo/` with the demo's security headers. |
-| `npm run e2e:demo` | Playwright test of the **built** demo, on port 4183 (`DEMO_E2E_PORT`): smoke checks plus a crawl of every page, as a neighbor and as the administrator, in English and Spanish, with accessibility (axe) checks. It fails on any request the demo does not answer. Run `npm run build:demo` first. |
+| `npm run e2e:demo` | Playwright test of the **built** demo, on port 4183 (`DEMO_E2E_PORT`): smoke checks plus a crawl of every page, as a neighbor and as the administrator (James Okafor), in English and Spanish, with accessibility (axe) checks. It fails on any request the demo does not answer. Run `npm run build:demo` first. |
 | `npx vitest run src/demo` | Unit tests of the demo API and data. |
 
 `DEMO_E2E_BASE_URL=https://demo.juntia.drdonoso.com npm run e2e:demo` checks the deployed demo

@@ -20,7 +20,7 @@ export const common = {
   optional: 'Optional',
   notSet: 'Not set',
   never: 'Never',
-  // Author name of everything the administrator writes (actions, comments, PDFs, events, contacts and their history).
+  // Author of what the technical administrator of earlier releases wrote; administrators now write with their own name.
   technicalAdministrator: 'Technical administrator',
   hiddenAmount: 'Hidden amount',
   percent: '{value}%',

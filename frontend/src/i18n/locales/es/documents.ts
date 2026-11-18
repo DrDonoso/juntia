@@ -205,7 +205,7 @@ export const documents: Messages<typeof source> = {
   admin: {
     policy: {
       title: 'Quién puede cambiar los documentos compartidos',
-      description: 'Todos los vecinos pueden subir archivos y crear carpetas. Elige quién puede cambiarles el nombre, moverlos, sustituirlos (subir una nueva versión) y eliminarlos. El administrador técnico siempre puede, y el historial registra quién hizo cada cambio.',
+      description: 'Todos los vecinos pueden subir archivos y crear carpetas. Elige quién puede cambiarles el nombre, moverlos, sustituirlos (subir una nueva versión) y eliminarlos. Los administradores siempre pueden, y el historial registra quién hizo cada cambio.',
       limits: 'El tamaño máximo de los archivos y el espacio que pueden ocupar los documentos se ajustan en <link>Almacenamiento</link>.',
       loading: 'Cargando el ajuste…',
       legend: 'Quién puede cambiar los documentos',
@@ -216,8 +216,8 @@ export const documents: Messages<typeof source> = {
           description: 'Cada vecino cambia los archivos y carpetas que creó. Una carpeta solo la puede eliminar quien creó todo lo que contiene.',
         },
         administrator: {
-          label: 'Solo el administrador técnico',
-          description: 'Los vecinos pueden añadir archivos y carpetas, pero solo el administrador técnico los cambia o los elimina.',
+          label: 'Solo los administradores',
+          description: 'Los vecinos pueden añadir archivos y carpetas, pero solo los administradores los cambian o los eliminan.',
         },
         everyone: {
           label: 'Todos los vecinos',
@@ -248,11 +248,11 @@ export const documents: Messages<typeof source> = {
         },
         user_quota_mb: {
           label: 'Cuota de documentos por vecino',
-          help: 'El espacio que puede ocupar cada vecino con los documentos que sube. Cuentan todas las versiones, actuales, anteriores y eliminadas, hasta que las eliminas definitivamente. Lo que sube el administrador técnico solo cuenta en la cuota de la comunidad. Por defecto: 2 GiB.',
+          help: 'El espacio que puede ocupar cada persona con los documentos que sube, también los administradores. Cuentan todas las versiones, actuales, anteriores y eliminadas, hasta que las eliminas definitivamente. Por defecto: 2 GiB.',
         },
         community_quota_mb: {
           label: 'Cuota de documentos de la comunidad',
-          help: 'El espacio que pueden ocupar entre todos los documentos compartidos, con todas sus versiones y lo que sube el administrador técnico. Cuando se llena, se rechazan las subidas nuevas hasta que la amplíes o elimines documentos definitivamente. Por defecto: 20 GiB.',
+          help: 'El espacio que pueden ocupar entre todos los documentos compartidos, con todas sus versiones. Cuando se llena, se rechazan las subidas nuevas hasta que la amplíes o elimines documentos definitivamente. Por defecto: 20 GiB.',
         },
       },
     },

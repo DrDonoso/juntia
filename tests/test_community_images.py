@@ -13,6 +13,7 @@ from juntia.db import CommunityImage
 from juntia.errors import AppError
 from juntia.event_calendar import exported_text
 from juntia.middleware import BODY_CHUNK_BYTES, body_limit
+from tests.support import ADMINISTRATOR
 from tests.test_action_migration import migrate
 from tests.test_action_pdfs import upload as upload_pdf
 from tests.test_action_storage import (
@@ -320,7 +321,10 @@ def test_the_administrator_lists_views_and_purges_images(actors, admin, config, 
     assert newest == {
         **mine, "scope": "actions", "created_at": newest["created_at"],
         "sha256": hashlib.sha256(padded(picture("JPEG"), 4_000)).hexdigest(),
-        "author": {"kind": "administrator", "user_id": None, "name": "Technical administrator"},
+        "author": {
+            "kind": "resident", "user_id": admin.get("/api/auth/session").json()["user_id"],
+            "name": ADMINISTRATOR["name"],
+        },
         "purged_at": None,
     }
     assert newest["created_at"].startswith("2026-10-03T12:00:00")
@@ -335,17 +339,20 @@ def test_the_administrator_lists_views_and_purges_images(actors, admin, config, 
     assert (summary["community"]["image_bytes"], summary["community"]["image_files"]) == (
         14_000, 3,
     )
-    assert (summary["administrator"]["image_bytes"], summary["administrator"]["stored_bytes"]) == (
-        4_000, 4_000,
-    )
+    # The administrator's own account counts its images like everyone else.
+    assert summary["administrator"]["stored_bytes"] == 0
+    assert [
+        (row["name"], row["image_bytes"]) for row in summary["residents"]
+        if row["name"] == ADMINISTRATOR["name"]
+    ] == [(ADMINISTRATOR["name"], 4_000)]
     set_flag(admin, "actions", False)
     preview = admin.get(f"/api/admin/storage/images/{small['id']}/file")
     assert preview.content == padded(picture(), 1_000)
     assert preview.headers["content-type"] == "image/png"
     set_flag(admin, "actions", True)
     for client in (a, b):
-        refused(client.get("/api/admin/storage/images"), 401, "authentication_required")
-        refused(purge(client, small["id"]), 401, "authentication_required")
+        refused(client.get("/api/admin/storage/images"), 403, "administrator_required")
+        refused(purge(client, small["id"]), 403, "administrator_required")
     with visitor(config) as anonymous:
         refused(anonymous.get(f"/api/admin/storage/images/{small['id']}/file"), 401,
                 "authentication_required")

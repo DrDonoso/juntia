@@ -3,14 +3,15 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from juntia import ai, imports
+from juntia import ai, auth, imports
+from juntia.app import create_app
 from juntia.contracts import ConfirmIn
 from juntia.errors import AppError
-from juntia.identity import digest
-from tests.support import ROWS, iban, statement_pdf
+from tests.support import ADMINISTRATOR, ROWS, iban, statement_pdf
 
 
 def preview(client, content=None, filename="statement.pdf"):
@@ -40,34 +41,30 @@ def commit(client, value, decisions=None):
     )
 
 
-def test_reader_and_admin_security(client, config):
-    assert client.get("/api/summary").status_code == 401
-    assert client.get("/api/transactions").status_code == 401
-    assert client.post("/api/admin/rules", json={}).status_code == 401
-    assert client.post("/api/auth/setup", json={}).status_code in {404, 405}
-    response = client.post(
-        "/api/admin/auth/login",
-        json={
-            "username": "admin",
-            "password": config.admin_password.get_secret_value(),
-        },
-        headers={"origin": "https://attacker.invalid"},
-    )
-    assert response.status_code == 403
-    for _ in range(10):
-        assert (
-            client.post(
-                "/api/admin/auth/login", json={"username": "admin", "password": "bad"}
-            ).status_code
-            == 401
+def test_reader_and_admin_security(admin, config):
+    with TestClient(create_app(config, text_worker=False), headers={
+        "origin": config.public_origin, "x-juntia-request": "1",
+    }) as client:
+        assert client.get("/api/summary").status_code == 401
+        assert client.get("/api/transactions").status_code == 401
+        assert client.post("/api/admin/rules", json={}).status_code == 401
+        for path in ["/api/auth/register", "/api/users"]:
+            assert client.post(path, json={}).status_code in {404, 405}
+        response = client.post(
+            "/api/auth/login", json={
+                "email": ADMINISTRATOR["email"], "password": ADMINISTRATOR["password"],
+            },
+            headers={"origin": "https://attacker.invalid"},
         )
-    assert (
-        client.post(
-            "/api/admin/auth/login", json={"username": "admin", "password": "bad"}
-        ).status_code
-        == 429
-    )
-    assert client.get("/api/summary").headers["x-frame-options"] == "DENY"
+        assert response.status_code == 403
+        for _ in range(10):
+            assert client.post("/api/auth/login", json={
+                "email": ADMINISTRATOR["email"], "password": "bad",
+            }).status_code == 401
+        assert client.post("/api/auth/login", json={
+            "email": ADMINISTRATOR["email"], "password": ADMINISTRATOR["password"],
+        }).status_code == 429
+        assert client.get("/api/summary").headers["x-frame-options"] == "DENY"
 
 
 def test_account_confirmed_only_on_successful_commit(admin):
@@ -265,10 +262,10 @@ def test_rules_optional_ai_and_manual_precedence(admin, config, monkeypatch):
 
 
 def test_logout_revokes_copied_cookie_and_preview(admin):
-    cookie = admin.cookies.get("juntia_admin")
+    cookie = admin.cookies.get(auth.USER_COOKIE)
     value = preview(admin)
-    assert admin.post("/api/admin/auth/logout").status_code == 204
-    admin.cookies.set("juntia_admin", cookie, domain="testserver.local", path="/api/admin")
+    assert admin.post("/api/auth/logout").status_code == 204
+    admin.cookies.set(auth.USER_COOKIE, cookie, domain="testserver.local", path="/api")
     assert admin.get("/api/admin/rules").status_code == 401
     assert commit(admin, value).status_code == 401
 
@@ -277,7 +274,7 @@ def test_logout_revokes_copied_cookie_and_preview(admin):
 def test_concurrent_first_accounts_cannot_both_commit(admin, config):
     first = preview(admin)
     second = preview(admin, statement_pdf(account=iban("0000000002")))
-    owner = digest(admin.cookies.get("juntia_admin"))
+    owner = auth.access_hash(config, "session", admin.cookies.get(auth.USER_COOKIE))
 
     async def execute(value):
         engine = create_async_engine(config.database_url)

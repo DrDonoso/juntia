@@ -1,11 +1,11 @@
 /**
- * Shared documents of Maple Court: what the residents and the administrator shared over the last
- * seven months. The scenario is a list of dated steps (who did what, when, with which file) that
- * ../store/shared-documents.ts replays through the operations of the API, so ids follow the dates
- * and every history entry matches the data: the house rules and their revised version, meeting
- * minutes filed by year (the latest moved into its folder), an insurance folder renamed by the
- * administrator with a claims log in two versions, a renamed scan, a Word letter, the visitor's
- * garden folder, and two deletions only the administrator sees. Deterministic
+ * Shared documents of Maple Court: what the residents shared over the last seven months, James
+ * Okafor (1) also as the administrator. The scenario is a list of dated steps (who did what, when,
+ * with which file) that ../store/shared-documents.ts replays through the operations of the API, so
+ * ids follow the dates and every history entry matches the data: the house rules and their revised
+ * version, meeting minutes filed by year (the latest moved into its folder), an insurance folder
+ * renamed by the administrator with a claims log in two versions, a renamed scan, a Word letter,
+ * the visitor's garden folder, and two deletions only administrators see. Deterministic
  * (`demoRandom('documents:…')`) and relative to today.
  */
 import { addDays, daysAgo, parseDay } from '../core/clock'
@@ -97,7 +97,7 @@ export function sharedDocumentsScenario(): SharedDocumentStep[] {
   const claimsHeader = 'date,area,description,status,amount_eur'
   const rotaStart = nextMonday(daysAgo(60))
   return [
-    step([212, '09:00'], 'admin', {
+    step([212, '09:00'], 1, {
       upload: 'welcome', file: file('Welcome to Documents.txt', text([
         'Welcome to the shared documents of Maple Court.', '',
         'Everyone in the community can read and download every file here, and add folders and files.',
@@ -106,8 +106,8 @@ export function sharedDocumentsScenario(): SharedDocumentStep[] {
         'Please do not share personal data of other residents, such as phone numbers or bank details.',
       ])),
     }),
-    step([210, '10:00'], 'admin', { createFolder: 'rules', name: 'Community rules' }),
-    step([210, '10:06'], 'admin', {
+    step([210, '10:00'], 1, { createFolder: 'rules', name: 'Community rules' }),
+    step([210, '10:06'], 1, {
       upload: 'house-rules', folder: 'rules', file: file('House rules.pdf', pdf('Maple Court - House rules', [
         `Approved at the annual general meeting of ${longDate(annualMeeting)}.`, '',
         '1. Quiet hours: from 22:00 to 08:00 on weekdays and from 23:00 to 09:00 at weekends.', ...HOUSE_RULES,
@@ -130,8 +130,8 @@ export function sharedDocumentsScenario(): SharedDocumentStep[] {
       )),
     }),
     step([150, '20:30'], 9, { createFolder: 'insurance', name: 'Insurance papers' }),
-    step([148, '09:15'], 'admin', { rename: 'insurance', name: 'Insurance' }),
-    step([148, '09:20'], 'admin', {
+    step([148, '09:15'], 1, { rename: 'insurance', name: 'Insurance' }),
+    step([148, '09:20'], 1, {
       upload: 'policy', folder: 'insurance', file: file('Building insurance policy.pdf', pdf('Harbour Mutual - Building insurance policy', [
         "Policyholder: Maple Court residents' community", 'Policy number: HM-BLD-48213',
         'Period of cover: 12 months, renewed every year.', '',
@@ -195,7 +195,7 @@ export function sharedDocumentsScenario(): SharedDocumentStep[] {
     }),
     // Uploaded next to the year folders by mistake.
     step([37, '21:20'], 1, { move: 'ordinary-minutes', into: `minutes:${ordinaryYear}` }),
-    step([36, '10:30'], 'admin', {
+    step([36, '10:30'], 1, {
       newVersion: 'house-rules', file: file('House rules.pdf', pdf('Maple Court - House rules (revised)', [
         `Approved at the ordinary meeting of ${longDate(ordinaryMeeting)}.`, '',
         '1. Quiet hours: from 22:00 to 08:00 every day.', ...HOUSE_RULES,

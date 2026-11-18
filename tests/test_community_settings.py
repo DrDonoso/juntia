@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from juntia.app import create_app
+from tests.support import ADMINISTRATOR
 from tests.test_api import commit, preview
 
 
@@ -43,9 +44,8 @@ def test_community_name_persists_and_does_not_invalidate_imports(admin, config):
         assert manifest.json()["start_url"] == "/"
         assert {icon["purpose"] for icon in manifest.json()["icons"]} == {"any", "maskable"}
         assert restarted.get("/api/summary").status_code == 401
-        restarted.post("/api/admin/auth/login", json={
-            "username": config.admin_username,
-            "password": config.admin_password.get_secret_value(),
+        restarted.post("/api/auth/login", json={
+            "email": ADMINISTRATOR["email"], "password": ADMINISTRATOR["password"],
         }, headers={"origin": config.public_origin, "x-juntia-request": "1"})
         assert restarted.get("/api/summary").json() == before
 

@@ -54,10 +54,10 @@ def test_assignment_transfer_and_vacancy_preserve_access_and_other_state(admin, 
     with visitor(config) as reader:
         assert login(reader).status_code == 200
         assert holders(reader) == [ana["id"]]
-        assert reader.get("/api/admin/auth/session").json()["authenticated"] is False
-        assert reader.get(PATH).status_code == 401
-        assert assign(reader, pedro["id"], 1).status_code == 401
-        assert reader.get("/api/admin/users").status_code == 401
+        assert reader.get("/api/auth/session").json()["administrator"] is False
+        assert reader.get(PATH).status_code == 403
+        assert assign(reader, pedro["id"], 1).status_code == 403
+        assert reader.get("/api/admin/users").status_code == 403
         assert reader.patch("/api/auth/profile", json={
             "name": "Ana", "version": ana["version"], "is_president": True,
         }).status_code == 422

@@ -1,12 +1,12 @@
 import hashlib
 import hmac
 import secrets
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Annotated, AsyncIterator
+from typing import Annotated, AsyncIterator, Literal
 
 import bcrypt
 from fastapi import APIRouter, Depends, Request, Response
-from pydantic import Field
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -14,11 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from .config import Settings
-from .contracts import Contract, UserAuthOut, UserLoginIn
+from .contracts import SetupIn, SetupOut, UserAuthOut, UserLoginIn
 from .db import (
     AuthLimit,
     GoogleAuthFlow,
-    Session,
+    State,
     User,
     UserSession,
     UserToken,
@@ -26,13 +26,16 @@ from .db import (
     utcnow,
 )
 from .errors import AppError
-from .identity import digest
 
-COOKIE = "juntia_admin"
 USER_COOKIE = "juntia_user"
 GOOGLE_COOKIE = "juntia_google"
-router = APIRouter(prefix="/api/admin/auth", tags=["Administrator authentication"])
-user_router = APIRouter(prefix="/api/auth", tags=["Resident authentication"])
+# The technical administrator's session cookie of earlier releases, which signing in and signing
+# out clear so that old browsers drop it.
+LEGACY_ADMIN_COOKIE = "juntia_admin"
+# Compared when an account cannot sign in with a password, so that the response takes as long as
+# a real check (bcrypt's default cost). Its password is unknown and never accepted.
+UNUSABLE_HASH = b"$2b$12$Sm9C1OTI7qL2ujTgHeYsNuSzlAcsTF9JvafH1MOvsQBepj0b8bdr2"
+router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
 
 def settings(request: Request) -> Settings:
@@ -47,39 +50,16 @@ async def database(request: Request) -> AsyncIterator[AsyncSession]:
 DB = Annotated[AsyncSession, Depends(database)]
 
 
-def credential_version(config: Settings) -> str:
-    value = config.admin_username + "\0" + config.admin_password.get_secret_value()
-    return hmac.new(
-        config.auth_secret.get_secret_value().encode(), value.encode(), hashlib.sha256
-    ).hexdigest()
-
-
-async def administrator(request: Request, db: DB) -> str:
-    token = request.cookies.get(COOKIE, "")
-    if len(token) != 64:
-        raise AppError("authentication_required", 401)
-    hashed = digest(token)
-    session = await db.get(Session, hashed)
-    if (
-        session is None
-        or aware(session.expires_at) <= utcnow()
-        or not secrets.compare_digest(
-            session.credential_version, credential_version(settings(request))
-        )
-    ):
-        raise AppError("authentication_required", 401)
-    return hashed
-
-
-Admin = Annotated[str, Depends(administrator)]
-
-
 def access_hash(config: Settings, purpose: str, token: str) -> str:
     return hmac.new(
         config.auth_secret.get_secret_value().encode(),
         f"{purpose}\0{token}".encode(),
         hashlib.sha256,
     ).hexdigest()
+
+
+def session_hash(request: Request) -> str:
+    return access_hash(settings(request), "session", request.cookies.get(USER_COOKIE, ""))
 
 
 def throttle_keys(
@@ -126,7 +106,7 @@ async def throttle(
         )
         if hits is not None and hits > maximum:
             await db.commit()
-            code = "login_throttled" if scope in {"login", "admin-login"} else "request_throttled"
+            code = "login_throttled" if scope == "login" else "request_throttled"
             raise AppError(code, 429)
     await db.commit()
 
@@ -150,7 +130,16 @@ async def revoke_user_access(db: AsyncSession, user_id: int) -> None:
         )
 
 
-async def resident_session(request: Request, db: AsyncSession) -> UserAuthOut | None:
+def signed_in(user: User, expires_at: datetime) -> UserAuthOut:
+    return UserAuthOut(
+        authenticated=True, administrator=user.administrator, name=user.name, email=user.email,
+        user_id=user.id, dwelling_id=user.dwelling_id, expires_at=aware(expires_at),
+    )
+
+
+async def account_session(request: Request, db: AsyncSession) -> UserAuthOut | None:
+    """The signed-in account, read from the database on every request: a revoked role, a disabled
+    account or a closed session apply at once."""
     token = request.cookies.get(USER_COOKIE, "")
     if len(token) != 64:
         return None
@@ -170,63 +159,80 @@ async def resident_session(request: Request, db: AsyncSession) -> UserAuthOut | 
     if row is None:
         return None
     user, session = row
-    return UserAuthOut(
-        authenticated=True, kind="resident", name=user.name, email=user.email,
-        user_id=user.id, dwelling_id=user.dwelling_id, expires_at=aware(session.expires_at),
-    )
+    return signed_in(user, session.expires_at)
 
 
 async def reader_session(request: Request, db: DB) -> UserAuthOut:
-    try:
-        hashed = await administrator(request, db)
-    except AppError as error:
-        if error.status != 401:
-            raise
-    else:
-        session = await db.get(Session, hashed)
-        assert session is not None
-        return UserAuthOut(
-            authenticated=True, kind="administrator",
-            name=settings(request).admin_username, expires_at=aware(session.expires_at),
-        )
-    resident = await resident_session(request, db)
-    if resident is None:
+    identity = await account_session(request, db)
+    if identity is None:
         raise AppError("authentication_required", 401)
-    return resident
+    return identity
+
+
+async def administrator_session(request: Request, db: DB) -> UserAuthOut:
+    """A signed-in account with the administrator role."""
+    identity = await reader_session(request, db)
+    if not identity.administrator:
+        raise AppError("administrator_required", 403)
+    return identity
+
+
+Administrator = Annotated[UserAuthOut, Depends(administrator_session)]
+
+
+async def administrator(request: Request, db: DB) -> str:
+    """The session of a signed-in administrator, which owns its statement previews."""
+    await administrator_session(request, db)
+    return session_hash(request)
+
+
+Admin = Annotated[str, Depends(administrator)]
 
 
 async def mutation_session(request: Request, db: AsyncSession) -> UserAuthOut:
+    """The signed-in account, its row and session locked until the transaction ends, so that a
+    concurrent revocation either applies first or waits for the change."""
     identity = await reader_session(request, db)
-    if identity.kind == "resident" and identity.user_id is not None:
-        await db.scalar(
-            select(User).where(User.id == identity.user_id).with_for_update()
-            .execution_options(populate_existing=True)
-        )
-        await db.scalar(
-            select(UserSession).where(UserSession.token_hash == access_hash(
-                settings(request), "session", request.cookies.get(USER_COOKIE, ""),
-            )).with_for_update().execution_options(populate_existing=True)
-        )
-    else:
-        token = await administrator(request, db)
-        await db.scalar(
-            select(Session).where(Session.token_hash == token).with_for_update()
-            .execution_options(populate_existing=True)
-        )
+    await db.scalar(
+        select(User).where(User.id == identity.user_id).with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    await db.scalar(
+        select(UserSession).where(UserSession.token_hash == session_hash(request))
+        .with_for_update().execution_options(populate_existing=True)
+    )
     current = await reader_session(request, db)
-    if (current.kind, current.user_id) != (identity.kind, identity.user_id):
+    if current.user_id != identity.user_id:
         raise AppError("authentication_required", 401)
     return current
 
 
-async def resident_id(request: Request, db: DB) -> int:
+async def current_user_id(request: Request, db: DB) -> int:
     identity = await reader_session(request, db)
-    if identity.kind != "resident" or identity.user_id is None:
-        raise AppError("resident_profile_required", 403)
+    if identity.user_id is None:
+        raise AppError("authentication_required", 401)
     return identity.user_id
 
 
-Resident = Annotated[int, Depends(resident_id)]
+CurrentUser = Annotated[int, Depends(current_user_id)]
+
+
+@dataclass(frozen=True)
+class Actor:
+    """The signed-in account that writes something: the author snapshot stored with it, which is
+    'resident' with its user ID for every account, administrators included, and whether it
+    administers, which lets it manage what others wrote."""
+
+    user_id: int
+    name: str
+    administrator: bool = False
+    kind: Literal["resident"] = "resident"
+
+
+def actor_of(identity: UserAuthOut) -> Actor:
+    if identity.user_id is None or identity.name is None:
+        raise AppError("authentication_required", 401)
+    return Actor(user_id=identity.user_id, name=identity.name, administrator=identity.administrator)
 
 
 async def verify_current_password(
@@ -254,7 +260,15 @@ async def verify_current_password(
     return stored_hash, version
 
 
-async def issue_resident_session(
+def clear_legacy_admin_cookie(config: Settings, response: Response) -> None:
+    for path in ("/api", "/api/admin"):
+        response.delete_cookie(
+            LEGACY_ADMIN_COOKIE, path=path, httponly=True, secure=config.auth_cookie_secure,
+            samesite="strict",
+        )
+
+
+async def issue_session(
     db: AsyncSession, request: Request, response: Response, user: User
 ) -> UserAuthOut:
     now = utcnow()
@@ -284,105 +298,22 @@ async def issue_resident_session(
         USER_COOKIE, token, max_age=config.session_hours * 3600, httponly=True,
         secure=config.auth_cookie_secure, samesite="strict", path="/api",
     )
-    return UserAuthOut(
-        authenticated=True, kind="resident", name=user.name, email=user.email,
-        user_id=user.id, dwelling_id=user.dwelling_id, expires_at=expires_at,
-    )
+    clear_legacy_admin_cookie(config, response)
+    return signed_in(user, expires_at)
 
 
-def set_admin_cookie(
-    response: Response, config: Settings, token: str, expires_at: datetime
-) -> None:
-    response.delete_cookie(
-        COOKIE, path="/api/admin", httponly=True, secure=config.auth_cookie_secure,
-        samesite="strict",
-    )
-    response.set_cookie(
-        COOKIE, token, max_age=max(0, int((aware(expires_at) - utcnow()).total_seconds())),
-        httponly=True, secure=config.auth_cookie_secure, samesite="strict", path="/api",
-    )
+@router.get("/session", response_model=UserAuthOut)
+async def current_session(request: Request, db: DB) -> UserAuthOut:
+    identity = await account_session(request, db)
+    return identity or UserAuthOut(authenticated=False)
 
 
-class LoginIn(Contract):
-    username: str = Field(max_length=150)
-    password: str = Field(max_length=1000)
-
-
-class AuthOut(Contract):
-    authenticated: bool
-    username: str | None = None
-
-
-@router.get("/session", response_model=AuthOut)
-async def current_session(request: Request, response: Response, db: DB) -> AuthOut:
-    try:
-        hashed = await administrator(request, db)
-    except AppError as error:
-        if error.status == 401:
-            return AuthOut(authenticated=False)
-        raise
-    session = await db.get(Session, hashed)
-    assert session is not None
-    set_admin_cookie(response, settings(request), request.cookies[COOKIE], session.expires_at)
-    return AuthOut(authenticated=True, username=settings(request).admin_username)
-
-
-@router.post("/login", response_model=AuthOut)
-async def login(body: LoginIn, request: Request, response: Response, db: DB) -> AuthOut:
-    await throttle(db, request, "admin-login", body.username, per_client_identity=True)
-    config = settings(request)
-    encoded = body.password.encode("utf-8")
-    valid_size = 1 <= len(encoded) <= 72
-    candidate = encoded if valid_size else b"invalid-password"
-    password_ok = await run_in_threadpool(
-        bcrypt.checkpw, candidate, request.app.state.password_hash
-    )
-    username_ok = secrets.compare_digest(
-        body.username.encode("utf-8"), config.admin_username.encode("utf-8")
-    )
-    if not valid_size or not password_ok or not username_ok:
-        raise AppError("invalid_credentials", 401)
-    token = secrets.token_hex(32)
-    await db.execute(delete(Session).where(Session.expires_at < utcnow()))
-    old = request.cookies.get(COOKIE)
-    if old:
-        await db.execute(delete(Session).where(Session.token_hash == digest(old)))
-    expires_at = utcnow() + timedelta(hours=config.session_hours)
-    db.add(
-        Session(
-            token_hash=digest(token),
-            credential_version=credential_version(config),
-            expires_at=expires_at,
-        )
-    )
-    await db.commit()
-    set_admin_cookie(response, config, token, expires_at)
-    return AuthOut(authenticated=True, username=config.admin_username)
-
-
-@router.post("/logout", status_code=204)
-async def logout(admin: Admin, db: DB, response: Response) -> None:
-    await db.execute(delete(Session).where(Session.token_hash == admin))
-    await db.commit()
-    response.delete_cookie(COOKIE, path="/api/admin", httponly=True, samesite="strict")
-    response.delete_cookie(COOKIE, path="/api", httponly=True, samesite="strict")
-
-
-@user_router.get("/session", response_model=UserAuthOut)
-async def current_reader_session(request: Request, db: DB) -> UserAuthOut:
-    try:
-        return await reader_session(request, db)
-    except AppError as error:
-        if error.status == 401:
-            return UserAuthOut(authenticated=False)
-        raise
-
-
-@user_router.post("/login", response_model=UserAuthOut)
-async def user_login(
-    body: UserLoginIn, request: Request, response: Response, db: DB
-) -> UserAuthOut:
-    await throttle(db, request, "login", body.email)
+@router.post("/login", response_model=UserAuthOut)
+async def login(body: UserLoginIn, request: Request, response: Response, db: DB) -> UserAuthOut:
+    # Neighbors share one limit from every client. Administrators, whose addresses every neighbor
+    # may know, count failures per client, so that nobody can lock them out from elsewhere.
+    administrator = await db.scalar(select(User.administrator).where(User.email == body.email))
+    await throttle(db, request, "login", body.email, per_client_identity=administrator is True)
     user = await db.scalar(select(User).where(User.email == body.email))
     encoded = body.password.encode("utf-8")
     valid_size = 1 <= len(encoded) <= 72
@@ -390,38 +321,69 @@ async def user_login(
         user is not None and user.activated and not user.disabled and user.password_hash is not None
     )
     password_hash = (
-        user.password_hash.encode() if eligible and user and user.password_hash
-        else request.app.state.password_hash
+        user.password_hash.encode() if eligible and user and user.password_hash else UNUSABLE_HASH
     )
     password_ok = await run_in_threadpool(
         bcrypt.checkpw, encoded if valid_size else b"invalid-password", password_hash
     )
     if not eligible or not password_ok or not valid_size or user is None:
         raise AppError("invalid_credentials", 401)
-    return await issue_resident_session(db, request, response, user)
+    return await issue_session(db, request, response, user)
 
 
-@user_router.post("/logout", status_code=204)
-async def user_logout(request: Request, response: Response, db: DB) -> None:
-    resident = request.cookies.get(USER_COOKIE)
-    admin = request.cookies.get(COOKIE)
-    if resident:
-        await db.execute(delete(UserSession).where(
-            UserSession.token_hash == access_hash(settings(request), "session", resident)
-        ))
-    if admin:
-        await db.execute(delete(Session).where(Session.token_hash == digest(admin)))
+@router.post("/logout", status_code=204)
+async def logout(request: Request, response: Response, db: DB) -> None:
+    config = settings(request)
+    if request.cookies.get(USER_COOKIE):
+        await db.execute(delete(UserSession).where(UserSession.token_hash == session_hash(request)))
     google_browser = request.cookies.get(GOOGLE_COOKIE)
     if google_browser:
         await db.execute(delete(GoogleAuthFlow).where(
-            GoogleAuthFlow.browser_hash == access_hash(settings(request), "google-browser", google_browser)
+            GoogleAuthFlow.browser_hash == access_hash(config, "google-browser", google_browser)
         ))
     await db.commit()
-    for name, path in [
-        (USER_COOKIE, "/api"), (COOKIE, "/api"), (COOKIE, "/api/admin"),
-        (GOOGLE_COOKIE, "/api/auth"),
-    ]:
+    for name, path in [(USER_COOKIE, "/api"), (GOOGLE_COOKIE, "/api/auth")]:
         response.delete_cookie(
-            name, path=path, httponly=True, secure=settings(request).auth_cookie_secure,
-            samesite="strict",
+            name, path=path, httponly=True, secure=config.auth_cookie_secure, samesite="strict",
         )
+    clear_legacy_admin_cookie(config, response)
+
+
+async def setup_available(db: AsyncSession) -> bool:
+    if not await db.scalar(select(State.setup_open).where(State.id == 1)):
+        return False
+    return await db.scalar(select(User.id).limit(1)) is None
+
+
+@router.get("/setup", response_model=SetupOut)
+async def setup_status(db: DB) -> SetupOut:
+    return SetupOut(available=await setup_available(db))
+
+
+@router.post("/setup", response_model=UserAuthOut, status_code=201)
+async def setup(body: SetupIn, request: Request, response: Response, db: DB) -> UserAuthOut:
+    """First run: the first visitor of a new installation creates the administration account,
+    with no dwelling, and is signed in."""
+    await throttle(db, request, "setup", body.email, limit=5, ip_limit=20, seconds=3600)
+    if not await setup_available(db):
+        raise AppError("setup_unavailable", 409)
+    await db.rollback()
+    password_hash = await run_in_threadpool(
+        bcrypt.hashpw, body.password.encode("utf-8"), bcrypt.gensalt()
+    )
+    # One atomic update closes the setup: a simultaneous request finds it closed.
+    closed = await db.scalar(
+        update(State).where(
+            State.id == 1, State.setup_open.is_(True), ~select(User.id).exists(),
+        ).values(setup_open=False).returning(State.id)
+    )
+    if closed is None:
+        await db.rollback()
+        raise AppError("setup_unavailable", 409)
+    user = User(
+        email=body.email, name=body.name, administrator=True, activated=True,
+        password_hash=password_hash.decode(),
+    )
+    db.add(user)
+    await db.commit()
+    return await issue_session(db, request, response, user)

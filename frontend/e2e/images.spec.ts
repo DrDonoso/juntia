@@ -1,14 +1,12 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
+import { signInAsAdministrator } from './support'
 
 const password = 'synthetic images resident password'
 test.use({ actionTimeout: 15_000 })
 
 async function adminLogin(page: Page) {
-  await page.goto('/admin/cleanup')
-  await page.getByLabel('Username', { exact: true }).fill('browser-test')
-  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-test-password')
-  await page.getByRole('button', { name: 'Sign in to administration' }).click()
+  await signInAsAdministrator(page, '/admin/cleanup')
   await expect(page.getByRole('heading', { name: 'Free up space', exact: true })).toBeVisible()
 }
 

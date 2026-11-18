@@ -17,8 +17,8 @@ from juntia import auth, mail
 from juntia import users as user_api
 from juntia.app import create_app
 from juntia.config import Settings
-from juntia.db import Session as AdminSession
 from juntia.db import State, User, UserSession, UserToken, aware, utcnow
+from tests.support import ADMINISTRATOR
 from tests.test_api import commit, preview
 
 PASSWORD = "a synthetic resident password"
@@ -65,6 +65,11 @@ def login(client, email="resident@example.org", password=PASSWORD):
 
 def current_user(admin, user_id):
     return next(user for user in admin.get("/api/admin/users").json() if user["id"] == user_id)
+
+
+def residents(admin):
+    """The accounts with a dwelling: the administrator of the tests has none."""
+    return [user for user in admin.get("/api/admin/users").json() if user["dwelling_id"]]
 
 
 def visitor(config):
@@ -127,15 +132,17 @@ def test_invitation_shared_dwelling_and_reader_permissions(admin, config, mailbo
         assert response.status_code == 200, response.text
         assert "httponly" in response.headers["set-cookie"].lower()
         assert "path=/api" in response.headers["set-cookie"].lower()
-        assert response.json()["kind"] == "resident"
+        assert response.json()["administrator"] is False
         stamp = current_user(admin, user["id"])["last_login_at"]
         assert stamp is not None
         assert reader.get("/api/summary").status_code == 200
         assert reader.get("/api/auth/session").json()["dwelling_id"] == unit["id"]
         for path in ["/users", "/dwellings", "/statements", "/rules"]:
-            assert reader.get("/api/admin" + path).status_code == 401
-        assert reader.post("/api/admin/users", json={}).status_code == 401
-        assert reader.get("/api/admin/auth/session").json()["authenticated"] is False
+            response = reader.get("/api/admin" + path)
+            assert response.status_code == 403
+            assert response.json() == {"code": "administrator_required"}
+        assert reader.post("/api/admin/users", json={}).status_code == 403
+        assert reader.get("/api/admin/auth/session").status_code == 404
         assert login(reader, password="wrong").status_code == 401
         assert current_user(admin, user["id"])["last_login_at"] == stamp
         cookie = reader.cookies.get(auth.USER_COOKIE)
@@ -146,7 +153,7 @@ def test_invitation_shared_dwelling_and_reader_permissions(admin, config, mailbo
         "label": "1 A renamed", "coefficient": "2.33", "version": unit["version"],
     })
     assert changed.status_code == 200
-    rows = admin.get("/api/admin/users").json()
+    rows = residents(admin)
     assert {row["coefficient"] for row in rows} == {"2.33"}
     assert {row["dwelling_label"] for row in rows} == {"1 A renamed"}
     assert current_user(admin, other["id"])["last_login_at"] is None
@@ -343,26 +350,18 @@ def test_session_lifetime_matches_the_cookie_and_absolute_expiry(
         monkeypatch.setattr(auth, "utcnow", lambda: start)
         if kind == "resident":
             response = login(reader)
-            cookie_name = auth.USER_COOKIE
         else:
-            response = reader.post("/api/admin/auth/login", json={
-                "username": config.admin_username,
-                "password": config.admin_password.get_secret_value(),
-            })
-            cookie_name = auth.COOKIE
+            response = login(reader, ADMINISTRATOR["email"], ADMINISTRATOR["password"])
         assert response.status_code == 200, response.text
+        cookie_name = auth.USER_COOKIE
         cookies = (SimpleCookie(header) for header in response.headers.get_list("set-cookie"))
         cookie = next(value[cookie_name] for value in cookies if (
             cookie_name in value and value[cookie_name].value
         ))
         assert cookie["max-age"] == str(hours * 3600)
-        token = reader.cookies.get(cookie_name)
-        session_hash = (
-            auth.access_hash(config, "session", token) if kind == "resident" else auth.digest(token)
-        )
-        model = UserSession if kind == "resident" else AdminSession
+        session_hash = auth.access_hash(config, "session", reader.cookies.get(cookie_name))
         async def expiry(db):
-            session = await db.get(model, session_hash)
+            session = await db.get(UserSession, session_hash)
             assert session is not None
             return aware(session.expires_at)
         expires = start + timedelta(hours=hours)
@@ -373,7 +372,7 @@ def test_session_lifetime_matches_the_cookie_and_absolute_expiry(
         assert reader.get("/api/summary").status_code == 200
         current = reader.get("/api/auth/session").json()
         assert current["authenticated"] is True
-        assert current["kind"] == kind
+        assert current["administrator"] is (kind == "administrator")
         assert datetime.fromisoformat(current["expires_at"]) == expires
 
         monkeypatch.setattr(auth, "utcnow", lambda: expires)
@@ -384,12 +383,12 @@ def test_session_lifetime_matches_the_cookie_and_absolute_expiry(
 def test_resident_session_expiry_is_enforced_without_a_browser_refresh(
     admin, mailbox, config, monkeypatch
 ):
-    _, token = invite(admin, mailbox)
+    user, token = invite(admin, mailbox)
     with visitor(config) as reader:
         activate(reader, token)
         assert login(reader).status_code == 200
         async def expiry(db):
-            value = await db.scalar(select(UserSession))
+            value = await db.scalar(select(UserSession).where(UserSession.user_id == user["id"]))
             return aware(value.expires_at)
         expires = database(config, expiry)
         monkeypatch.setattr(auth, "utcnow", lambda: expires)
@@ -409,7 +408,7 @@ def test_smtp_failure_is_explicit_persistent_and_retryable(admin, mailbox, monke
         })
         assert response.status_code == 503
         assert response.json()["code"] == "smtp_failed"
-    user = admin.get("/api/admin/users").json()[0]
+    user = residents(admin)[0]
     assert user["status"] == "pending"
     assert user["invitation_status"] == "failed"
     assert admin.post("/api/auth/activate", json={
@@ -442,8 +441,13 @@ def test_identity_validation_uniqueness_and_no_public_registration(admin, mailbo
     assert response.status_code == 409, response.text
     activate(admin, other_token)
     with visitor(config) as reader:
-        for path in ["/api/auth/setup", "/api/auth/register", "/api/users"]:
+        for path in ["/api/auth/register", "/api/users"]:
             assert reader.post(path, json={}).status_code in {404, 405}
+        # The first-run setup closed when the administration account was created.
+        assert reader.get("/api/auth/setup").json() == {"available": False}
+        assert reader.post("/api/auth/setup", json={
+            "name": "Intruder", "email": "intruder@example.org", "password": PASSWORD,
+        }).json() == {"code": "setup_unavailable"}
 
 
 def test_user_edits_do_not_invalidate_financial_previews(admin, mailbox, config):
@@ -458,24 +462,33 @@ def test_user_edits_do_not_invalidate_financial_previews(admin, mailbox, config)
     assert saved.password_hash is None
 
 
-def test_resident_login_limit_is_separate_from_administrator(client, config):
-    for _ in range(10):
-        assert login(client, password="wrong").status_code == 401
-    assert login(client, password="wrong").status_code == 429
-    assert client.post("/api/admin/auth/login", json={
-        "username": config.admin_username, "password": config.admin_password.get_secret_value(),
-    }).status_code == 200
+def legacy_cookie_removals(response):
+    removed = set()
+    for header in response.headers.get_list("set-cookie"):
+        cookie = SimpleCookie(header).get(auth.LEGACY_ADMIN_COOKIE)
+        if cookie is not None and cookie["max-age"] == "0":
+            removed.add(cookie["path"])
+    return removed
 
 
-def test_legacy_admin_cookie_migrates_without_changing_ownership(admin, config):
-    cookie = admin.cookies.get(auth.COOKIE)
+def test_signing_in_and_out_clears_the_technical_administrator_cookie(admin, config):
     with visitor(config) as legacy:
-        legacy.cookies.set(auth.COOKIE, cookie, domain="testserver.local", path="/api/admin")
+        for path in ("/api", "/api/admin"):
+            legacy.cookies.set(
+                auth.LEGACY_ADMIN_COOKIE, "a" * 64, domain="testserver.local", path=path,
+            )
         assert legacy.get("/api/summary").status_code == 401
-        assert legacy.get("/api/admin/auth/session").json()["authenticated"]
-        assert legacy.get("/api/summary").status_code == 200
-        assert legacy.cookies.get(auth.COOKIE) == cookie
-        assert legacy.post("/api/auth/logout").status_code == 204
+        assert legacy.get("/api/auth/session").json() == {
+            "authenticated": False, "administrator": False, "name": None, "email": None,
+            "user_id": None, "dwelling_id": None, "expires_at": None,
+        }
+        response = login(legacy, ADMINISTRATOR["email"], ADMINISTRATOR["password"])
+        assert response.status_code == 200, response.text
+        assert legacy_cookie_removals(response) == {"/api", "/api/admin"}
+        assert legacy.get("/api/admin/rules").status_code == 200
+        response = legacy.post("/api/auth/logout")
+        assert response.status_code == 204
+        assert legacy_cookie_removals(response) == {"/api", "/api/admin"}
         assert legacy.get("/api/summary").status_code == 401
 
 
@@ -520,7 +533,9 @@ def test_deactivation_during_password_verification_cannot_create_a_session(
             assert pending.result(timeout=15).status_code == 401
     async def inspect(db):
         saved = await db.get(User, user["id"])
-        sessions = (await db.scalars(select(UserSession))).all()
+        sessions = (await db.scalars(
+            select(UserSession).where(UserSession.user_id == user["id"])
+        )).all()
         return saved.last_login_at, len(sessions)
     assert database(config, inspect) == (None, 0)
 
@@ -553,7 +568,7 @@ def test_missing_smtp_does_not_create_a_pending_account(admin):
     assert admin.post("/api/admin/users", json={
         "name": "Resident", "email": "resident@example.org", "dwelling_id": unit["id"],
     }).status_code == 503
-    assert admin.get("/api/admin/users").json() == []
+    assert residents(admin) == []
     assert admin.get("/api/admin/test-mailbox").status_code == 404
 
 

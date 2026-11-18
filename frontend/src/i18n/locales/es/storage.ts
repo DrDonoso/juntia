@@ -118,7 +118,7 @@ export const storage: Messages<typeof source> = {
     current: 'Archivos actuales',
     previous: 'Versiones anteriores',
     deleted: 'Eliminados, sin purgar',
-    administrator: 'Subidos por la administración',
+    administrator: 'Subidos por el administrador técnico',
     uploads: 'Subidas en curso',
     files: { one: '{count} archivo', other: '{count} archivos' },
     versions: { one: '{count} versión', other: '{count} versiones' },

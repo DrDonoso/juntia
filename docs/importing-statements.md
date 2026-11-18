@@ -1,8 +1,8 @@
 # Importing bank statements
 
-Juntia's finances come from the bank's own PDF statements. Only the technical administrator imports
-them, in **Finances > Import** (`/admin`); residents see the result in **Overview** and
-**Transactions**, never the original PDFs.
+Juntia's finances come from the bank's own PDF statements. Only administrators import them, in
+**Finances > Import** (`/admin`, opened with **Administration** in the user menu); residents see the
+result in **Overview** and **Transactions**, never the original PDFs.
 
 ## Contents
 
@@ -83,14 +83,14 @@ upload again, including ambiguities that were already resolved.
   remain separate transactions.
 - Complete-key collisions or conflicting evidence are never merged or dropped silently: they require
   an explicit decision in the review.
-- Original parsed fields and identities cannot be changed through the application, by the
-  administrator or by the AI.
+- Original parsed fields and identities cannot be changed through the application, by
+  administrators or by the AI.
 
 ## Previews and confirmation
 
-- A preview belongs to the administrator session that created it and expires after 24 hours
-  (`PREVIEW_HOURS`). Expired previews and their files are removed at startup and before the next
-  upload.
+- A preview belongs to the session that created it: another administrator, or the same one after
+  signing in again, cannot open or confirm it. It expires after 24 hours (`PREVIEW_HOURS`). Expired
+  previews and their files are removed at startup and before the next upload.
 - If another import or a statement removal changes the ledger meanwhile, the preview becomes stale:
   load the PDF again when asked.
 - Confirmation is atomic and safe to retry. Importing again never overwrites a manual
@@ -102,7 +102,7 @@ upload again, including ambiguities that were already resolved.
 counts, opening and closing balances.
 
 - **Download original PDF** returns the exact uploaded file. Statement originals and their metadata
-  are available only to the administrator, also through the API.
+  are available only to administrators, also through the API.
 - **Delete import** first shows how many transactions it would remove and how many are kept because
   another retained statement also supports them. Deleting a statement removes its original PDF.
 

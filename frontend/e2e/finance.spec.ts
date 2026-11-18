@@ -3,6 +3,7 @@ import AxeBuilder from '@axe-core/playwright'
 import { execFileSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import type { CatalogOut } from '../src/api/schema.gen'
+import { signInAsAdministrator } from './support'
 
 test('reader, account binding, imports, rules, administration and responsive accessibility', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-10-07T12:00:00Z'))
@@ -17,9 +18,8 @@ test('reader, account binding, imports, rules, administration and responsive acc
   await expect(page.getByRole('link', { name: 'Statements', exact: true })).toHaveCount(0)
   await expect(mainNavigation.locator('a[href^="/admin"]')).toHaveCount(0)
   await page.goto('/admin')
-  await page.getByLabel('Username', { exact: true }).fill(process.env.E2E_ADMIN_USERNAME || 'browser-test')
-  await page.getByLabel('Password', { exact: true }).fill(process.env.E2E_ADMIN_PASSWORD || 'synthetic-browser-test-password')
-  await page.getByRole('button', { name: 'Sign in to administration' }).click()
+  await expect(page).toHaveURL(/\/login\?next=%2Fadmin$/)
+  await signInAsAdministrator(page)
   await expect(page.getByRole('heading', { name: 'Import statement' })).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'Administration navigation' }).getByRole('link')).toHaveCount(15)
   await expect(page.getByRole('navigation', { name: 'Administration navigation' }).getByRole('link', { name: 'Community labels', exact: true })).toHaveAttribute('href', '/admin/labels')
@@ -182,7 +182,8 @@ test('reader, account binding, imports, rules, administration and responsive acc
   await expect(page.getByText('Cleaning receipt', { exact: true })).toHaveCount(0)
   await expect(mainNavigation.locator('a[href^="/admin"]')).toHaveCount(0)
   await page.goto('/admin')
-  await expect(page.getByRole('button', { name: 'Sign in to administration' })).toBeVisible()
+  await expect(page).toHaveURL(/\/login\?next=%2Fadmin$/)
+  await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible()
   expect((await page.request.get('/api/admin/statements')).status()).toBe(401)
   expect(pageErrors).toEqual([])
 })

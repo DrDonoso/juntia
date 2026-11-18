@@ -4,7 +4,7 @@ import { signInResident } from '../core'
 import { resetDemo } from '../store'
 import { findResident, type DemoResident } from '../store/core'
 import { residentPasswordMatches } from '../store/people'
-import { demoRequest } from '../testing'
+import { demoRequest, signInAdmin } from '../testing'
 
 // Thursday 29 October 2026, midday (local time).
 const NOW = new Date(2026, 9, 29, 12, 0)
@@ -12,7 +12,6 @@ const NOW = new Date(2026, 9, 29, 12, 0)
 beforeEach(() => resetDemo({ now: () => NOW }))
 afterEach(() => resetDemo())
 
-const signInAdmin = () => demoRequest('POST', '/api/admin/auth/login', { body: { username: 'demo', password: 'demo' } })
 const signIn = (email: string, password = 'demo') => demoRequest('POST', '/api/auth/login', { body: { email, password } })
 const signOut = () => demoRequest('POST', '/api/auth/logout')
 const session = async () => (await demoRequest<UserAuthOut>('GET', '/api/auth/session')).body
@@ -27,32 +26,50 @@ const TOKEN = 'a'.repeat(64)
 const NEW_PASSWORD = 'new-demo-password'
 
 describe('My profile', () => {
-  test("shows the signed-in neighbor's account", async () => {
+  test("shows the signed-in account, with its role and dwelling", async () => {
     expect(await demoRequest('GET', '/api/auth/profile')).toEqual(expect.objectContaining({
       status: 200,
       body: {
-        email: 'olivia.bennett@example.com', name: 'Olivia Bennett', phone: '+442079460152', dwelling_id: 5, id: 6, version: 1,
-        dwelling_label: '2B', coefficient: '7.60', last_login_at: NOW.toISOString(), has_password: true, google_linked: false,
+        email: 'olivia.bennett@example.com', name: 'Olivia Bennett', phone: '+442079460152', dwelling_id: 5, administrator: false, id: 6,
+        version: 1, dwelling_label: '2B', coefficient: '7.60', last_login_at: NOW.toISOString(), has_password: true, google_linked: false,
       },
     }))
     await signIn('grace.liu@example.com')
     expect((await demoRequest<ProfileOut>('GET', '/api/auth/profile')).body).toMatchObject({ id: 7, google_linked: true, dwelling_label: '2C' })
+    await signInAdmin()
+    expect((await demoRequest<ProfileOut>('GET', '/api/auth/profile')).body)
+      .toMatchObject({ id: 1, administrator: true, dwelling_id: 1, dwelling_label: '1A', coefficient: '8.90' })
   })
 
-  test('is for neighbors: the administrator gets 403 and visitors without a session 401', async () => {
+  test('an administrator without a dwelling has a profile too, with no dwelling nor coefficient', async () => {
     await signInAdmin()
+    await demoRequest('PATCH', '/api/admin/users/2', {
+      body: { name: 'Priya Sharma', email: 'priya.sharma@example.com', phone: '+442079460563', dwelling_id: null, administrator: true, version: 1 },
+    })
+    await signIn('priya.sharma@example.com')
+    expect((await demoRequest<ProfileOut>('GET', '/api/auth/profile')).body)
+      .toMatchObject({ id: 2, administrator: true, dwelling_id: null, dwelling_label: null, coefficient: null })
+    expect(await demoRequest('PATCH', '/api/auth/profile', { body: { name: 'Priya Sharma', phone: '', version: 2 } }))
+      .toMatchObject({ status: 200, body: { phone: '', version: 3, dwelling_id: null } })
+  })
+
+  test('is for every signed-in account: visitors without a session get 401', async () => {
     const requests: [string, string, unknown?][] = [
-      ['GET', '/api/auth/profile'], ['PATCH', '/api/auth/profile', { name: 'Admin', version: 1 }],
+      ['GET', '/api/auth/profile'], ['PATCH', '/api/auth/profile', { name: 'James Okafor', version: 1 }],
       ['POST', '/api/auth/profile/password', { current_password: 'demo', password: NEW_PASSWORD }], ['DELETE', '/api/auth/profile/sessions'],
       ['POST', '/api/auth/google/link', { current_password: 'demo' }], ['DELETE', '/api/auth/google/link', { current_password: 'demo' }],
     ]
-    for (const [method, path, body] of requests) {
-      expect(await demoRequest(method, path, { body }), `${method} ${path}`).toMatchObject({ status: 403, body: { code: 'resident_profile_required' } })
-    }
     await signOut()
     for (const [method, path, body] of requests) {
       expect(await demoRequest(method, path, { body }), `${method} ${path}`).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
     }
+    await signInAdmin()
+    expect(await demoRequest('PATCH', '/api/auth/profile', { body: { name: 'James  Okafor', version: 1 } }))
+      .toMatchObject({ status: 200, body: { id: 1, name: 'James Okafor', version: 2 } })
+    expect(await demoRequest('POST', '/api/auth/profile/password', { body: { current_password: 'demo', password: NEW_PASSWORD } }))
+      .toMatchObject({ status: 204 })
+    expect((await session()).authenticated).toBe(false)
+    expect(residentPasswordMatches(resident(1), NEW_PASSWORD)).toBe(true)
   })
 
   test('the neighbor updates their name and phone; the session, users and directory follow', async () => {
@@ -123,7 +140,7 @@ describe('changing the password', () => {
 })
 
 describe('signing out of every session', () => {
-  test('closes the neighbor session; the administrator session stays', async () => {
+  test("closes this browser's session", async () => {
     expect(await demoRequest('DELETE', '/api/auth/profile/sessions')).toMatchObject({ status: 204, body: undefined })
     expect((await session()).authenticated).toBe(false)
     expect(await demoRequest('DELETE', '/api/auth/profile/sessions')).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
@@ -164,12 +181,14 @@ describe('Google sign-in', () => {
     await signOut()
     for (const body of [
       {}, { return_path: '/neighbors' }, { return_path: '/actions/12?view=comments' }, { invitation_token: TOKEN, return_path: '/' },
-      { return_path: '/documents' }, { return_path: '/documents/folders/12' },
+      { return_path: '/documents' }, { return_path: '/documents/folders/12' }, { return_path: '/admin' },
+      { return_path: '/admin/users?sort=status' }, { return_path: '/admin/deleted-documents' },
     ]) {
       expect(await demoRequest('POST', '/api/auth/google/start', { body }), JSON.stringify(body)).toMatchObject({ status: 403, body: { code: 'demo_unavailable' } })
     }
     for (const body of [
-      { return_path: 'https://evil.example.com/' }, { return_path: '//evil.example.com' }, { return_path: '/admin' },
+      { return_path: 'https://evil.example.com/' }, { return_path: '//evil.example.com' }, { return_path: '/admin/' },
+      { return_path: '/admin/Users' }, { return_path: '/admin/users/1' }, { return_path: '/admin/a-b-c-d-e' }, { return_path: '/administration' },
       { return_path: '/events/1#top' }, { return_path: '/\\evil' }, { invitation_token: 'abc' }, { remember: true },
       { return_path: '/documents/folders/0' }, { return_path: '/documents/files/1' },
     ]) {

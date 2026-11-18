@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import type { DwellingOut, PresidencyOut, UserOut } from '../src/api/schema.gen'
+import { signInAsAdministrator } from './support'
 
 test('a single president can be assigned, transferred and cleared with accessible medals', async ({ page, browser }, testInfo) => {
   test.skip(Boolean(process.env.E2E_BASE_URL), 'Requires the disposable server with synthetic SMTP capture')
@@ -8,10 +9,7 @@ test('a single president can be assigned, transferred and cleared with accessibl
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   await page.setViewportSize({ width: 1440, height: 960 })
-  await page.goto('/admin')
-  await page.getByLabel('Username', { exact: true }).fill('browser-test')
-  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-test-password')
-  await page.getByRole('button', { name: 'Sign in to administration' }).click()
+  await signInAsAdministrator(page)
   await expect(page.getByRole('heading', { name: 'Import statement', exact: true })).toBeVisible()
   const origin = new URL(page.url()).origin
   const headers = { Origin: origin, 'X-Juntia-Request': '1' }
@@ -83,10 +81,10 @@ test('a single president can be assigned, transferred and cleared with accessibl
     expect((await reader.request.post('/api/auth/login', {
       headers, data: { email: alice.email, password },
     })).status()).toBe(200)
-    expect((await reader.request.get('/api/admin/presidency')).status()).toBe(401)
+    expect((await reader.request.get('/api/admin/presidency')).status()).toBe(403)
     expect((await reader.request.put('/api/admin/presidency', {
       headers, data: { user_id: peter.id, version: 1 },
-    })).status()).toBe(401)
+    })).status()).toBe(403)
     await reader.goto('/neighbors')
     const badge = reader.getByRole('button', { name: 'Alice Lewis: Community president', exact: true })
     await expect(badge).toBeVisible()

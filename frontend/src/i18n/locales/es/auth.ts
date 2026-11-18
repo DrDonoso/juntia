@@ -45,12 +45,13 @@ export const auth: Messages<typeof source> = {
     confirmationRequired: 'Repite la contraseña.',
     mismatch: 'Las contraseñas no coinciden.',
   },
-  admin: {
-    eyebrow: 'ACCESO RESTRINGIDO',
-    title: 'Administración',
-    help: 'Inicia sesión para importar extractos y gestionar su clasificación.',
-    username: 'Usuario',
-    submit: 'Entrar en administración',
-    submitting: 'Entrando…',
+  setup: {
+    eyebrow: 'NUEVA INSTALACIÓN',
+    title: 'Crea la cuenta de administración',
+    help: 'Todavía no hay ninguna cuenta. La primera administra la comunidad: con ella invitas a tus vecinos y puedes hacer administradoras a otras personas.',
+    name: 'Tu nombre',
+    passwordHelp: 'Usa al menos {min} caracteres. Entrarás con este correo y esta contraseña.',
+    submit: 'Crear la cuenta y abrir la administración',
+    submitting: 'Creando…',
   },
 }

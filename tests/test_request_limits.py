@@ -24,7 +24,6 @@ from juntia.middleware import (
 def limits_config():
     return Settings(
         _env_file=None, database_url="sqlite+aiosqlite:///:memory:",
-        admin_username="synthetic-admin", admin_password="synthetic-admin-password",
         auth_secret="synthetic-secret-for-request-limit-tests",
         public_origin="https://audit.example", auth_cookie_secure=True,
     )

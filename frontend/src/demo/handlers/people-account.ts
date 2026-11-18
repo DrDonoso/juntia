@@ -1,8 +1,8 @@
 /**
- * The neighbor's own account in the demo (`/api/auth/*` besides signing in, after
+ * The signed-in account's own data in the demo (`/api/auth/*` besides signing in, after
  * src/juntia/users.py and google_auth.py): My profile, the password change and "sign out of all my
- * sessions" work like on a real server, for neighbors only (the administrator gets 403
- * `resident_profile_required`). A changed password lasts until the page is reloaded.
+ * sessions" work like on a real server, for every account, administrators included. A changed
+ * password lasts until the page is reloaded.
  *
  * The demo sends no email and has no Google project:
  * - `forgot-password` answers 202 `{"accepted": true}` for any address, exactly like the backend,
@@ -15,17 +15,11 @@
 import type { ProfileOut, RecoveryOut } from '../../api/schema.gen'
 import {
   Body, DemoApiError, demoUnavailable, hasControlCharacters, http, parseBody, readJson, revokeResidentSessions, route,
-  type HttpHandler, type Identity,
+  type HttpHandler,
 } from '../core'
 import type { DemoResident } from '../store/core'
 import { residentPasswordMatches, setResidentPassword } from '../store/people'
 import { POSITIVE, accountToken, dwellingOf, newPassword, visibleCoefficient } from './people-shared'
-
-/** The neighbor of a `route('resident', …)` request. */
-function ownAccount(identity: Identity | null): DemoResident {
-  if (identity?.kind !== 'resident') throw new Error('Resident routes always have a neighbor identity')
-  return identity.resident
-}
 
 function profileOut(resident: DemoResident): ProfileOut {
   const dwelling = dwellingOf(resident)
@@ -34,10 +28,11 @@ function profileOut(resident: DemoResident): ProfileOut {
     name: resident.name,
     phone: resident.phone,
     dwelling_id: resident.dwellingId,
+    administrator: resident.administrator,
     id: resident.id,
     version: resident.version,
-    dwelling_label: dwelling.label,
-    coefficient: visibleCoefficient(dwelling),
+    dwelling_label: dwelling ? dwelling.label : null,
+    coefficient: dwelling ? visibleCoefficient(dwelling) : null,
     last_login_at: resident.lastLoginAt,
     has_password: resident.hasPassword,
     google_linked: resident.googleLinked,
@@ -52,13 +47,17 @@ function requireCurrentPassword(resident: DemoResident, password: string): void 
 
 const currentPassword = (body: Body) => body.text('current_password', { min: 1, max: 1000 })
 
-/** Reader pages a Google sign-in may return to (backend `reader_route`). */
+/**
+ * Pages of the portal and of the administration a Google sign-in may return to (backend
+ * `reader_route`; the frontend's `safeReturnPath` follows the same rule).
+ */
 function readerRoute(path: string): boolean {
-  return ['/', '/transactions', '/neighbors', '/profile', '/actions', '/contacts', '/events', '/documents'].includes(path)
+  return ['/', '/transactions', '/neighbors', '/profile', '/actions', '/contacts', '/events', '/documents', '/admin'].includes(path)
     || /^\/(?:actions|events|documents\/folders)\/[1-9][0-9]{0,9}$/.test(path)
+    || /^\/admin\/[a-z]{1,30}(?:-[a-z]{1,30}){0,3}$/.test(path)
 }
 
-/** `GoogleStartIn.return_path`: an internal reader route, without fragment. */
+/** `GoogleStartIn.return_path`: an internal page of the portal or the administration, without fragment. */
 function returnPath(body: Body): string {
   const value = body.text('return_path', { max: 2048, fallback: '/' })
   if (body.failed('return_path')) return value
@@ -70,9 +69,8 @@ function returnPath(body: Body): string {
 }
 
 export const peopleAccountHandlers: HttpHandler[] = [
-  http.get('/api/auth/profile', route('resident', ({ identity }) => profileOut(ownAccount(identity)))),
-  http.patch('/api/auth/profile', route('resident', async ({ request, identity }) => {
-    const resident = ownAccount(identity)
+  http.get('/api/auth/profile', route('session', ({ user }) => profileOut(user))),
+  http.patch('/api/auth/profile', route('session', async ({ request, user: resident }) => {
     const input = parseBody(await readJson(request), body => ({
       name: body.name('name', { max: 150 }),
       phone: body.phone('phone'),
@@ -85,8 +83,7 @@ export const peopleAccountHandlers: HttpHandler[] = [
     resident.version += 1
     return profileOut(resident)
   })),
-  http.post('/api/auth/profile/password', route('resident', async ({ request, identity }) => {
-    const resident = ownAccount(identity)
+  http.post('/api/auth/profile/password', route('session', async ({ request, user: resident }) => {
     const input = parseBody(await readJson(request), body => ({ current: currentPassword(body), password: newPassword(body) }))
     requireCurrentPassword(resident, input.current)
     setResidentPassword(resident.id, input.password)
@@ -94,8 +91,8 @@ export const peopleAccountHandlers: HttpHandler[] = [
     // Like the backend, every session of the account ends, this one included: sign in again with the new password.
     revokeResidentSessions(resident.id)
   }, { status: 204 })),
-  http.delete('/api/auth/profile/sessions', route('resident', ({ identity }) => {
-    revokeResidentSessions(ownAccount(identity).id)
+  http.delete('/api/auth/profile/sessions', route('session', ({ user }) => {
+    revokeResidentSessions(user.id)
   }, { status: 204 })),
   http.post('/api/auth/forgot-password', route('public', async ({ request }): Promise<RecoveryOut> => {
     parseBody(await readJson(request), body => body.email('email'))
@@ -112,11 +109,11 @@ export const peopleAccountHandlers: HttpHandler[] = [
     }))
     return demoUnavailable()
   })),
-  http.post('/api/auth/google/link', route('resident', async ({ request }) => {
+  http.post('/api/auth/google/link', route('session', async ({ request }) => {
     parseBody(await readJson(request), currentPassword)
     return demoUnavailable()
   })),
-  http.delete('/api/auth/google/link', route('resident', async ({ request }) => {
+  http.delete('/api/auth/google/link', route('session', async ({ request }) => {
     parseBody(await readJson(request), currentPassword)
     return demoUnavailable()
   })),

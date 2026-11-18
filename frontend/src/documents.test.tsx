@@ -24,7 +24,7 @@ const ana: ActorOut = { kind: 'resident', name: 'Ana López', user_id: 2 }
 const bob: ActorOut = { kind: 'resident', name: 'Bob Smith', user_id: 3 }
 const time = '2026-02-01T10:00:00Z'
 const session: UserAuthOut = {
-  authenticated: true, kind: 'resident', name: 'Ana López', email: 'ana@example.org', user_id: 2, dwelling_id: 1,
+  authenticated: true, administrator: false, name: 'Ana López', email: 'ana@example.org', user_id: 2, dwelling_id: 1,
   expires_at: '2026-12-31T00:00:00Z',
 }
 const limits: DocumentLimitsOut = {

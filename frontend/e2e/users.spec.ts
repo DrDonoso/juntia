@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
+import { administrator, signInAsAdministrator } from './support'
 
 const password = 'synthetic resident browser password'
 
@@ -55,10 +56,7 @@ test('invitation-only users, shared dwellings, email changes, revocation and rec
   expect((await page.request.get('/api/summary')).status()).toBe(401)
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
   await page.screenshot({ path: 'test-results/resident-login.png', fullPage: true })
-  await page.goto('/admin')
-  await page.getByLabel('Username', { exact: true }).fill('browser-test')
-  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-test-password')
-  await page.getByRole('button', { name: 'Sign in to administration' }).click()
+  await signInAsAdministrator(page)
   await page.getByRole('link', { name: 'Users', exact: true }).click()
   const existingDwellings = await (await page.request.get('/api/admin/dwellings')).json()
   if (existingDwellings.length === 0) {
@@ -116,8 +114,8 @@ test('invitation-only users, shared dwellings, email changes, revocation and rec
     await setPassword(resident)
     await resident.getByRole('link', { name: 'Back to sign in', exact: true }).click()
     await login(resident, email)
-    expect((await resident.request.get('/api/admin/users')).status()).toBe(401)
-    expect((await resident.request.get('/api/admin/test-mailbox')).status()).toBe(401)
+    expect((await resident.request.get('/api/admin/users')).status()).toBe(403)
+    expect((await resident.request.get('/api/admin/test-mailbox')).status()).toBe(403)
     await expect(resident.locator('nav a[href^="/admin"]')).toHaveCount(0)
     await page.reload()
     await expect(firstRow).toContainText('Active')
@@ -197,16 +195,15 @@ test('header profile menu, editable name, password change and all-device logout'
   test.setTimeout(120_000)
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
-  await page.goto('/admin')
-  await page.getByLabel('Username', { exact: true }).fill('browser-test')
-  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-test-password')
-  await page.getByRole('button', { name: 'Sign in to administration' }).click()
+  await signInAsAdministrator(page)
   await expect(page.getByRole('heading', { name: 'Import statement', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'User menu' }).click()
   await page.getByRole('link', { name: /My profile/ }).click()
   await expect(page.getByRole('heading', { name: 'My profile', exact: true })).toBeVisible()
-  await expect(page.locator('.technical-profile')).toContainText('Technical administrator')
-  await expect(page.getByLabel('Current password', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Administrator account', { exact: true })).toBeVisible()
+  await expect(page.locator('.profile-details')).toContainText(administrator.email)
+  await expect(page.locator('.profile-details')).toContainText('None')
+  await expect(page.getByLabel('Current password', { exact: true })).toBeVisible()
   const origin = new URL(page.url()).origin
   const headers = { Origin: origin, 'X-Juntia-Request': '1' }
   const unitResponse = await page.request.post('/api/admin/dwellings', {
@@ -292,10 +289,7 @@ test('header profile menu, editable name, password change and all-device logout'
 test('neighbors directory groups contact phones by naturally ordered dwelling', async ({ page, browser }) => {
   test.skip(Boolean(process.env.E2E_BASE_URL), 'Requires the disposable server with synthetic SMTP capture')
   test.setTimeout(120_000)
-  await page.goto('/admin')
-  await page.getByLabel('Username', { exact: true }).fill('browser-test')
-  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-test-password')
-  await page.getByRole('button', { name: 'Sign in to administration' }).click()
+  await signInAsAdministrator(page)
   const adminNavigation = page.getByRole('navigation', { name: 'Administration navigation' })
   await expect(adminNavigation.getByRole('group', { name: 'Finances', exact: true }).getByRole('link')).toHaveCount(5)
   await expect(adminNavigation.getByRole('group', { name: 'Settings', exact: true }).getByRole('link')).toHaveCount(6)

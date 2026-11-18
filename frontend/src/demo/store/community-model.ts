@@ -18,7 +18,7 @@ export type ChangeKind = 'created' | 'updated' | 'deleted'
 export interface DemoActionLabel {
   id: number
   name: string
-  /** Null until the administrator chooses one (the app then derives a colour from the name). */
+  /** Null until an administrator chooses one (the app then derives a colour from the name). */
   color: string | null
   version: number
 }
@@ -63,7 +63,7 @@ export interface DemoActionAttachment {
   version: number
   createdAt: string
   withdrawnAt: string | null
-  /** When the administrator purged the file of a withdrawn PDF (SEC-03): its record and history stay. */
+  /** When an administrator purged the file of a withdrawn PDF (SEC-03): its record and history stay. */
   purgedAt: string | null
 }
 
@@ -196,11 +196,20 @@ export interface CommunityState {
   random: Random
 }
 
-/** An author as the API shows it: administrators always as "Technical administrator" (backend `author_name`). */
+/**
+ * An author as the API shows it (backend `author_name`): the technical administrator of earlier
+ * releases (`kind: 'administrator'`, without an account; only in legacy data, never written now)
+ * always as "Technical administrator"; accounts, administrators included, with their name.
+ */
 export function actorOut(author: ActorOut): ActorOut {
   return author.kind === 'administrator'
     ? { kind: 'administrator', name: ADMINISTRATOR_ACTOR_NAME, user_id: null }
     : { kind: 'resident', name: author.name, user_id: author.user_id }
+}
+
+/** The author snapshot stored with what an actor writes (backend `authorship`): never its role, which may change. */
+export function authorship(actor: ActorOut): ActorOut {
+  return { kind: actor.kind, name: actor.name, user_id: actor.user_id }
 }
 
 /** Code point order, like the backend's binary collations. */

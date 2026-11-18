@@ -14,7 +14,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse
 
 from . import document_index
-from .auth import DB, administrator, mutation_session, settings
+from .auth import DB, actor_of, administrator, mutation_session, settings
 from .community_action_files import delete_pdf, pdf_path
 from .community_actions import (
     PageNumber,
@@ -24,10 +24,8 @@ from .community_actions import (
     check_version,
     lock_action,
     pdf_response,
-    session_actor,
 )
 from .community_documents import (
-    actor_of,
     chain,
     document_settings,
     lock_documents,
@@ -132,6 +130,8 @@ async def storage_summary(db: DB, request: Request) -> StorageOut:
         ).where(CommunityImage.purged_at.is_(None))
         .group_by(CommunityImage.author_kind, CommunityImage.author_user_id)
     )).all()
+    # Files the technical administrator of earlier releases uploaded belong to no account: they
+    # make a line of their own. Administrators' accounts count like everyone else's.
     administrator_totals = NO_FILES
     residents: dict[int, Totals] = {}
 
@@ -313,7 +313,7 @@ async def download_stored_pdf(attachment_id: UUID, db: DB, request: Request) -> 
 async def purge_attachment(
     attachment_id: UUID, body: VersionIn, db: DB, request: Request, language: ServerLanguage,
 ) -> ActionAttachmentOut:
-    actor = session_actor(await mutation_session(request, db), language)
+    actor = actor_of(await mutation_session(request, db))
     found = await db.get(ActionAttachment, str(attachment_id))
     if found is None:
         raise AppError("action_attachment_not_found", 404)
@@ -442,7 +442,7 @@ async def previous_document_versions(
 async def purge_document_version(
     version_id: UUID, db: DB, request: Request, language: ServerLanguage,
 ) -> StoredDocumentVersionOut:
-    actor = actor_of(await mutation_session(request, db), language)
+    actor = actor_of(await mutation_session(request, db))
     await lock_documents(db)
     version = await db.get(DocumentVersion, str(version_id), populate_existing=True)
     if version is None:

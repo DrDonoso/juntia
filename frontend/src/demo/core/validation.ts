@@ -18,6 +18,9 @@ import { DemoApiError } from './errors'
 
 export const MAX_ID = 2_147_483_647
 
+/** A "What's new" note's id: `YYYY-MM-DD-slug` (backend `NOTE_ID_PATTERN`, up to 80 characters). */
+export const NOTE_ID = /^\d{4}-\d{2}-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$/
+
 /** Invalid fields and pydantic-like error types (`missing`, `string_too_long`, `new_tags.0.name`…). */
 export type InvalidFields = Readonly<Record<string, string>>
 
@@ -219,6 +222,20 @@ export class Body {
     }
     if (unique && new Set(value).size !== value.length) return this.fail(key, 'value_error') ?? []
     return value as number[]
+  }
+
+  /** List of `min`..`max` strings of up to `length` characters each, matching `pattern` (not stripped). */
+  strings(key: string, pattern: RegExp, { min = 0, max = Infinity, length = Infinity }: { min?: number; max?: number; length?: number } = {}): string[] {
+    const value = this.raw(key)
+    if (this.absent(key)) return this.fail(key, 'missing') ?? []
+    if (!Array.isArray(value)) return this.fail(key, 'list_type') ?? []
+    if (value.length < min) return this.fail(key, 'too_short') ?? []
+    if (value.length > max) return this.fail(key, 'too_long') ?? []
+    if (value.some(item => typeof item !== 'string')) return this.fail(key, 'string_type') ?? []
+    const items = value as string[]
+    if (items.some(item => characterCount(item) > length)) return this.fail(key, 'string_too_long') ?? []
+    if (items.some(item => !pattern.test(item))) return this.fail(key, 'string_pattern_mismatch') ?? []
+    return items
   }
 
   /**

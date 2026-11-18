@@ -72,14 +72,14 @@ def body_limit(path: str, method: str) -> int:
         return LAYOUT_BODY_BYTES
     if path == "/api/auth/google/start":
         return 2 * AUTH_BODY_BYTES
-    if path.startswith(("/api/auth/", "/api/admin/auth/")):
+    if path.startswith("/api/auth/"):
         return AUTH_BODY_BYTES
     return JSON_BODY_BYTES
 
 
 async def authorize_body(scope: Scope) -> None:
     path = scope.get("path", "").rstrip("/")
-    admin = path.startswith("/api/admin/") and not path.startswith("/api/admin/auth/")
+    admin = path.startswith("/api/admin/")
     actions = path == "/api/actions" or path.startswith("/api/actions/")
     events = path == "/api/events" or path.startswith("/api/events/")
     documents = path == "/api/documents" or path.startswith("/api/documents/")

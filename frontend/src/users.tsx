@@ -1,8 +1,9 @@
-import { useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react'
+import { useId, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router'
 import { api, ApiError, cache, errorMessage } from './api/client'
-import type { DwellingOut, PresidencyOut, UserOut } from './api/schema.gen'
+import type { DwellingOut, PresidencyOut, UserIn, UserOut } from './api/schema.gen'
+import { useReaderAuth } from './auth'
 import { DwellingLayoutEditor } from './dwelling-layout-editor'
 import { collator, lowerCase, useI18n } from './i18n'
 import { Icon } from './icons'
@@ -107,20 +108,24 @@ export function DwellingsPage() {
   </>
 }
 
-function UserForm({ value, dwellings, close, coefficientEnabled, isPresident }: {
+function UserForm({ value, dwellings, close, coefficientEnabled, isPresident, own }: {
   value: UserOut | null; dwellings: DwellingOut[]; close: () => void; coefficientEnabled: boolean; isPresident: boolean
+  /** The signed-in administrator's own account: its role and email address cannot change here. */
+  own: boolean
 }) {
   const { t } = useI18n()
   const [name, setName] = useState(value?.name || ''), [email, setEmail] = useState(value?.email || '')
   const [phone, setPhone] = useState(value?.phone || '')
-  const [dwelling, setDwelling] = useState(value ? String(value.dwelling_id) : '')
+  const [dwelling, setDwelling] = useState(value?.dwelling_id ? String(value.dwelling_id) : '')
+  const [administrator, setAdministrator] = useState(value?.administrator ?? false)
+  const roleHelp = useId()
   const action = useAction()
   const selected = dwellings.find(unit => String(unit.id) === dwelling)
   const emailChanged = value && email.trim().toLowerCase() !== value.email
   function submit(event: FormEvent) {
     event.preventDefault()
     void action.run(async () => {
-      const body = { name, phone, email: email.trim(), dwelling_id: Number(dwelling) }
+      const body: UserIn = { name, phone, email: email.trim(), dwelling_id: selected?.id ?? null, administrator }
       await management(
         value ? `/admin/users/${value.id}` : '/admin/users',
         value ? 'PATCH' : 'POST', value ? { ...body, version: value.version } : body,
@@ -131,17 +136,19 @@ function UserForm({ value, dwellings, close, coefficientEnabled, isPresident }: 
   return <Modal title={value ? t('accounts.users.form.editTitle') : t('accounts.users.invite')} close={close} disabled={action.busy}>
     <form onSubmit={submit}>
       <label>{t('accounts.users.form.name')}<input required maxLength={150} autoComplete="off" value={name} onChange={event => setName(event.target.value)} disabled={action.busy} /></label>
-      <label>{t('accounts.users.form.email')}<input type="email" required maxLength={254} autoComplete="off" value={email} onChange={event => setEmail(event.target.value)} disabled={action.busy} /></label>
+      <label>{t('accounts.users.form.email')}<input type="email" required maxLength={254} autoComplete="off" value={email} onChange={event => setEmail(event.target.value)} disabled={action.busy || own} aria-describedby={own ? roleHelp : undefined} /></label>
       <PhoneField value={phone} change={setPhone} disabled={action.busy} autoComplete="off" />
       <p className="muted">{t('accounts.users.form.visibility')}</p>
-      <label>{t('accounts.users.form.dwelling')}<select required value={dwelling} onChange={event => setDwelling(event.target.value)} disabled={action.busy}>
-        <option value="">{t('accounts.users.form.selectDwelling')}</option>{dwellings.map(unit => <option key={unit.id} value={unit.id}>{unit.label}</option>)}
+      <label className="check"><input type="checkbox" checked={administrator} onChange={event => setAdministrator(event.target.checked)} disabled={action.busy || own} aria-describedby={roleHelp} />{t('accounts.users.form.administrator')}</label>
+      <p id={roleHelp} className="muted">{own ? t('accounts.users.form.ownRole') : t('accounts.users.form.administratorHelp')}</p>
+      <label>{t('accounts.users.form.dwelling')}<select required={!administrator} value={dwelling} onChange={event => setDwelling(event.target.value)} disabled={action.busy}>
+        <option value="">{administrator ? t('accounts.users.noDwelling') : t('accounts.users.form.selectDwelling')}</option>{dwellings.map(unit => <option key={unit.id} value={unit.id}>{unit.label}</option>)}
       </select></label>
       {selected && coefficientEnabled && <p className="muted">{t('accounts.users.form.coefficient', { coefficient: coefficientPercent(selected.coefficient) })}</p>}
       {!value && <p className="muted">{t('accounts.users.form.invitationHelp')}</p>}
       {emailChanged && <Notice>{value.status === 'disabled' ? t('accounts.users.form.emailChangeDisabled') : t('accounts.users.form.emailChangeActive')}</Notice>}
       {emailChanged && isPresident && <Notice>{t('accounts.users.form.emailChangePresident')}</Notice>}
-      {action.notice}<div className="inline"><button disabled={action.busy || !selected}>{action.busy ? t('common.saving') : value ? t('accounts.users.form.save') : t('accounts.users.form.send')}</button><button type="button" className="secondary" disabled={action.busy} onClick={close}>{t('common.cancel')}</button></div>
+      {action.notice}<div className="inline"><button disabled={action.busy || !selected && !administrator}>{action.busy ? t('common.saving') : value ? t('accounts.users.form.save') : t('accounts.users.form.send')}</button><button type="button" className="secondary" disabled={action.busy} onClick={close}>{t('common.cancel')}</button></div>
     </form>
   </Modal>
 }
@@ -172,7 +179,8 @@ function DeleteUserConfirmation({ user, close, action, restoreFocusRef, isPresid
   return <Modal title={t('accounts.users.deletion.title')} close={close} disabled={action.busy} restoreFocusRef={restoreFocusRef}>
     <p><strong>{user.name}</strong> — {user.email}</p>
     <p>{t('accounts.users.deletion.warning')}</p>
-    <p>{rich('accounts.users.deletion.kept', { strong }, { dwelling: user.dwelling_label })}</p>
+    <p>{user.dwelling_label === null ? t('accounts.users.deletion.keptWithoutDwelling')
+      : rich('accounts.users.deletion.kept', { strong }, { dwelling: user.dwelling_label })}</p>
     <p>{t('accounts.users.deletion.authorship')}</p>
     {isPresident && <Notice>{t('accounts.users.deletion.president')}</Notice>}
     <form onSubmit={event => { event.preventDefault(); void action.run(async () => {
@@ -193,7 +201,8 @@ function PresidencyForm({ value, users, close, action, restoreFocusRef }: {
 }) {
   const { t, rich } = useI18n()
   const [selected, setSelected] = useState(value.president ? String(value.president.id) : '')
-  const candidates = users.filter(user => user.status === 'active')
+  // The presidency belongs to a neighbor: an active account with a dwelling.
+  const candidates = users.filter(user => user.status === 'active' && user.dwelling_id !== null)
   const next = candidates.find(user => String(user.id) === selected)
   const changed = selected !== (value.president ? String(value.president.id) : '')
   const eligible = selected === '' || !!next
@@ -236,6 +245,7 @@ export function UsersPage() {
   const query = useQuery({ queryKey: ['admin', 'users'], queryFn: () => api<UserOut[]>('/admin/users') })
   const presidency = useQuery({ queryKey: ['admin', 'presidency'], queryFn: () => api<PresidencyOut>('/admin/presidency') })
   const dwellings = useDwellings(), features = useFeatures(), action = useAction()
+  const ownId = useReaderAuth().data?.user_id
   const presidencyAction = useAction()
   const [changingPresidency, setChangingPresidency] = useState<PresidencyOut | null>(null)
   const presidencyButton = useRef<HTMLButtonElement>(null)
@@ -269,7 +279,7 @@ export function UsersPage() {
   }
   return <><div className="page-heading"><div><p className="eyebrow">{t('accounts.adminEyebrow')}</p><h1>{t('accounts.users.title')}</h1>
     <p className="muted">{t('accounts.users.description')}</p></div>
-    <button ref={inviteButton} disabled={!dwellings.data?.length} onClick={() => setEditing(null)}>{t('accounts.users.invite')}</button></div>
+    <button ref={inviteButton} disabled={!dwellings.data} onClick={() => setEditing(null)}>{t('accounts.users.invite')}</button></div>
     {(query.isPending || dwellings.isPending) && <Notice>{t('accounts.users.loading')}</Notice>}
     {(query.error || dwellings.error) && <Notice error>{errorMessage(query.error || dwellings.error)}</Notice>}
     {features.error && <Notice error>{errorMessage(features.error)}</Notice>}
@@ -311,9 +321,11 @@ export function UsersPage() {
           </th>
         })}<th scope="col">{t('accounts.actionsColumn')}</th></tr></thead>
           <tbody>{rows.map(user => <tr key={user.id}><td><div className="user-name"><strong>{user.name}</strong>
-            {presidencyReady && presidency.data?.president?.id === user.id && <PresidentBadge name={user.name} />}</div><small>{user.email}</small></td>
+            {presidencyReady && presidency.data?.president?.id === user.id && <PresidentBadge name={user.name} />}
+            {user.administrator && <span className="tag">{t('accounts.users.administrator')}</span>}</div><small>{user.email}</small></td>
             <td><PhoneLink phone={user.phone} name={user.name} /></td>
-            <td>{user.dwelling_label}{coefficientEnabled && <small className="nowrap">{coefficientPercent(user.coefficient)}</small>}</td>
+            <td>{user.dwelling_label === null ? <span className="muted">{t('accounts.users.noDwelling')}</span>
+              : <>{user.dwelling_label}{coefficientEnabled && <small className="nowrap">{coefficientPercent(user.coefficient)}</small>}</>}</td>
             <td><span className="tag">{t(`accounts.users.status.${user.status}`)}</span>
               {user.google_linked && <small>{user.has_password ? t('accounts.users.signInMethods.googleAndPassword') : t('accounts.users.signInMethods.google')}</small>}
               {user.status === 'pending' && <>
@@ -325,12 +337,15 @@ export function UsersPage() {
               {user.status === 'pending' && <button className="secondary" disabled={action.busy} aria-label={t('accounts.users.resendLabel', { email: user.email })} onClick={() => void action.run(async () => {
                 await management(`/admin/users/${user.id}/invite`, 'POST', { version: user.version })
               }, t('accounts.users.resent'))}>{t('accounts.users.resend')}</button>}
-              <button className="quiet" disabled={action.busy || !presidencyReady} aria-label={user.status === 'disabled' ? t('accounts.users.reactivateLabel', { email: user.email }) : t('accounts.users.deactivateLabel', { email: user.email })} onClick={() => setStatusUser(user)}>{user.status === 'disabled' ? t('accounts.users.reactivate') : t('accounts.users.deactivate')}</button>
-              <button className="quiet danger" disabled={action.busy || !presidencyReady} aria-label={t('accounts.users.deleteLabel', { email: user.email })} onClick={() => setDeletingUser(user)}>{t('common.delete')}</button>
+              {/* Nobody deactivates or deletes their own account. */}
+              {user.id !== ownId && <>
+                <button className="quiet" disabled={action.busy || !presidencyReady} aria-label={user.status === 'disabled' ? t('accounts.users.reactivateLabel', { email: user.email }) : t('accounts.users.deactivateLabel', { email: user.email })} onClick={() => setStatusUser(user)}>{user.status === 'disabled' ? t('accounts.users.reactivate') : t('accounts.users.deactivate')}</button>
+                <button className="quiet danger" disabled={action.busy || !presidencyReady} aria-label={t('accounts.users.deleteLabel', { email: user.email })} onClick={() => setDeletingUser(user)}>{t('common.delete')}</button>
+              </>}
             </div></td>
           </tr>)}</tbody></table></div>}
     </section>}
-    {editing !== undefined && dwellings.data && <UserForm value={editing} dwellings={dwellings.data} coefficientEnabled={coefficientEnabled} close={() => setEditing(undefined)} isPresident={!!editing && presidency.data?.president?.id === editing.id} />}
+    {editing !== undefined && dwellings.data && <UserForm value={editing} dwellings={dwellings.data} coefficientEnabled={coefficientEnabled} close={() => setEditing(undefined)} isPresident={!!editing && presidency.data?.president?.id === editing.id} own={!!editing && editing.id === ownId} />}
     {statusUser && <StatusConfirmation user={statusUser} close={() => setStatusUser(null)} isPresident={presidency.data?.president?.id === statusUser.id} />}
     {deletingUser && <DeleteUserConfirmation user={deletingUser} close={() => setDeletingUser(null)} action={action} restoreFocusRef={inviteButton} isPresident={presidency.data?.president?.id === deletingUser.id} />}
     {changingPresidency && query.data && <PresidencyForm value={changingPresidency} users={query.data} action={presidencyAction} restoreFocusRef={presidencyButton} close={() => setChangingPresidency(null)} />}

@@ -1,0 +1,13 @@
+{
+  "kind": "new",
+  "audience": "everyone",
+  "icon": "sparkles",
+  "en": {
+    "title": "Now we tell you what's new",
+    "body": "When your community's portal gets something new, we'll tell you about it here when you come in. To read it again, tap the circle with your initials at the top right and choose \"What's new\"."
+  },
+  "es": {
+    "title": "Ahora te contamos las novedades",
+    "body": "Cuando el portal de tu comunidad traiga algo nuevo, te lo contaremos aquí al entrar. Para volver a leerlo, pulsa el círculo con tus iniciales, arriba a la derecha, y elige «Novedades»."
+  }
+}

@@ -2,15 +2,15 @@
  * Shared documents routes of the demo API (src/juntia/community_documents.py): folders and files
  * with their details, edits, deletions and history, the search by name and by text across all of
  * them, chunked uploads, downloads, previews and ZIP archives for every member while Documents is
- * on (404 `documents_disabled` otherwise); and the administrator's deleted documents (restore and
+ * on (404 `documents_disabled` otherwise); and the administration's deleted documents (restore and
  * purge), copies of any stored version, the settings (management policy, largest file and video,
  * quotas) and the reading of the documents' text (document_reading.py), which keep working while
- * the feature is off.
+ * the feature is off. Administrators manage every item whatever the policy.
  */
-import type { ActorOut, DocumentDeletionPage, DocumentSettings } from '../../api/schema.gen'
+import type { DocumentDeletionPage, DocumentSettings } from '../../api/schema.gen'
 import {
   DemoApiError, HttpResponse, actorOf, fileDisposition, http, idParam, nowIso, pageParam, paginate, parseBody, queryChoice, queryInt,
-  queryText, readJson, route, type Body, type HttpHandler, type RouteContext,
+  queryText, readJson, route, type Body, type DemoActor, type HttpHandler, type RouteContext,
 } from '../core'
 import { canonicalUuid } from '../store/community-text'
 import {
@@ -26,9 +26,9 @@ import { MODEL, uuidParam, valid, version } from './community-contracts'
 
 const DOCUMENTS = { feature: 'documents' } as const
 
-function author({ identity }: RouteContext): ActorOut {
-  if (!identity) throw new DemoApiError('authentication_required', 401)
-  return actorOf(identity)
+function author({ user }: RouteContext): DemoActor {
+  if (!user) throw new DemoApiError('authentication_required', 401)
+  return actorOf(user)
 }
 
 /** `DocumentFolderIn`. */
@@ -113,14 +113,14 @@ function download(context: RouteContext, disposition: 'attachment' | 'inline', o
   return fileResponse(context.request, file, disposition)
 }
 
-/** Any folder, deleted ones included (the administrator's history). */
+/** Any folder, deleted ones included (the administration's history). */
 function anyFolder(documents: SharedDocumentsState, id: number): DemoDocumentFolder {
   const folder = findFolder(documents, id)
   if (!folder) throw new DemoApiError('document_folder_not_found', 404)
   return folder
 }
 
-/** Any file, deleted ones included (the administrator's details and history). */
+/** Any file, deleted ones included (the administration's details and history). */
 function anyDocument(documents: SharedDocumentsState, id: number): DemoDocument {
   const document = findDocument(documents, id)
   if (!document) throw new DemoApiError('document_not_found', 404)
@@ -222,7 +222,7 @@ const residentHandlers: HttpHandler[] = [
 ]
 
 const administrationHandlers: HttpHandler[] = [
-  // What residents deleted and the administrator can still restore or purge, newest first.
+  // What was deleted and administrators can still restore or purge, newest first.
   http.get('/api/admin/documents/deleted', route('admin', ({ url }): DocumentDeletionPage => {
     const page = pageParam(url)
     const documents = sharedDocumentsStore()
@@ -245,7 +245,7 @@ const administrationHandlers: HttpHandler[] = [
     const documents = sharedDocumentsStore()
     return historyPage(documents, anyFolder(documents, folderId), page)
   })),
-  // The administrator's copy of any stored version, deleted documents' included.
+  // The administration's copy of any stored version, deleted documents' included.
   http.get('/api/admin/documents/versions/:versionId/download', route('admin', context => download(context, 'attachment', { deleted: true }))),
   http.get('/api/admin/documents/versions/:versionId/preview', route('admin', context => download(context, 'inline', { deleted: true }))),
   http.post('/api/admin/documents/deletions/:deletionId/restore', route('admin', context => {

@@ -12,7 +12,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from starlette.responses import Response
 
 from . import event_calendar, queries
-from .auth import DB, mutation_session, reader_session, settings
+from .auth import DB, Actor, actor_of, mutation_session, reader_session, settings
 from .config import Language, Settings
 from .contracts import (
     ActorOut,
@@ -28,13 +28,12 @@ from .contracts import (
     EventOut,
     EventPage,
     EventSnapshot,
-    UserAuthOut,
     VersionIn,
 )
 from .db import CommunityAction, CommunityEvent, CommunityEventHistory, aware, utcnow
 from .errors import AppError
 from .query_sql import CALENDAR_EPOCH, contains_text, date_number, fold_sql, fold_text
-from .texts import ServerLanguage, author_name, public_actor
+from .texts import ServerLanguage, author_name
 
 PAGE_SIZE = 20
 ItemId = Annotated[int, Path(ge=1, le=2147483647)]
@@ -216,7 +215,7 @@ def snapshot(value: EventOut) -> EventSnapshot:
 
 
 def record_history(
-    db: AsyncSession, value: CommunityEvent, actor: UserAuthOut,
+    db: AsyncSession, value: CommunityEvent, actor: Actor,
     kind: Literal["created", "updated", "deleted"],
     before: EventSnapshot | None, after: EventSnapshot | None,
 ) -> None:
@@ -379,7 +378,7 @@ async def event(event_id: ItemId, db: DB, language: ServerLanguage) -> EventOut:
 async def create_event(
     body: EventIn, request: Request, db: DB, language: ServerLanguage,
 ) -> EventOut:
-    actor = public_actor(await mutation_session(request, db), language)
+    actor = actor_of(await mutation_session(request, db))
     await require_events_enabled(db)
     value = CommunityEvent(
         author_kind=actor.kind, author_user_id=actor.user_id, author_name=actor.name,
@@ -400,7 +399,7 @@ async def create_event(
 async def edit_event(
     event_id: ItemId, body: EventEdit, request: Request, db: DB, language: ServerLanguage,
 ) -> EventOut:
-    actor = public_actor(await mutation_session(request, db), language)
+    actor = actor_of(await mutation_session(request, db))
     await require_events_enabled(db)
     value = await get_event(db, event_id, lock=True, active=True)
     if value.version != body.version:
@@ -423,7 +422,7 @@ async def edit_event(
 async def delete_event(
     event_id: ItemId, body: VersionIn, request: Request, db: DB, language: ServerLanguage,
 ) -> None:
-    actor = public_actor(await mutation_session(request, db), language)
+    actor = actor_of(await mutation_session(request, db))
     await require_events_enabled(db)
     value = await get_event(db, event_id, lock=True, active=True)
     if value.version != body.version:

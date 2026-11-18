@@ -4,7 +4,7 @@ import { resetDemo } from '../store'
 import { coreStore } from '../store/core'
 import { financeStore } from '../store/finance'
 import { money } from '../store/finance-ledger'
-import { demoRequest } from '../testing'
+import { demoRequest, signInAdmin } from '../testing'
 
 // Thursday 29 October 2026, midday (local time).
 const NOW = new Date(2026, 9, 29, 12, 0)
@@ -106,12 +106,12 @@ describe('GET /api/transactions', () => {
     expect(await demoRequest('GET', '/api/transactions?minimum=10&maximum=-10')).toMatchObject({ status: 422, body: { code: 'invalid_range' } })
   })
 
-  test('needs a session: a neighbor or the administrator', async () => {
+  test('needs a session: a neighbor or an administrator', async () => {
     await demoRequest('POST', '/api/auth/logout')
     expect(await demoRequest('GET', '/api/transactions')).toMatchObject({ status: 401, body: { code: 'authentication_required' } })
     expect(await demoRequest('GET', '/api/summary')).toMatchObject({ status: 401 })
     expect(await demoRequest('GET', '/api/catalog/tags')).toMatchObject({ status: 401 })
-    await demoRequest('POST', '/api/admin/auth/login', { body: { username: 'demo', password: 'demo' } })
+    await signInAdmin()
     expect((await demoRequest('GET', '/api/transactions')).status).toBe(200)
   })
 })

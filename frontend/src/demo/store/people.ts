@@ -1,11 +1,13 @@
 /**
  * The people data of this page load (../scenario/people.ts) and its shared rules: the presidency is
- * left unassigned with its holder's account, and neighbors sign in with `demo` until they change
- * their password in My profile (a reload brings `demo` back).
+ * left unassigned with its holder's account or dwelling, at least one active administrator always
+ * remains, and accounts sign in with `demo` until they change their password in My profile (a
+ * reload brings `demo` back).
  */
 import { DEMO_PASSWORD } from '../config'
+import { DemoApiError } from '../core/errors'
 import { peopleScenario, type PeopleScenario } from '../scenario/people'
-import type { DemoResident } from './core'
+import { coreStore, type DemoResident } from './core'
 
 export type PeopleState = PeopleScenario
 
@@ -30,7 +32,7 @@ export function passwordBytes(password: string): number {
 }
 
 /**
- * Whether `password` is the neighbor's password: `demo`, or the one they chose in My profile during
+ * Whether `password` is the account's password: `demo`, or the one it chose in My profile during
  * this visit. Accounts without a password (pending invitations) match nothing, like the backend.
  */
 export function residentPasswordMatches(resident: DemoResident, password: string): boolean {
@@ -43,7 +45,7 @@ export function setResidentPassword(residentId: number, password: string): void 
   peopleStore().passwords.set(residentId, password)
 }
 
-/** Whether the neighbor chose another password during this visit, so `demo` no longer signs them in. */
+/** Whether the account chose another password during this visit, so `demo` no longer signs it in. */
 export function residentPasswordChanged(residentId: number): boolean {
   return peopleStore().passwords.has(residentId)
 }
@@ -59,4 +61,21 @@ export function clearPresidency(residentId: number): void {
   if (presidency.presidentId !== residentId) return
   presidency.presidentId = null
   presidency.version += 1
+}
+
+/** An administrator who can sign in (backend `active_administrator`). */
+export function activeAdministrator(resident: DemoResident): boolean {
+  return resident.administrator && resident.activated && !resident.disabled
+}
+
+/**
+ * Backend `require_administrator_remains`: 409 `last_administrator` when `leaving`, an active
+ * administrator about to lose the role, its activation or its account, is the last one. Through the
+ * API it never is in the demo: the administrator making the change remains one, since nobody
+ * changes their own role, email or status (the backend's check also covers concurrent changes).
+ */
+export function requireAdministratorRemains(leaving: DemoResident): void {
+  if (!coreStore().residents.some(other => other.id !== leaving.id && activeAdministrator(other))) {
+    throw new DemoApiError('last_administrator', 409)
+  }
 }

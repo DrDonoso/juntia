@@ -5,7 +5,7 @@
  */
 import type { ActorOut, CommunityImageOut, StoredImageOut } from '../../api/schema.gen'
 import { DemoApiError } from '../core/errors'
-import { actorOut, compareText, type CommunityState, type DemoCommunityImage, type ImageMediaType, type ImageScope } from './community-model'
+import { actorOut, authorship, compareText, type CommunityState, type DemoCommunityImage, type ImageMediaType, type ImageScope } from './community-model'
 
 /** `MAX_IMAGE_BYTES`: 10 MiB per image. */
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024
@@ -157,7 +157,7 @@ export function addImage(
 ): DemoCommunityImage {
   const stored: DemoCommunityImage = {
     id: image.id, scope, filename: image.filename, mediaType: image.mediaType, size: image.bytes.length, sha256: image.sha256,
-    width: image.width, height: image.height, bytes: image.bytes, author, createdAt: at, purgedAt: null,
+    width: image.width, height: image.height, bytes: image.bytes, author: authorship(author), createdAt: at, purgedAt: null,
   }
   state.images.push(stored)
   return stored

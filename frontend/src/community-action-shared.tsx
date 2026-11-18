@@ -62,9 +62,10 @@ export function useActionLabels(q = '', page = 1, ids?: string[]) {
   })
 }
 
+/** Its author, or an administrator, may change a comment or a PDF. */
 export function canModerate(author: ActionActorOut, reader?: UserAuthOut): boolean {
-  return reader?.authenticated === true && (reader.kind === 'administrator'
-    || reader.kind === 'resident' && author.kind === 'resident' && reader.user_id === author.user_id)
+  return reader?.authenticated === true && (reader.administrator
+    || author.kind === 'resident' && reader.user_id === author.user_id)
 }
 
 export function ActionTime({ value }: { value: string }) {

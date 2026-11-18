@@ -5,7 +5,7 @@ import { resetDemo } from '../store'
 import { communityStore } from '../store/community'
 import { dayNumber, zonedDay } from '../store/community-time'
 import { coreStore } from '../store/core'
-import { demoFetch, demoRequest, demoUrl } from '../testing'
+import { demoFetch, demoRequest, demoUrl, signInAdmin } from '../testing'
 
 // Thursday 29 October 2026, midday (local time), like the other demo tests.
 const NOW = new Date(2026, 9, 29, 12)
@@ -378,8 +378,9 @@ describe('calendar exports and access', () => {
     coreStore().features.events = true
     await demoRequest('POST', '/api/auth/logout')
     for (const route of routes) expect(await get(route), route).toMatchObject({ status: 401 })
-    await demoRequest('POST', '/api/admin/auth/login', { body: { username: 'demo', password: 'demo' } })
+    await signInAdmin()
     const created = await create()
-    expect(created.author).toEqual({ kind: 'administrator', name: 'Technical administrator', user_id: null })
+    // Administrators write under their own name, like every account.
+    expect(created.author).toEqual({ kind: 'resident', name: 'James Okafor', user_id: 1 })
   })
 })

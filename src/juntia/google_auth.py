@@ -21,10 +21,9 @@ from .auth import (
     DB,
     GOOGLE_COOKIE,
     USER_COOKIE,
-    Resident,
+    CurrentUser,
     access_hash,
-    administrator,
-    issue_resident_session,
+    issue_session,
     revoke_user,
     settings,
     throttle,
@@ -244,13 +243,6 @@ async def start(body: GoogleStartIn, request: Request, response: Response, db: D
         db, request, "google-start", request.client.host if request.client else "unknown",
         limit=20, ip_limit=30,
     )
-    try:
-        await administrator(request, db)
-    except AppError as error:
-        if error.status != 401:
-            raise
-    else:
-        raise AppError("google_admin_session", 403)
     user = None
     if body.invitation_token:
         token = await db.get(UserToken, access_hash(config, "invitation", body.invitation_token))
@@ -264,7 +256,7 @@ async def start(body: GoogleStartIn, request: Request, response: Response, db: D
 
 @router.post("/link", response_model=GoogleStartOut)
 async def link(
-    body: CurrentPasswordIn, user_id: Resident, request: Request, response: Response, db: DB
+    body: CurrentPasswordIn, user_id: CurrentUser, request: Request, response: Response, db: DB
 ) -> GoogleStartOut:
     require_google(settings(request))
     password_hash, version = await verify_current_password(db, user_id, body.current_password, request)
@@ -278,7 +270,7 @@ async def link(
 
 @router.delete("/link", status_code=204)
 async def unlink(
-    body: CurrentPasswordIn, user_id: Resident, request: Request, response: Response, db: DB
+    body: CurrentPasswordIn, user_id: CurrentUser, request: Request, response: Response, db: DB
 ) -> None:
     password_hash, version = await verify_current_password(db, user_id, body.current_password, request)
     user = await current_profile_user(request, db, user_id)
@@ -371,7 +363,7 @@ async def authenticate_identity(
     if flow.session_hash:
         # Strict session cookies are absent on Google's cross-site callback.
         await db.execute(delete(UserSession).where(UserSession.token_hash == flow.session_hash))
-    await issue_resident_session(db, request, response, user)
+    await issue_session(db, request, response, user)
 
 
 def callback_response(path: str, request: Request) -> RedirectResponse:

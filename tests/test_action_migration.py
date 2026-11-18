@@ -4,7 +4,7 @@ import sys
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import func, select, text
+from sqlalchemy import column, delete, func, select, table, text, update
 
 from juntia.db import (
     Account,
@@ -24,13 +24,50 @@ from tests.test_action_pdfs import quote_pdf, upload
 from tests.test_community_actions import create_item, item_path
 from tests.test_users import database
 
+# Before 0024 every account lives in a dwelling, and upgrading to it makes nobody an
+# administrator. As an operator would, migrate() moves the administrators without a dwelling into
+# this one to downgrade past it, and gives them the role back, without it, once upgraded again.
+WAITING_ROOM = "Administrators waiting for the upgrade"
 
-def migrate(config, command, revision, check=True, options=()):
-    return subprocess.run(
-        [sys.executable, "-m", "alembic", *options, command, revision],
+
+async def revision(db):
+    return await db.scalar(text("SELECT version_num FROM alembic_version"))
+
+
+async def park_administrators(db):
+    homeless = list(await db.scalars(select(User).where(
+        User.administrator.is_(True), User.dwelling_id.is_(None),
+    )))
+    if homeless:
+        room = Dwelling(label=WAITING_ROOM, coefficient=Decimal("0"))
+        db.add(room)
+        await db.flush()
+        for user in homeless:
+            user.dwelling_id = room.id
+
+
+async def restore_administrators(db):
+    room = await db.scalar(select(Dwelling.id).where(Dwelling.label == WAITING_ROOM))
+    if room is not None:
+        await db.execute(update(User).where(User.dwelling_id == room).values(administrator=True))
+        await db.execute(update(User).where(User.dwelling_id == room).values(dwelling_id=None))
+        await db.execute(delete(Dwelling).where(Dwelling.id == room))
+
+
+def migrate(config, command, revision_id, check=True, options=()):
+    crossing = command == "downgrade" and revision_id < "0024" <= database(config, revision)
+    if crossing:
+        database(config, park_administrators)
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", *options, command, revision_id],
         env={**os.environ, "DATABASE_URL": config.database_url},
         check=check, capture_output=True, text=True,
     )
+    if crossing and result.returncode or command == "upgrade" and (
+        revision_id == "head" or revision_id >= "0024"
+    ):
+        database(config, restore_administrators)
+    return result
 
 
 def test_action_migration_preserves_existing_finances_and_residents(config):
@@ -43,12 +80,16 @@ def test_action_migration_preserves_existing_finances_and_residents(config):
         unit = Dwelling(label="Legacy 1 A", coefficient=Decimal("12.34"))
         db.add(unit)
         await db.flush()
-        resident = User(
+        # Users as before 0024, without the columns that later revisions add to the current model.
+        users = table("users", *(column(name) for name in (
+            "email", "name", "phone", "dwelling_id", "activated", "disabled", "auth_version",
+            "version", "google_subject", "invitation_delivery", "id",
+        )))
+        resident_id = await db.scalar(users.insert().values(
             email="legacy@example.org", name="Legacy Resident", phone="+12025550101",
             dwelling_id=unit.id, activated=True, disabled=False, auth_version=4, version=9,
-            google_subject="synthetic-legacy-google",
-        )
-        db.add(resident)
+            google_subject="synthetic-legacy-google", invitation_delivery="none",
+        ).returning(users.c.id))
         db.add(Account(id=1, iban=iban(), name="Legacy account"))
         transaction = Transaction(
             source_key="a" * 64, weak_key="b" * 64, identity_key="c" * 64,
@@ -58,7 +99,7 @@ def test_action_migration_preserves_existing_finances_and_residents(config):
         )
         db.add(transaction)
         await db.flush()
-        return resident.id, unit.id, transaction.id
+        return resident_id, unit.id, transaction.id
 
     user_id, unit_id, transaction_id = database(config, legacy)
     migrate(config, "upgrade", "head")

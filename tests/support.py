@@ -3,6 +3,12 @@ from decimal import Decimal
 
 from reportlab.pdfgen.canvas import Canvas
 
+# The first account of every test installation (tests/conftest.py: admin), without a dwelling.
+ADMINISTRATOR = {
+    "name": "Synthetic Administrator", "email": "administrator@example.org",
+    "password": "a synthetic administrator password",
+}
+
 
 def iban(suffix: str = "0000000001") -> str:
     # Fictitious domestic account on the unassigned bank code 9999, with a valid IBAN checksum.
