@@ -5,6 +5,7 @@ import time
 import pytest
 
 from juntia import search as search_module
+from juntia.contracts import reader_route
 from juntia.search import plain_text
 from tests.test_action_pdfs import upload as upload_pdf
 from tests.test_api import commit, preview
@@ -74,6 +75,8 @@ def test_search_needs_a_session_and_a_valid_text(admin, config):
     create_item(admin, "Puerta del garaje")
     # Text with NUL is never stored, so it is never found, on every database.
     assert search(admin, "puerta\x00") == {"items": [], "more": False}
+    # The page of results is a page that signing in may return to.
+    assert reader_route("/search") and not reader_route("/search/7")
 
 
 def test_every_kind_is_found_by_its_title_and_its_other_fields(actors, admin, mailbox):
@@ -257,12 +260,72 @@ def test_best_matches_come_first_and_a_few_of_each_kind(admin, monkeypatch):
     assert found(admin, "ascensor") == best
     assert found(admin, "revisar el") == [("action", "Revisar el ascensor")]
     assert found(admin, "el revisar") == [("action", "Revisar el ascensor")]
-    monkeypatch.setattr(search_module, "PER_KIND", 2)
+    monkeypatch.setattr(search_module, "PREVIEW", search_module.Window(limit=2))
     assert search(admin, "ascensor")["more"] is True
     assert found(admin, "ascensor") == best[:3]
     monkeypatch.setattr(search_module, "LIMIT", 2)
     assert search(admin, "ascensor")["more"] is True
     assert found(admin, "ascensor") == best[:2]
+
+
+RESULTS = f"{PATH}/results"
+
+
+def results(client, q, **params):
+    response = client.get(RESULTS, params={"q": q, **params})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_the_page_of_results_counts_every_kind_and_pages_through_one(admin, config, monkeypatch):
+    with visitor(config) as anonymous:
+        refused(anonymous.get(RESULTS, params={"q": "ascensor"}), 401, "authentication_required")
+    for params in ({}, {"q": "ascensor", "kind": "statement"}, {"q": "ascensor", "page": 0},
+                   {"q": "ascensor", "page": 501}):
+        refused(admin.get(RESULTS, params=params), 422, "invalid_request")
+    assert results(admin, "   ") == {"counts": [], "items": [], "page": 1, "pages": 0}
+    set_flag(admin, "events", True)
+    for number in range(1, 8):
+        create_item(admin, f"Ascensor {number}")
+    create_contact(admin, "Ascensores Norte")
+    create_contact(admin, "Fontanería Pérez", notes="Revisa el ascensor del garaje")
+    create_event(admin, title="Revisión del ascensor")
+    # How many of each kind match, in the kinds' order, and the best five of each kind, the kinds
+    # with the best matches first: a contact's name starts with the search, the event's does not.
+    overview = results(admin, "ascensor")
+    assert overview["counts"] == [
+        {"kind": "action", "total": 7}, {"kind": "event", "total": 1},
+        {"kind": "contact", "total": 2},
+    ]
+    assert [(item["kind"], item["title"]) for item in overview["items"]] == [
+        *[("action", f"Ascensor {number}") for number in (7, 6, 5, 4, 3)],
+        ("contact", "Ascensores Norte"), ("contact", "Fontanería Pérez"),
+        ("event", "Revisión del ascensor"),
+    ]
+    assert (overview["page"], overview["pages"]) == (1, 1)
+    # One kind, page by page, with every kind's count for the filters.
+    monkeypatch.setattr(search_module, "PAGE_SIZE", 3)
+    first = results(admin, "ascensor", kind="action")
+    assert [item["title"] for item in first["items"]] == ["Ascensor 7", "Ascensor 6", "Ascensor 5"]
+    assert (first["counts"], first["page"], first["pages"]) == (overview["counts"], 1, 3)
+    assert [item["title"] for item in results(admin, "ascensor", kind="action", page=3)["items"]] == [
+        "Ascensor 1",
+    ]
+    assert results(admin, "ascensor", kind="action", page=4) == {
+        "counts": overview["counts"], "items": [], "page": 4, "pages": 3,
+    }
+    # No more pages than can be asked for: more words narrow a broader search.
+    monkeypatch.setattr(search_module, "MAX_PAGE", 2)
+    assert results(admin, "ascensor", kind="action")["pages"] == 2
+    # A kind without matches, or whose section is off, has nothing to page through.
+    assert results(admin, "ascensor", kind="neighbor") == {
+        "counts": overview["counts"], "items": [], "page": 1, "pages": 0,
+    }
+    set_flag(admin, "events", False)
+    assert results(admin, "ascensor", kind="event") == {
+        "counts": [{"kind": "action", "total": 7}, {"kind": "contact", "total": 2}],
+        "items": [], "page": 1, "pages": 0,
+    }
 
 
 def test_upcoming_events_come_before_past_ones(admin):

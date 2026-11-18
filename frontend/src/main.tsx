@@ -28,6 +28,7 @@ const DwellingsPage = lazy(() => import('./users').then(m => ({ default: m.Dwell
 const ProfilePage = lazy(() => import('./profile').then(m => ({ default: m.ProfilePage })))
 const NeighborsPage = lazy(() => import('./neighbors').then(m => ({ default: m.NeighborsPage })))
 const ContactsPage = lazy(() => import('./contacts').then(m => ({ default: m.ContactsPage })))
+const SearchResultsPage = lazy(() => import('./search-results').then(m => ({ default: m.SearchResultsPage })))
 const ActionsPage = lazy(() => import('./community-actions').then(m => ({ default: m.ActionsPage })))
 const ActionDetailPage = lazy(() => import('./community-actions').then(m => ({ default: m.ActionDetailPage })))
 const EventsPage = lazy(() => import('./community-events').then(m => ({ default: m.EventsPage })))
@@ -81,7 +82,8 @@ export function Shell() {
   const documentsEnabled = features.data?.documents === true && !features.error
   const location = useLocation()
   const isAdmin = location.pathname === '/admin' || location.pathname.startsWith('/admin/')
-  const isFinanceView = location.pathname === '/' || location.pathname === '/transactions'
+  // The pages that show amounts, where Hide amounts applies (search results include transactions).
+  const isFinanceView = location.pathname === '/' || location.pathname === '/transactions' || location.pathname === '/search'
   const isContactsView = location.pathname === '/contacts'
   const isActionView = /^\/actions(?:\/[1-9][0-9]*)?$/.test(location.pathname)
   const isEventView = /^\/events(?:\/[1-9][0-9]*)?$/.test(location.pathname)
@@ -304,7 +306,7 @@ export const routes = <Route element={<Shell />}>
   <Route path="reset-password" element={<PasswordLink key="recovery" invitation={false} />} />
   <Route element={<ReaderGate />}><Route index element={<Overview />} /><Route path="transactions" element={<Transactions />} /><Route path="profile" element={<ProfilePage />} /><Route path="neighbors" element={<NeighborsPage />} /></Route>
   <Route element={<ReaderGate />}><Route path="actions" element={<ActionsPage />} /><Route path="actions/:itemId" element={<ActionDetailPage />} /></Route>
-  <Route element={<ReaderGate />}><Route path="contacts" element={<ContactsPage />} /></Route>
+  <Route element={<ReaderGate />}><Route path="contacts" element={<ContactsPage />} /><Route path="search" element={<SearchResultsPage />} /></Route>
   <Route element={<ReaderGate />}><Route path="events" element={<EventsPage />} /><Route path="events/:eventId" element={<EventDetailPage />} /></Route>
   <Route element={<ReaderGate />}><Route path="documents" element={<DocumentsPage />} /><Route path="documents/folders/:folderId" element={<DocumentsPage />} /></Route>
   <Route path="admin" element={<AdminGate />}><Route index element={<ImportPage />} />

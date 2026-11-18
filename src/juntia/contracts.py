@@ -2,7 +2,7 @@ import re
 import unicodedata
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Literal, get_args
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -26,7 +26,7 @@ def reader_route(path: str) -> bool:
     """A page of the portal or of the administration, where signing in may return."""
     return path in {
         "/", "/transactions", "/neighbors", "/profile", "/actions", "/contacts", "/events",
-        "/documents", "/admin",
+        "/documents", "/search", "/admin",
     } or bool(
         re.fullmatch(r"/(?:actions|events|documents/folders)/[1-9][0-9]{0,9}", path)
         or re.fullmatch(r"/admin/[a-z]{1,30}(?:-[a-z]{1,30}){0,3}", path)
@@ -1577,3 +1577,25 @@ class SearchOut(Contract):
     items: list[SearchHit]
     # More items match than are listed: a few of each kind are, and a few in all.
     more: bool
+
+
+# What the search finds, in the order its kinds are listed when they match equally well.
+SearchKind = Literal["action", "event", "folder", "file", "neighbor", "contact", "transaction"]
+SEARCH_KINDS: tuple[SearchKind, ...] = get_args(SearchKind)
+
+
+class SearchCount(Contract):
+    kind: SearchKind
+    total: int
+
+
+class SearchResultsOut(Contract):
+    # How many items of each kind match, in the order of SEARCH_KINDS; kinds without any are left
+    # out.
+    counts: list[SearchCount]
+    # Without a kind: the best few of each kind, kind after kind, the kinds with the best matches
+    # first. With a kind: one page of its items, the best first.
+    items: list[SearchHit]
+    page: int
+    # 0 when nothing matches.
+    pages: int

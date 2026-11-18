@@ -100,11 +100,11 @@ they type:
   line of details such as the status, date, folder, dwelling, company or amount and, when the
   words are not in the title, the text around them, with the words highlighted.
 - Titles that start with what was typed come first, then titles with every word, then the rest;
-  files found only by their text come last. It shows up to 5 results of each kind and 20 in total,
-  and says so when there are more: adding words narrows the search.
-- The arrows choose a result and Enter opens it, or the first one when none is chosen. Escape hides
-  the results and then empties the box. Ctrl+K (⌘K on a Mac), or `/` outside text fields, goes to
-  the box from any page without an open dialog.
+  files found only by their text come last. The list shows up to 5 results of each kind and 20 in
+  total; its last option, **See all results**, opens the [page of results](#the-page-of-results).
+- The arrows choose a result and Enter opens it; without a chosen result, Enter opens the page of
+  results. Escape hides the results and then empties the box. Ctrl+K (⌘K on a Mac), or `/` outside
+  text fields, goes to the box from any page without an open dialog.
 - A result opens its page: the action, the event over the agenda, the folder, the file in its folder
   (in the viewer, or its **Info** when the viewer cannot show it), the neighbor marked in the
   directory, the contact's details, or **Transactions** filtered by the transaction's description
@@ -112,7 +112,7 @@ they type:
   `/documents?file=<id>` at the top level), neighbors (`/neighbors?neighbor=<id>`) and contacts
   (`/contacts?contact=<id>`) can be bookmarked and shared.
 - At 720 pixels wide or less, the magnifier opens the search under the top bar; choosing a result,
-  Escape or a click outside closes it.
+  **See all results**, Escape or a click outside closes it.
 - It only finds what the account can read in the portal: actions, events and documents while they
   are [on](#features-switches), nothing deleted, and only the neighbors the directory lists. On the
   administration's pages it searches the portal too, not statements, accounts or deleted items.
@@ -121,6 +121,27 @@ they type:
 <p align="center">
   <img src="screenshots/search.png" alt="The search box at the top of the Actions page with the results for lift: an action, two events, a document, a contact and transactions, each with its type in a box on the right and the word highlighted" width="900"><br>
   <sub>The <b>search</b> at the top of every page (synthetic demo data).</sub>
+</p>
+
+### The page of results
+
+**Search results** (`/search?q=<words>`) lists everything that matches, with the same rules and
+order as the box:
+
+- Filters above the results count the matches of each kind: **All**, then **Actions**, **Events**,
+  **Folders**, **Documents**, **Neighbors**, **Contacts** and **Transactions**, only those with
+  matches.
+- **All** shows the best 5 of each kind, the kinds with the best matches first, each with a link to
+  see all of them when there are more.
+- A kind's filter (`&kind=action`, `event`, `folder`, `file`, `neighbor`, `contact` or
+  `transaction`) lists every match of that kind, 20 per page (`&page=2`…), up to 500 pages: more
+  words narrow a broader search.
+- The address keeps the search, the filter and the page, so Back returns to them and they can be
+  bookmarked. Amounts follow **Hide amounts**, whose button is on this page too.
+
+<p align="center">
+  <img src="screenshots/search-results.png" alt="Search results for lift: filters with the number of actions, events, documents, contacts and transactions found, then the best of each kind, each kind in its own card with a link to see all of them" width="900"><br>
+  <sub>The page of <b>search results</b> (synthetic demo data).</sub>
 </p>
 
 ## Languages

@@ -13,7 +13,7 @@ async function created(response: Promise<APIResponse>): Promise<{ id: number }> 
 
 /** Whether every result shows its type on the right of its title's first line, inside the list. */
 function kindsBesideTitles(page: Page) {
-  return page.getByRole('listbox', { name: 'Search results', exact: true }).getByRole('option').evaluateAll(options => options.every(option => {
+  return page.getByRole('listbox', { name: 'Search results', exact: true }).locator('.search-hit').evaluateAll(options => options.every(option => {
     const row = option.getBoundingClientRect()
     const title = option.querySelector('.search-hit-title')!.getBoundingClientRect()
     const kind = option.querySelector('.search-hit-kind')!.getBoundingClientRect()
@@ -23,13 +23,12 @@ function kindsBesideTitles(page: Page) {
 
 /**
  * Closes the open dialog with Escape and waits until the page has settled. The browser closes the
- * dialog at once, React removes it a moment later and then gives the focus back to the page: a
- * shortcut pressed in between would lose its focus to that.
+ * dialog at once, React removes it a moment later and then gives the focus back to what had it:
+ * a shortcut pressed in between would lose its focus to that.
  */
 async function closeDialog(page: Page) {
   await page.keyboard.press('Escape')
   await expect(page.locator('dialog')).toHaveCount(0)
-  await expect(page.locator('main')).toBeFocused()
   // React's effects of that render, giving the focus back among them, run right after it.
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve))))
 }
@@ -86,8 +85,11 @@ test('the search at the top finds every kind of item as it is typed and opens ea
 
     await box.fill('quokka')
     const results = page.getByRole('listbox', { name: 'Search results', exact: true })
-    const options = results.getByRole('option')
+    // The results, then the option that opens the page with all of them.
+    const options = results.locator('.search-hit')
+    const seeAll = results.getByRole('option', { name: 'See all results', exact: true })
     await expect(options).toHaveCount(6)
+    await expect(results.getByRole('option').last()).toHaveAccessibleName('See all results')
     await expect(box).toHaveAttribute('aria-expanded', 'true')
     await expect(options.locator('.search-hit-kind')).toHaveText(['Action', 'Event', 'Folder', 'Document', 'Neighbor', 'Contact'])
     await expect(options.locator('.search-hit-title')).toHaveText([
@@ -149,12 +151,42 @@ test('the search at the top finds every kind of item as it is typed and opens ea
 
     await box.fill('quokka resident')
     await expect(options).toHaveText([new RegExp(`^${resident.name}`)])
+    await box.press('ArrowDown')
     await box.press('Enter')
     await expect(page).toHaveURL(new RegExp(`/neighbors\\?neighbor=${neighbor.id}$`))
     const person = page.locator(`[data-neighbor="${neighbor.id}"]`)
     await expect(person).toBeFocused()
     await expect(person).toHaveAttribute('data-found', 'true')
     await expect(person).toContainText(resident.name)
+
+    // Enter without a chosen result opens the page with every result: the best of each kind, the
+    // best kinds first, with filters that count every kind.
+    await box.fill('quokka')
+    await expect(options).toHaveCount(6)
+    await box.press('Enter')
+    await expect(page).toHaveURL(/\/search\?q=quokka$/)
+    await expect(page.getByRole('heading', { name: 'Results for “quokka”', level: 1 })).toBeVisible()
+    const filters = page.getByRole('navigation', { name: 'Filter by type', exact: true }).getByRole('link')
+    await expect(filters).toHaveText(['All 6', 'Actions 1', 'Events 1', 'Folders 1', 'Documents 1', 'Neighbors 1', 'Contacts 1'])
+    await expect(filters.first()).toHaveAttribute('aria-current', 'page')
+    await expect(page.locator('.search-group > h2')).toHaveText(['Actions 1', 'Events 1', 'Folders 1', 'Documents 1', 'Neighbors 1', 'Contacts 1'])
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
+    await page.screenshot({ path: 'test-results/search-results-desktop.png', fullPage: true })
+    await filters.filter({ hasText: 'Contacts' }).click()
+    await expect(page).toHaveURL(/\/search\?q=quokka&kind=contact$/)
+    await expect(filters.filter({ hasText: 'Contacts' })).toHaveAttribute('aria-current', 'page')
+    const listed = page.locator('main .search-list .search-hit')
+    await expect(listed).toHaveText([/^Quokka plumbing/])
+    await listed.click()
+    await expect(page).toHaveURL(new RegExp(`/contacts\\?contact=${contact.id}$`))
+    await expect(page.getByRole('dialog', { name: 'Quokka plumbing', exact: true })).toBeVisible()
+    await closeDialog(page)
+    // So does the last option of the list.
+    await box.fill('quokka')
+    await expect(options).toHaveCount(6)
+    await seeAll.click()
+    await expect(page).toHaveURL(/\/search\?q=quokka$/)
+    await expect(box).toHaveValue('')
 
     // Only what can be read: the events go when they are turned off.
     expect((await page.request.patch('/api/admin/settings/features/events', { headers, data: { enabled: false } })).status()).toBe(200)
@@ -176,7 +208,7 @@ test('the search at the top finds every kind of item as it is typed and opens ea
     const close = phone.getByRole('button', { name: 'Close the search', exact: true })
     await expect(close).toHaveAttribute('aria-expanded', 'true')
     await field.fill('quokka')
-    await expect(phone.getByRole('listbox', { name: 'Search results', exact: true }).getByRole('option')).toHaveCount(5)
+    await expect(phone.getByRole('listbox', { name: 'Search results', exact: true }).locator('.search-hit')).toHaveCount(5)
     expect(await kindsBesideTitles(phone)).toBe(true)
     expect(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     expect((await new AxeBuilder({ page: phone }).analyze()).violations).toEqual([])

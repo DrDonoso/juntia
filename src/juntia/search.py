@@ -9,8 +9,9 @@ no kind hides the others.
 """
 
 import re
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass, replace
+from functools import partial
 from typing import Annotated, Any, Unpack
 from zoneinfo import ZoneInfo
 
@@ -24,6 +25,7 @@ from . import document_index, queries
 from .auth import DB, reader_session, settings
 from .community_events import local_start
 from .contracts import (
+    SEARCH_KINDS,
     ActionHit,
     ContactHit,
     DocumentFolderRef,
@@ -31,10 +33,13 @@ from .contracts import (
     FileHit,
     FolderHit,
     NeighborHit,
+    SearchCount,
     SearchExcerpt,
     SearchExcerptSource,
     SearchHit,
+    SearchKind,
     SearchOut,
+    SearchResultsOut,
     TransactionHit,
 )
 from .db import (
@@ -64,11 +69,15 @@ router = APIRouter(prefix="/api", tags=["Search"], dependencies=[Depends(reader_
 MAX_WORDS = 10
 PER_KIND = 5
 LIMIT = 20
+# The page of results: one kind, so many at a time, up to so many pages.
+PAGE_SIZE = 20
+MAX_PAGE = 500
 EXCERPT_BEFORE = 40
 EXCERPT_AFTER = 100
 # Equally good matches are listed in this order of their kinds.
-KINDS = ("action", "event", "folder", "file", "neighbor", "contact", "transaction")
+KINDS = SEARCH_KINDS
 SearchText = Annotated[str, Query(min_length=1, max_length=200)]
+SearchPage = Annotated[int, Query(ge=1, le=MAX_PAGE)]
 PDF_NAME = func.coalesce(ActionAttachment.display_filename, ActionAttachment.filename)
 # Members write these texts: every pattern runs in linear time. Link texts and addresses stop at
 # the next bracket or parenthesis, and emphasis takes at most three marks, so that no match
@@ -91,8 +100,28 @@ class Found:
     hit: SearchHit
 
 
-# The items found of one kind, best first, and whether there are more.
-Kind = tuple[list[Found], bool]
+@dataclass(frozen=True)
+class Kind:
+    """The items found of one kind, best first: those of the window that was asked for, whether
+    more follow them and, when they were counted, how many match in all."""
+
+    found: list[Found]
+    more: bool
+    total: int | None = None
+
+
+@dataclass(frozen=True)
+class Window:
+    """Which items of a kind to read, best first: `limit` of them from `offset` (none, to only
+    count them), and whether to count every match."""
+
+    offset: int = 0
+    limit: int = PER_KIND
+    count: bool = False
+
+
+# The box's list: the best few of each kind.
+PREVIEW = Window()
 
 
 @dataclass(frozen=True)
@@ -181,7 +210,20 @@ async def excerpts(jobs: Sequence[tuple[Sequence[Source], Sequence[str]]]) -> li
     return await run_in_threadpool(lambda: [first_excerpt(*job) for job in jobs])
 
 
-async def find_actions(db: AsyncSession, words: list[str]) -> Kind:
+async def fetch(
+    db: AsyncSession, query: Select[Unpack[tuple[Any, ...]]], window: Window,
+) -> tuple[Sequence[Any], bool, int | None]:
+    """The window's rows of `query`, whether more follow them and, when counted, how many match."""
+    total = await db.scalar(
+        select(func.count()).select_from(query.order_by(None).subquery())
+    ) if window.count else None
+    if not window.limit:
+        return [], False, total
+    rows = (await db.execute(query.offset(window.offset).limit(window.limit + 1))).all()
+    return rows[:window.limit], len(rows) > window.limit, total
+
+
+async def find_actions(db: AsyncSession, words: list[str], window: Window = PREVIEW) -> Kind:
     labels = (
         select(func.aggregate_strings(ActionLabel.name, "\n"))
         .join(ActionLabelLink, ActionLabelLink.label_id == ActionLabel.id)
@@ -201,7 +243,7 @@ async def find_actions(db: AsyncSession, words: list[str]) -> Kind:
     ).where(ActionAttachment.withdrawn_at.is_(None)))
     in_fields = every_word(db, items.c.title + "\n" + items.c.rest, words)
     order = rank(db, items.c.title, words).label("relevance")
-    rows = (await db.execute(
+    shown, more, total = await fetch(db, (
         select(CommunityAction, order, in_fields.label("in_fields"))
         .join(items, items.c.id == CommunityAction.id)
         .where(or_(
@@ -214,9 +256,7 @@ async def find_actions(db: AsyncSession, words: list[str]) -> Kind:
             ),
         ))
         .order_by(order, CommunityAction.updated_at.desc(), CommunityAction.id.desc())
-        .limit(PER_KIND + 1)
-    )).all()
-    shown = rows[:PER_KIND]
+    ), window)
     missing = {value.id: lacking(value.title, words) for value, _, _ in shown}
     # Labels show words of actions found by their own fields; the latest comment and PDF name
     # with every word, those of actions found by them.
@@ -264,12 +304,14 @@ async def find_actions(db: AsyncSession, words: list[str]) -> Kind:
     texts = await excerpts([
         (sources(value, fields), missing[value.id]) for value, _, fields in shown
     ])
-    return [Found(score, ActionHit(
+    return Kind([Found(score, ActionHit(
         id=value.id, title=value.title, excerpt=text, status=value.status,
-    )) for (value, score, _), text in zip(shown, texts, strict=True)], len(rows) > PER_KIND
+    )) for (value, score, _), text in zip(shown, texts, strict=True)], more, total)
 
 
-async def find_events(db: AsyncSession, words: list[str], zone: str) -> Kind:
+async def find_events(
+    db: AsyncSession, words: list[str], zone: str, window: Window = PREVIEW,
+) -> Kind:
     items = keyed(select(
         CommunityEvent.id,
         fold_sql(db, CommunityEvent.title).label("title"),
@@ -281,26 +323,25 @@ async def find_events(db: AsyncSession, words: list[str], zone: str) -> Kind:
     ended = or_(CommunityEvent.ends_at <= now, CommunityEvent.ends_on <= today)
     start = local_start(db, zone)
     order = rank(db, items.c.title, words).label("relevance")
-    rows = (await db.execute(
+    shown, more, total = await fetch(db, (
         select(CommunityEvent, order).join(items, items.c.id == CommunityEvent.id)
         .where(every_word(db, items.c.title + "\n" + items.c.rest, words))
         # Upcoming and ongoing events first, the soonest first; then past ones, the latest first.
         .order_by(
             order, case((ended, 1), else_=0), case((ended, null()), else_=start),
             case((ended, start)).desc(), CommunityEvent.id,
-        ).limit(PER_KIND + 1)
-    )).all()
-    shown = rows[:PER_KIND]
+        )
+    ), window)
     texts = await excerpts([
         ([Source(value.description, "description", markdown=True)], lacking(value.title, words))
         for value, _ in shown
     ])
-    return [Found(score, EventHit(
+    return Kind([Found(score, EventHit(
         id=value.id, title=value.title, excerpt=text, location=value.location,
         all_day=value.all_day, starts_at=aware(value.starts_at) if value.starts_at else None,
         ends_at=aware(value.ends_at) if value.ends_at else None,
         starts_on=value.starts_on, ends_on=value.ends_on,
-    )) for (value, score), text in zip(shown, texts, strict=True)], len(rows) > PER_KIND
+    )) for (value, score), text in zip(shown, texts, strict=True)], more, total)
 
 
 def folder_path(folders: dict[int, tuple[int | None, str]], folder_id: int | None) -> list[
@@ -315,23 +356,41 @@ def folder_path(folders: dict[int, tuple[int | None, str]], folder_id: int | Non
     return path[::-1]
 
 
-async def find_documents(db: AsyncSession, words: list[str]) -> list[Kind]:
-    """Folders by their name, and files by their name or by the text inside them."""
+async def folder_paths(db: AsyncSession) -> dict[int, tuple[int | None, str]]:
+    """Every folder's parent and name, to say where folders and files are."""
+    return {
+        folder_id: (parent_id, name) for folder_id, parent_id, name in await db.execute(
+            select(DocumentFolder.id, DocumentFolder.parent_id, DocumentFolder.name)
+            .where(DocumentFolder.deleted_at.is_(None))
+        )
+    }
+
+
+async def find_folders(db: AsyncSession, words: list[str], window: Window = PREVIEW) -> Kind:
+    """Folders by their name."""
     folder_keys = keyed(select(
         DocumentFolder.id, fold_sql(db, DocumentFolder.name).label("title"),
     ).where(DocumentFolder.deleted_at.is_(None)))
     order = rank(db, folder_keys.c.title, words).label("relevance")
-    folder_rows = (await db.execute(
+    shown, more, total = await fetch(db, (
         select(DocumentFolder.id, DocumentFolder.parent_id, DocumentFolder.name, order)
         .join(folder_keys, folder_keys.c.id == DocumentFolder.id)
         .where(every_word(db, folder_keys.c.title, words))
-        .order_by(order, DocumentFolder.name_key, DocumentFolder.id).limit(PER_KIND + 1)
-    )).all()
+        .order_by(order, DocumentFolder.name_key, DocumentFolder.id)
+    ), window)
+    folders = await folder_paths(db) if shown else {}
+    return Kind([Found(row.relevance, FolderHit(
+        id=row.id, title=row.name, excerpt=None, location=folder_path(folders, row.parent_id),
+    )) for row in shown], more, total)
+
+
+async def find_files(db: AsyncSession, words: list[str], window: Window = PREVIEW) -> Kind:
+    """Files by their name or by the text inside them."""
     file_keys = keyed(select(
         Document.id, fold_sql(db, Document.name).label("title"),
     ).where(Document.deleted_at.is_(None)))
     order = rank(db, file_keys.c.title, words, otherwise=3).label("relevance")
-    file_rows = (await db.execute(
+    shown, more, total = await fetch(db, (
         select(Document.id, Document.folder_id, Document.name, Document.kind, order)
         .join(file_keys, file_keys.c.id == Document.id)
         .join(DocumentVersion, document_index.current())
@@ -343,42 +402,28 @@ async def find_documents(db: AsyncSession, words: list[str]) -> list[Kind]:
             every_word(db, DocumentText.content_key.expression, words),
         ))
         .order_by(order, Document.updated_at.desc(), Document.id.desc())
-        .limit(PER_KIND + 1)
-    )).all()
-    folders: dict[int, tuple[int | None, str]] = {}
-    if folder_rows or file_rows:
-        folders = {
-            folder_id: (parent_id, name) for folder_id, parent_id, name in await db.execute(
-                select(DocumentFolder.id, DocumentFolder.parent_id, DocumentFolder.name)
-                .where(DocumentFolder.deleted_at.is_(None))
-            )
-        }
-    shown = file_rows[:PER_KIND]
-    read = [row.id for row in shown if row.relevance == 3]
+    ), window)
+    folders = await folder_paths(db) if shown else {}
+    by_text = [row.id for row in shown if row.relevance == 3]
     contents: dict[int, str] = {
         document_id: content for document_id, content in await db.execute(
             select(Document.id, DocumentText.content)
             .join(DocumentVersion, document_index.current())
             .join(DocumentText, DocumentText.version_id == DocumentVersion.id)
-            .where(Document.id.in_(read))
+            .where(Document.id.in_(by_text))
         )
-    } if read else {}
+    } if by_text else {}
     texts = await excerpts([(
         [Source(contents[row.id], "text")] if row.id in contents else [],
         lacking(row.name, words),
     ) for row in shown])
-    return [
-        ([Found(row.relevance, FolderHit(
-            id=row.id, title=row.name, excerpt=None, location=folder_path(folders, row.parent_id),
-        )) for row in folder_rows[:PER_KIND]], len(folder_rows) > PER_KIND),
-        ([Found(row.relevance, FileHit(
-            id=row.id, title=row.name, excerpt=text, document_kind=row.kind,
-            folder_id=row.folder_id, location=folder_path(folders, row.folder_id),
-        )) for row, text in zip(shown, texts, strict=True)], len(file_rows) > PER_KIND),
-    ]
+    return Kind([Found(row.relevance, FileHit(
+        id=row.id, title=row.name, excerpt=text, document_kind=row.kind,
+        folder_id=row.folder_id, location=folder_path(folders, row.folder_id),
+    )) for row, text in zip(shown, texts, strict=True)], more, total)
 
 
-async def find_neighbors(db: AsyncSession, words: list[str]) -> Kind:
+async def find_neighbors(db: AsyncSession, words: list[str], window: Window = PREVIEW) -> Kind:
     """The accounts the Neighbors directory lists: active ones with a dwelling."""
     items = keyed(select(
         User.id,
@@ -389,20 +434,20 @@ async def find_neighbors(db: AsyncSession, words: list[str]) -> Kind:
         User.disabled.is_(False), User.activated.is_(True),
     ))
     order = rank(db, items.c.title, words).label("relevance")
-    rows = (await db.execute(
+    shown, more, total = await fetch(db, (
         select(User.id, User.name, User.email, User.phone, Dwelling.label, order)
         .join(items, items.c.id == User.id).join(Dwelling, Dwelling.id == User.dwelling_id)
         .where(every_word(db, items.c.title + "\n" + items.c.rest, words, items.c.phone))
-        .order_by(order, items.c.title, User.id).limit(PER_KIND + 1)
-    )).all()
+        .order_by(order, items.c.title, User.id)
+    ), window)
     president = await db.scalar(select(State.president_user_id).where(State.id == 1))
-    return [Found(row.relevance, NeighborHit(
+    return Kind([Found(row.relevance, NeighborHit(
         id=row.id, title=row.name, excerpt=None, email=row.email, phone=row.phone,
         dwelling=row.label, is_president=row.id == president,
-    )) for row in rows[:PER_KIND]], len(rows) > PER_KIND
+    )) for row in shown], more, total)
 
 
-async def find_contacts(db: AsyncSession, words: list[str]) -> Kind:
+async def find_contacts(db: AsyncSession, words: list[str], window: Window = PREVIEW) -> Kind:
     tags = (
         select(func.aggregate_strings(ContactTag.name, "\n"))
         .join(ContactTagLink, ContactTagLink.tag_id == ContactTag.id)
@@ -418,12 +463,11 @@ async def find_contacts(db: AsyncSession, words: list[str]) -> Kind:
         Contact.phone,
     ).where(Contact.deleted_at.is_(None)))
     order = rank(db, items.c.title, words).label("relevance")
-    rows = (await db.execute(
+    shown, more, total = await fetch(db, (
         select(Contact, order).join(items, items.c.id == Contact.id)
         .where(every_word(db, items.c.title + "\n" + items.c.rest, words, items.c.phone))
-        .order_by(order, items.c.title, Contact.id).limit(PER_KIND + 1)
-    )).all()
-    shown = rows[:PER_KIND]
+        .order_by(order, items.c.title, Contact.id)
+    ), window)
     missing = {value.id: lacking(value.name, words) for value, _ in shown}
     names: dict[int, list[str]] = {}
     if wanted := [key for key, values in missing.items() if values]:
@@ -437,32 +481,56 @@ async def find_contacts(db: AsyncSession, words: list[str]) -> Kind:
         [Source(value.notes, "notes"), Source(", ".join(names.get(value.id, [])), "tags")],
         missing[value.id],
     ) for value, _ in shown])
-    return [Found(score, ContactHit(
+    return Kind([Found(score, ContactHit(
         id=value.id, title=value.name, excerpt=text, company=value.company, email=value.email,
         phone=value.phone,
-    )) for (value, score), text in zip(shown, texts, strict=True)], len(rows) > PER_KIND
+    )) for (value, score), text in zip(shown, texts, strict=True)], more, total)
 
 
-async def find_transactions(db: AsyncSession, words: list[str]) -> Kind:
+async def find_transactions(
+    db: AsyncSession, words: list[str], window: Window = PREVIEW,
+) -> Kind:
     items = keyed(select(
         Transaction.id,
         fold_sql(db, Transaction.description).label("title"),
         fold_sql(db, Transaction.merchant).label("rest"),
     ))
     order = rank(db, items.c.title, words).label("relevance")
-    rows = (await db.execute(
+    shown, more, total = await fetch(db, (
         select(
             Transaction.id, Transaction.description, Transaction.merchant,
             Transaction.booking_date, Transaction.amount, order,
         ).join(items, items.c.id == Transaction.id)
         .where(every_word(db, items.c.title + "\n" + items.c.rest, words))
         .order_by(order, Transaction.booking_date.desc(), Transaction.id.desc())
-        .limit(PER_KIND + 1)
-    )).all()
-    return [Found(row.relevance, TransactionHit(
+    ), window)
+    return Kind([Found(row.relevance, TransactionHit(
         id=row.id, title=row.description, excerpt=None, booking_date=row.booking_date,
         amount=row.amount, merchant=row.merchant,
-    )) for row in rows[:PER_KIND]], len(rows) > PER_KIND
+    )) for row in shown], more, total)
+
+
+# One kind's search, for a window of its matches.
+Searcher = Callable[[Window], Awaitable[Kind]]
+
+
+async def searchers(db: AsyncSession, request: Request, words: list[str]) -> dict[
+    SearchKind, Searcher
+]:
+    """The search of each kind that members can read now, in the order of KINDS."""
+    flags = await queries.feature_flags(db)
+    found: dict[SearchKind, Searcher] = {}
+    if flags.actions:
+        found["action"] = partial(find_actions, db, words)
+    if flags.events:
+        found["event"] = partial(find_events, db, words, settings(request).tz)
+    if flags.documents:
+        found["folder"] = partial(find_folders, db, words)
+        found["file"] = partial(find_files, db, words)
+    found["neighbor"] = partial(find_neighbors, db, words)
+    found["contact"] = partial(find_contacts, db, words)
+    found["transaction"] = partial(find_transactions, db, words)
+    return found
 
 
 @router.get("/search", response_model=SearchOut)
@@ -471,23 +539,53 @@ async def search(q: SearchText, request: Request, db: DB) -> SearchOut:
     words = search_words(q)
     if not words:
         return SearchOut(items=[], more=False)
-    flags = await queries.feature_flags(db)
-    kinds: list[Kind] = []
-    if flags.actions:
-        kinds.append(await find_actions(db, words))
-    if flags.events:
-        kinds.append(await find_events(db, words, settings(request).tz))
-    if flags.documents:
-        kinds.extend(await find_documents(db, words))
-    kinds.append(await find_neighbors(db, words))
-    kinds.append(await find_contacts(db, words))
-    kinds.append(await find_transactions(db, words))
+    kinds = [await searcher(PREVIEW) for searcher in (await searchers(db, request, words)).values()]
     best = sorted(
         ((found, KINDS.index(found.hit.kind), position)
-         for items, _ in kinds for position, found in enumerate(items)),
+         for kind in kinds for position, found in enumerate(kind.found)),
         key=lambda entry: (entry[0].rank, entry[1], entry[2]),
     )
     return SearchOut(
         items=[found.hit for found, _, _ in best[:LIMIT]],
-        more=len(best) > LIMIT or any(more for _, more in kinds),
+        more=len(best) > LIMIT or any(kind.more for kind in kinds),
+    )
+
+
+def counts(kinds: dict[SearchKind, Kind]) -> list[SearchCount]:
+    return [
+        SearchCount(kind=name, total=kind.total) for name, kind in kinds.items() if kind.total
+    ]
+
+
+@router.get("/search/results", response_model=SearchResultsOut)
+async def search_results(
+    q: SearchText, request: Request, db: DB, kind: SearchKind | None = None, page: SearchPage = 1,
+) -> SearchResultsOut:
+    """Everything that contains every word of `q`, for the page of results: how many items of
+    each kind match, and the best few of each kind or, for one kind, a page of its items."""
+    words = search_words(q)
+    found = await searchers(db, request, words) if words else {}
+    if kind is None:
+        kinds = {
+            name: await searcher(replace(PREVIEW, count=True)) for name, searcher in found.items()
+        }
+        # The kinds with the best matches first, like the box's list.
+        groups = sorted(
+            (value for value in kinds.values() if value.found),
+            key=lambda value: (value.found[0].rank, KINDS.index(value.found[0].hit.kind)),
+        )
+        items = [entry.hit for group in groups for entry in group.found]
+        return SearchResultsOut(counts=counts(kinds), items=items, page=1, pages=1 if items else 0)
+    kinds = {
+        name: await searcher(
+            Window((page - 1) * PAGE_SIZE, PAGE_SIZE, True) if name == kind
+            else Window(limit=0, count=True)
+        ) for name, searcher in found.items()
+    }
+    chosen = kinds.get(kind)
+    total = (chosen.total or 0) if chosen else 0
+    return SearchResultsOut(
+        counts=counts(kinds), items=[entry.hit for entry in chosen.found] if chosen else [],
+        # Pages go up to MAX_PAGE: more words narrow a broader search.
+        page=page, pages=min(-(-total // PAGE_SIZE), MAX_PAGE),
     )

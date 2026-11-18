@@ -7,7 +7,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { ApiError, api, cache } from './api/client'
 import type { SearchOut } from './api/schema.gen'
 import { I18nRoot, setLanguage } from './i18n'
-import { GlobalSearch, foldText, highlight, hitPath, searchWords, type SearchHit } from './search'
+import { GlobalSearch, foldText, highlight, hitPath, resultsPath, searchWords, type SearchHit } from './search'
 
 vi.mock('./api/client', async original => {
   const actual = await original<typeof import('./api/client')>()
@@ -72,9 +72,13 @@ function page({ compact = false, hideAmounts = false } = {}) {
   return screen.queryByRole('combobox', { name: 'Search the portal' })
 }
 
+/** The results listed for `text`, without the last option, which opens the page with all of them. */
 async function results(box: HTMLElement, text = 'lift') {
   await userEvent.setup().type(box, text)
-  return within(await screen.findByRole('listbox', { name: 'Search results' })).getAllByRole('option')
+  const options = within(await screen.findByRole('listbox', { name: 'Search results' })).getAllByRole('option')
+  expect(options.at(-1)).toHaveAccessibleName('See all results')
+  expect(options.at(-1)).toHaveAttribute('href', resultsPath((box as HTMLInputElement).value.trim()))
+  return options.slice(0, -1)
 }
 
 test('words are compared without case and accents, and marked wherever they appear', () => {
@@ -95,6 +99,8 @@ test('each result opens its own page, or the dialog of its page', () => {
   expect(hitPath({
     kind: 'neighbor', id: 6, title: 'Olivia Bennett', excerpt: null, email: 'olivia@example.org', phone: '', dwelling: '2B', is_president: false,
   })).toBe('/neighbors?neighbor=6')
+  expect(resultsPath('lift')).toBe('/search?q=lift')
+  expect(resultsPath('ático 2B', 'file', 3)).toBe('/search?q=%C3%A1tico+2B&kind=file&page=3')
 })
 
 test('typing lists the best matches with what each one is, but a single character searches nothing', async () => {
@@ -130,7 +136,12 @@ test('the arrows choose a result and Enter opens it; Escape closes the list, the
   await user.keyboard('{ArrowDown}{ArrowDown}')
   expect(box).toHaveAttribute('aria-activedescendant', options[1].id)
   expect(options[1]).toHaveAttribute('aria-selected', 'true')
+  // The last option, before the first, opens the page with every result.
   await user.keyboard('{ArrowUp}{ArrowUp}')
+  const all = screen.getByRole('option', { name: 'See all results' })
+  expect(box).toHaveAttribute('aria-activedescendant', all.id)
+  expect(all).toHaveAttribute('aria-selected', 'true')
+  await user.keyboard('{ArrowUp}')
   expect(box).toHaveAttribute('aria-activedescendant', options[5].id)
   await user.keyboard('{Escape}')
   expect(screen.queryByRole('listbox')).toBeNull()
@@ -147,37 +158,44 @@ test('the arrows choose a result and Enter opens it; Escape closes the list, the
   expect(screen.getByRole('main')).toHaveFocus()
 })
 
-test('Enter opens the best match, never one of an earlier search, and a click opens any', async () => {
+test('Enter without a chosen result opens the page with every result, like the last option', async () => {
   const user = userEvent.setup()
   const box = page()!
-  await results(box)
-  await user.type(box, ' x{Enter}')
-  expect(screen.getByTestId('address')).toHaveTextContent(/^\/$/)
+  const address = () => screen.getByTestId('address')
+  await user.type(box, 'l{Enter}')
+  expect(address()).toHaveTextContent(/^\/$/)
   await user.clear(box)
-  await results(box)
-  await user.keyboard('{Enter}')
-  expect(screen.getByTestId('address')).toHaveTextContent('/actions/3')
+  // At once, without waiting for the list.
+  await user.type(box, ' lift doors {Enter}')
+  expect(address()).toHaveTextContent(/^\/search\?q=lift\+doors$/)
+  expect(box).toHaveValue('')
+  expect(screen.getByRole('main')).toHaveFocus()
   await user.click((await results(box))[3])
-  expect(screen.getByTestId('address')).toHaveTextContent('/contacts?contact=5')
+  expect(address()).toHaveTextContent('/contacts?contact=5')
+  await results(box)
+  await user.keyboard('{ArrowUp}{Enter}')
+  expect(address()).toHaveTextContent(/^\/search\?q=lift$/)
+  await user.click((await results(box))[0])
+  expect(address()).toHaveTextContent('/actions/3')
+  await results(box)
+  await user.click(screen.getByRole('option', { name: 'See all results' }))
+  expect(address()).toHaveTextContent(/^\/search\?q=lift$/)
   expect(box).toHaveValue('')
 })
 
-test('says when nothing matches, when only the best matches are shown and when the search failed', async () => {
+test('says when nothing matches and when the search failed', async () => {
   const user = userEvent.setup()
-  answers.many = { items: hits.slice(0, 1), more: true }
   answers.broken = new ApiError('internal_error', 500)
   const box = page()!
   await user.type(box, 'zzz')
   expect(await screen.findByText('Nothing matches “zzz”.')).toBeVisible()
-  await user.clear(box)
-  await user.type(box, 'many')
-  expect(await screen.findByText('Only the best matches are shown. Add words to narrow the search.')).toBeVisible()
+  expect(screen.queryByRole('option')).toBeNull()
   await user.clear(box)
   await user.type(box, 'broken')
   expect(await screen.findByRole('alert')).toHaveTextContent('The operation could not be completed. Contact the administrator.')
   answers.broken = { items: hits.slice(1, 2), more: false }
   await user.click(screen.getByRole('button', { name: 'Try again' }))
-  expect(await screen.findByRole('option')).toHaveTextContent('Lift inspection')
+  expect((await screen.findAllByRole('option'))[0]).toHaveTextContent('Lift inspection')
 })
 
 test('/ and Ctrl+K go to the box, unless another field has the keys', async () => {
@@ -222,6 +240,7 @@ test('results speak the reader language', async () => {
   const box = screen.getByRole('combobox', { name: 'Buscar en el portal' })
   await userEvent.setup().type(box, 'lift')
   const options = within(await screen.findByRole('listbox', { name: 'Resultados de la búsqueda' })).getAllByRole('option')
+  expect(options.pop()).toHaveAccessibleName('Ver todos los resultados')
   expect(options.map(option => option.querySelector('.search-hit-kind')?.textContent)).toEqual([
     'Actuación', 'Evento', 'Documento', 'Contacto', 'Movimiento', 'Actuación',
   ])

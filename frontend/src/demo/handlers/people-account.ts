@@ -52,7 +52,7 @@ const currentPassword = (body: Body) => body.text('current_password', { min: 1, 
  * `reader_route`; the frontend's `safeReturnPath` follows the same rule).
  */
 function readerRoute(path: string): boolean {
-  return ['/', '/transactions', '/neighbors', '/profile', '/actions', '/contacts', '/events', '/documents', '/admin'].includes(path)
+  return ['/', '/transactions', '/neighbors', '/profile', '/actions', '/contacts', '/events', '/documents', '/search', '/admin'].includes(path)
     || /^\/(?:actions|events|documents\/folders)\/[1-9][0-9]{0,9}$/.test(path)
     || /^\/admin\/[a-z]{1,30}(?:-[a-z]{1,30}){0,3}$/.test(path)
 }

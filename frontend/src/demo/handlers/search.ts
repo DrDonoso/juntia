@@ -4,10 +4,11 @@
  * domains. Every word must appear in an item, in any order and in any of its fields, ignoring case
  * and accents; an action is also found by one of its comments or PDFs, and a file by its text.
  * Titles that start with the search come first, then titles with every word, then the words
- * elsewhere, and files found only by their text last: a few of each kind, and a few in all.
+ * elsewhere, and files found only by their text last: a few of each kind, and a few in all. The
+ * page of results counts every kind and lists the best few of each, or every item of one kind.
  */
-import type { SearchExcerpt, SearchOut } from '../../api/schema.gen'
-import { DemoApiError, http, now, nowIso, route, type HttpHandler } from '../core'
+import type { SearchExcerpt, SearchOut, SearchResultsOut } from '../../api/schema.gen'
+import { DemoApiError, http, now, nowIso, queryInt, route, type HttpHandler } from '../core'
 import { coreStore } from '../store/core'
 import { communityStore } from '../store/community'
 import { hasEnded, localStart } from '../store/community-events'
@@ -24,16 +25,24 @@ import { currentVersion, folderPath, readTexts, sharedDocumentsStore } from '../
 const MAX_WORDS = 10
 const PER_KIND = 5
 const LIMIT = 20
+/** The page of results: one kind, so many at a time, up to so many pages. */
+const PAGE_SIZE = 20
+const MAX_PAGE = 500
 const EXCERPT_BEFORE = 40
 const EXCERPT_AFTER = 100
 /** Equally good matches are listed in this order of their kinds. */
 const KINDS = ['action', 'event', 'folder', 'file', 'neighbor', 'contact', 'transaction'] as const
 
 type Hit = SearchOut['items'][number]
+type SearchKind = typeof KINDS[number]
 /** 0: the title starts with the search; 1: the title has every word; 2: elsewhere; 3: only in a file's text. */
 interface Found { rank: number; hit: Hit }
-/** The items found of one kind, best first, and whether there are more. */
-interface Kind { found: Found[]; more: boolean }
+/** The items found of one kind, best first: those of the window asked for, whether more follow, and how many match. */
+interface Kind { found: Found[]; more: boolean; total: number }
+/** Which items of a kind to read, best first. */
+interface Window { offset: number; limit: number }
+/** The box's list: the best few of each kind. */
+const PREVIEW: Window = { offset: 0, limit: PER_KIND }
 interface Source { text: string; name: SearchExcerpt['source']; markdown?: boolean }
 
 /** `search_words`: the distinct words of the search, without case and accents. */
@@ -100,11 +109,12 @@ function firstExcerpt(sources: readonly Source[], words: readonly string[]): Sea
 /** Most recent first, then the highest id, like `ORDER BY ... DESC, id DESC`. */
 const latest = <T extends { id: number }>(at: (item: T) => string) => (a: T, b: T) => compareText(at(b), at(a)) || b.id - a.id
 
-function kind<T>(items: T[], hit: (item: T) => Found): Kind {
-  return { found: items.slice(0, PER_KIND).map(hit), more: items.length > PER_KIND }
+function kind<T>(items: T[], hit: (item: T) => Found, window: Window): Kind {
+  const end = window.offset + window.limit
+  return { found: items.slice(window.offset, end).map(hit), more: items.length > end, total: items.length }
 }
 
-function findActions(words: string[]): Kind {
+function findActions(words: string[], window: Window): Kind {
   const state = communityStore()
   const labelNames = (labelIds: readonly number[]) => labelIds.flatMap(id => state.labels.filter(label => label.id === id))
     .sort((a, b) => compareText(casefold(a.name), casefold(b.name))).map(label => label.name)
@@ -129,10 +139,10 @@ function findActions(words: string[]): Kind {
       kind: 'action', id: action.id, title: action.title, status: action.status,
       excerpt: firstExcerpt(sources, lacking(action.title, words)),
     } }
-  })
+  }, window)
 }
 
-function findEvents(words: string[]): Kind {
+function findEvents(words: string[], window: Window): Kind {
   const instant = now().getTime(), today = zonedDay(instant, COMMUNITY_TIME_ZONE)
   const found = communityStore().events
     .filter(event => event.deletedAt === null && everyWord([event.title, event.location, event.description], words))
@@ -144,35 +154,40 @@ function findEvents(words: string[]): Kind {
     kind: 'event', id: event.id, title: event.title, location: event.location, all_day: event.allDay,
     starts_at: event.startsAt, ends_at: event.endsAt, starts_on: event.startsOn, ends_on: event.endsOn,
     excerpt: firstExcerpt([{ text: event.description, name: 'description', markdown: true }], lacking(event.title, words)),
-  } }))
+  } }), window)
 }
 
-async function findDocuments(words: string[]): Promise<Kind[]> {
-  const documents = sharedDocumentsStore()
-  await readTexts(documents, nowIso())
-  const location = (folderId: number | null) => folderPath(documents, folderId).map(folder => ({ id: folder.id, name: folder.name }))
-  const folders = documents.folders.filter(folder => folder.deletedAt === null && everyWord([folder.name], words))
+/** Where a folder or file is: the folders from the top level of Documents. */
+function documentLocation(folderId: number | null) {
+  return folderPath(sharedDocumentsStore(), folderId).map(folder => ({ id: folder.id, name: folder.name }))
+}
+
+function findFolders(words: string[], window: Window): Kind {
+  const folders = sharedDocumentsStore().folders.filter(folder => folder.deletedAt === null && everyWord([folder.name], words))
     .map(folder => ({ folder, rank: rank(folder.name, words) }))
     .sort((a, b) => a.rank - b.rank || compareText(nameKey(a.folder.name), nameKey(b.folder.name)) || a.folder.id - b.folder.id)
+  return kind(folders, ({ folder, rank }) => ({ rank, hit: {
+    kind: 'folder', id: folder.id, title: folder.name, excerpt: null, location: documentLocation(folder.parentId),
+  } }), window)
+}
+
+async function findFiles(words: string[], window: Window): Promise<Kind> {
+  const documents = sharedDocumentsStore()
+  await readTexts(documents, nowIso())
   const files = documents.documents.filter(document => document.deletedAt === null).flatMap(document => {
     const text = currentVersion(documents, document).text
     const read = text !== null && text.content !== '' && words.every(word => text.key.includes(word))
     return everyWord([document.name], words) || read ? [{ document, content: text?.content ?? '', rank: rank(document.name, words, 3) }] : []
   }).sort((a, b) => a.rank - b.rank || latest<typeof a.document>(document => document.updatedAt)(a.document, b.document))
-  return [
-    kind(folders, ({ folder, rank }) => ({ rank, hit: {
-      kind: 'folder', id: folder.id, title: folder.name, excerpt: null, location: location(folder.parentId),
-    } })),
-    kind(files, ({ document, content, rank }) => ({ rank, hit: {
+  return kind(files, ({ document, content, rank }) => ({ rank, hit: {
       kind: 'file', id: document.id, title: document.name, document_kind: document.kind, folder_id: document.folderId,
-      location: location(document.folderId),
+      location: documentLocation(document.folderId),
       excerpt: rank === 3 ? firstExcerpt([{ text: content, name: 'text' }], lacking(document.name, words)) : null,
-    } })),
-  ]
+  } }), window)
 }
 
 /** The accounts the Neighbors directory lists: active ones with a dwelling. */
-function findNeighbors(words: string[]): Kind {
+function findNeighbors(words: string[], window: Window): Kind {
   const { residents, dwellings } = coreStore()
   const { presidentId } = peopleStore().presidency
   const found = residents.flatMap(resident => {
@@ -184,10 +199,10 @@ function findNeighbors(words: string[]): Kind {
   return kind(found, ({ resident, dwelling, rank }) => ({ rank, hit: {
     kind: 'neighbor', id: resident.id, title: resident.name, excerpt: null, email: resident.email, phone: resident.phone,
     dwelling: dwelling.label, is_president: resident.id === presidentId,
-  } }))
+  } }), window)
 }
 
-function findContacts(words: string[]): Kind {
+function findContacts(words: string[], window: Window): Kind {
   const state = communityStore()
   const tagNames = (tagIds: readonly number[]) => tagIds.flatMap(id => state.contactTags.filter(tag => tag.id === id))
     .sort((a, b) => compareText(casefold(a.name), casefold(b.name))).map(tag => tag.name)
@@ -198,10 +213,10 @@ function findContacts(words: string[]): Kind {
   return kind(found, ({ contact, rank }) => ({ rank, hit: {
     kind: 'contact', id: contact.id, title: contact.name, company: contact.company, email: contact.email, phone: contact.phone,
     excerpt: firstExcerpt([{ text: contact.notes, name: 'notes' }, { text: tagNames(contact.tagIds).join(', '), name: 'tags' }], lacking(contact.name, words)),
-  } }))
+  } }), window)
 }
 
-function findTransactions(words: string[]): Kind {
+function findTransactions(words: string[], window: Window): Kind {
   const found = [...financeStore().transactions.values()]
     .filter(transaction => everyWord([transaction.description, transaction.merchant], words))
     .map(transaction => ({ transaction, rank: rank(transaction.description, words) }))
@@ -209,25 +224,72 @@ function findTransactions(words: string[]): Kind {
   return kind(found, ({ transaction, rank }) => ({ rank, hit: {
     kind: 'transaction', id: transaction.id, title: transaction.description, excerpt: null, booking_date: transaction.bookingDate,
     amount: money(transaction.amount), merchant: transaction.merchant,
-  } }))
+  } }), window)
+}
+
+/** One kind's search, for a window of its matches. */
+type Searcher = (window: Window) => Kind | Promise<Kind>
+
+/** `searchers`: the search of each kind that members can read now, in the order of the kinds. */
+function searchers(words: string[]): [SearchKind, Searcher][] {
+  const { features } = coreStore()
+  return [
+    ...features.actions ? [['action', window => findActions(words, window)] as [SearchKind, Searcher]] : [],
+    ...features.events ? [['event', window => findEvents(words, window)] as [SearchKind, Searcher]] : [],
+    ...features.documents ? [
+      ['folder', window => findFolders(words, window)] as [SearchKind, Searcher],
+      ['file', window => findFiles(words, window)] as [SearchKind, Searcher],
+    ] : [],
+    ['neighbor', window => findNeighbors(words, window)],
+    ['contact', window => findContacts(words, window)],
+    ['transaction', window => findTransactions(words, window)],
+  ]
+}
+
+/** `q` is required, 1 to 200 characters. */
+function searchText(url: URL): string {
+  const q = url.searchParams.get('q')
+  if (!q || Array.from(q).length > 200) throw new DemoApiError('invalid_request', 422)
+  return q
 }
 
 export const searchHandlers: HttpHandler[] = [
-  // `q` is required, 1 to 200 characters; sections that are off are not searched.
+  // Sections that are off are not searched.
   http.get('/api/search', route('session', async ({ url }): Promise<SearchOut> => {
-    const q = url.searchParams.get('q')
-    if (!q || Array.from(q).length > 200) throw new DemoApiError('invalid_request', 422)
-    const words = searchWords(q)
+    const words = searchWords(searchText(url))
     if (!words.length) return { items: [], more: false }
-    const { features } = coreStore()
-    const kinds: Kind[] = [
-      ...features.actions ? [findActions(words)] : [],
-      ...features.events ? [findEvents(words)] : [],
-      ...features.documents ? await findDocuments(words) : [],
-      findNeighbors(words), findContacts(words), findTransactions(words),
-    ]
+    const kinds: Kind[] = []
+    for (const [, search] of searchers(words)) kinds.push(await search(PREVIEW))
     const best = kinds.flatMap(({ found }) => found.map((entry, position) => ({ ...entry, position })))
       .sort((a, b) => a.rank - b.rank || KINDS.indexOf(a.hit.kind) - KINDS.indexOf(b.hit.kind) || a.position - b.position)
     return { items: best.slice(0, LIMIT).map(entry => entry.hit), more: best.length > LIMIT || kinds.some(({ more }) => more) }
+  })),
+  // `search_results`: how many items of each kind match, and the best few of each kind (the kinds
+  // with the best matches first) or, for one kind (`kind`), a page of its items (`page`, 1 to 500).
+  http.get('/api/search/results', route('session', async ({ url }): Promise<SearchResultsOut> => {
+    const words = searchWords(searchText(url))
+    const kindValue = url.searchParams.get('kind')
+    const chosen = kindValue === null ? null : KINDS.find(kind => kind === kindValue)
+    if (chosen === undefined) throw new DemoApiError('invalid_request', 422)
+    const page = queryInt(url, 'page', { min: 1, max: MAX_PAGE }) ?? 1
+    const found: [SearchKind, Kind][] = []
+    for (const [name, search] of words.length ? searchers(words) : []) {
+      found.push([name, await search(chosen === null || name === chosen
+        ? chosen === null ? PREVIEW : { offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE }
+        : { offset: 0, limit: 0 })])
+    }
+    const counts = found.filter(([, result]) => result.total > 0).map(([name, result]) => ({ kind: name, total: result.total }))
+    if (chosen === null) {
+      const groups = found.map(([, result]) => result).filter(result => result.found.length > 0)
+        .sort((a, b) => a.found[0].rank - b.found[0].rank || KINDS.indexOf(a.found[0].hit.kind) - KINDS.indexOf(b.found[0].hit.kind))
+      const items = groups.flatMap(group => group.found.map(entry => entry.hit))
+      return { counts, items, page: 1, pages: items.length ? 1 : 0 }
+    }
+    const result = found.find(([name]) => name === chosen)?.[1]
+    return {
+      counts, items: result?.found.map(entry => entry.hit) ?? [], page,
+      // Pages go up to MAX_PAGE: more words narrow a broader search.
+      pages: Math.min(Math.ceil((result?.total ?? 0) / PAGE_SIZE), MAX_PAGE),
+    }
   })),
 ]

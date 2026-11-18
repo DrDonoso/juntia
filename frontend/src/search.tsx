@@ -10,6 +10,7 @@ import { PrivacyContext } from './privacy'
 import { Money, Notice, day } from './shared'
 
 export type SearchHit = SearchOut['items'][number]
+export type SearchKind = SearchHit['kind']
 // The results and the search they answer, which their highlights follow while the next one loads.
 type Results = SearchOut & { q: string }
 
@@ -45,6 +46,19 @@ export function searchWords(q: string): string[] {
 }
 
 const searchable = (value: string) => Array.from(value).length >= MIN_CHARACTERS
+
+/** Whether a search has enough characters to be sent. */
+export function isSearchable(value: string): boolean {
+  return searchable(value.trim())
+}
+
+/** The page with every result of a search: of every kind, or of one kind, page by page. */
+export function resultsPath(q: string, kind: SearchKind | null = null, page = 1): string {
+  const params = new URLSearchParams({ q })
+  if (kind) params.set('kind', kind)
+  if (page > 1) params.set('page', String(page))
+  return `/search?${params}`
+}
 
 /** `text` with the search's words marked wherever they appear, ignoring case and accents. */
 export function highlight(text: string, words: readonly string[]): ReactNode {
@@ -127,13 +141,11 @@ function HitDetail({ hit, words, zone }: { hit: SearchHit; words: readonly strin
   </span>
 }
 
-function SearchOption({ hit, id, active, words, zone, choose }: {
-  hit: SearchHit; id: string; active: boolean; words: readonly string[]; zone: string | undefined; choose: () => void
-}) {
+/** A result's icon, title with what it is, details and excerpt, in the box's list or on the page of results. */
+export function HitContent({ hit, words, zone }: { hit: SearchHit; words: readonly string[]; zone: string | undefined }) {
   const { t } = useI18n()
   const source = hit.excerpt && SOURCES[hit.excerpt.source]
-  return <Link to={hitPath(hit)} id={id} role="option" aria-selected={active} tabIndex={-1} data-active={active || undefined}
-    className="search-hit" onClick={event => { if (plainClick(event)) choose() }}>
+  return <>
     <Icon name={hit.kind === 'file' ? FILE_ICONS[hit.document_kind] : KIND_ICONS[hit.kind]} size={18} className="search-hit-icon" />
     <span className="search-hit-text">
       <span className="search-hit-heading">
@@ -145,12 +157,22 @@ function SearchOption({ hit, id, active, words, zone, choose }: {
         {source && <span className="search-hit-source">{t(source)} </span>}{highlight(hit.excerpt.text, words)}
       </span>}
     </span>
+  </>
+}
+
+function SearchOption({ hit, id, active, words, zone, choose }: {
+  hit: SearchHit; id: string; active: boolean; words: readonly string[]; zone: string | undefined; choose: () => void
+}) {
+  return <Link to={hitPath(hit)} id={id} role="option" aria-selected={active} tabIndex={-1} data-active={active || undefined}
+    className="search-hit" onClick={event => { if (plainClick(event)) choose() }}>
+    <HitContent hit={hit} words={words} zone={zone} />
   </Link>
 }
 
 /**
  * The box and its results. Typing lists, after a short pause, what contains every word typed:
- * the arrows choose a result and Enter opens it (the first one, if none is chosen).
+ * the arrows choose a result and Enter opens it. Without a chosen result, Enter opens the page
+ * with every result, like the last option.
  */
 function SearchBox({ compact, hideAmounts, input, done }: {
   compact: boolean; hideAmounts: boolean; input?: RefObject<HTMLInputElement | null>; done: () => void
@@ -182,7 +204,10 @@ function SearchBox({ compact, hideAmounts, input, done }: {
   const items = expanded && results ? results.items : []
   const words = useMemo(() => results ? searchWords(results.q) : [], [results])
   const config = useEventConfig(items.some(hit => hit.kind === 'event'))
-  const activeIndex = results && active.q === results.q && active.index < items.length ? active.index : -1
+  const listed = items.length > 0
+  // The results, then the option that shows them all on their page.
+  const options = listed ? items.length + 1 : 0
+  const activeIndex = results && active.q === results.q && active.index < options ? active.index : -1
   useLayoutEffect(() => {
     if (activeIndex >= 0) document.getElementById(`${id}-option-${activeIndex}`)?.scrollIntoView?.({ block: 'nearest' })
   }, [id, activeIndex])
@@ -190,8 +215,8 @@ function SearchBox({ compact, hideAmounts, input, done }: {
     setText(''); setRequest(''); setDismissed(false); setActive({ q: '', index: -1 })
     done()
   }
-  function open(hit: SearchHit) {
-    navigate(hitPath(hit))
+  function open(path: string) {
+    navigate(path)
     finish()
   }
   function keyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -199,23 +224,23 @@ function SearchBox({ compact, hideAmounts, input, done }: {
     if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && results?.items.length && searchable(typed)) {
       event.preventDefault()
       if (dismissed) { setDismissed(false); return }
-      const last = results.items.length - 1
+      // The last option shows every result.
+      const last = results.items.length
       const index = event.key === 'ArrowDown'
         ? activeIndex >= last ? 0 : activeIndex + 1
         : activeIndex <= 0 ? last : activeIndex - 1
       setActive({ q: results.q, index })
     } else if (event.key === 'Enter') {
-      // Without a chosen result, the best one; never one of an earlier search.
-      const hit = items[activeIndex] ?? (results?.q === typed ? items[0] : undefined)
-      if (!hit) return
+      // The chosen result; without one, every result of what is typed, on their page.
+      const hit = items[activeIndex]
+      if (!hit && !searchable(typed)) return
       event.preventDefault()
-      open(hit)
+      open(hit ? hitPath(hit) : resultsPath(typed))
     } else if (event.key === 'Escape' && !compact && (expanded || text)) {
       event.preventDefault()
       if (expanded) setDismissed(true); else setText('')
     }
   }
-  const listed = items.length > 0
   const counted = expanded && results && !query.isPlaceholderData ? t('search.count', { count: results.items.length }) : ''
   return <div className="global-search-box" onFocus={() => setFocused(true)} onBlur={event => {
     if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setFocused(false)
@@ -242,8 +267,12 @@ function SearchBox({ compact, hideAmounts, input, done }: {
         {listed && <div role="listbox" id={listId} aria-label={t('search.results')} aria-busy={query.isFetching}>
           {items.map((hit, index) => <SearchOption key={`${hit.kind}:${hit.id}`} hit={hit} id={optionId(index)}
             active={index === activeIndex} words={words} zone={config.data?.timezone} choose={finish} />)}
+          <Link to={resultsPath(typed)} id={optionId(items.length)} role="option" aria-selected={activeIndex === items.length}
+            tabIndex={-1} data-active={activeIndex === items.length || undefined} className="search-all"
+            onClick={event => { if (plainClick(event)) finish() }}>
+            <Icon name="search" size={16} /><span>{t('search.seeAll')}</span><Icon name="arrow-right" size={16} />
+          </Link>
         </div>}
-        {results?.more && <p className="search-message">{t('search.more')}</p>}
       </div>
     </PrivacyContext>}
   </div>

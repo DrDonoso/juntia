@@ -1183,6 +1183,11 @@ export interface RuleOut {
   skip_ai: boolean
 }
 
+export interface SearchCount {
+  kind: 'action' | 'event' | 'folder' | 'file' | 'neighbor' | 'contact' | 'transaction'
+  total: number
+}
+
 export interface SearchExcerpt {
   source: 'description' | 'labels' | 'comment' | 'attachment' | 'notes' | 'tags' | 'text'
   text: string
@@ -1191,6 +1196,13 @@ export interface SearchExcerpt {
 export interface SearchOut {
   items: (ActionHit | EventHit | FolderHit | FileHit | NeighborHit | ContactHit | TransactionHit)[]
   more: boolean
+}
+
+export interface SearchResultsOut {
+  counts: SearchCount[]
+  items: (ActionHit | EventHit | FolderHit | FileHit | NeighborHit | ContactHit | TransactionHit)[]
+  page: number
+  pages: number
 }
 
 export interface SetPasswordIn {

@@ -1,0 +1,13 @@
+{
+  "kind": "improved",
+  "audience": "everyone",
+  "icon": "search",
+  "en": {
+    "title": "See every result of a search, by type",
+    "body": "At the bottom of the search box's list, \"See all results\" opens a page with everything that matches, with a filter for each type: actions, events, documents, neighbors… Pressing Enter without choosing a result opens it too."
+  },
+  "es": {
+    "title": "Todos los resultados de una búsqueda, por tipo",
+    "body": "Al final de la lista del buscador, «Ver todos los resultados» abre una página con todo lo que coincide y un filtro por tipo: actuaciones, eventos, documentos, vecinos… Pulsar Intro sin elegir un resultado también la abre."
+  }
+}
