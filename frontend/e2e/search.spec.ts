@@ -21,6 +21,19 @@ function kindsBesideTitles(page: Page) {
   }))
 }
 
+/**
+ * Closes the open dialog with Escape and waits until the page has settled. The browser closes the
+ * dialog at once, React removes it a moment later and then gives the focus back to the page: a
+ * shortcut pressed in between would lose its focus to that.
+ */
+async function closeDialog(page: Page) {
+  await page.keyboard.press('Escape')
+  await expect(page.locator('dialog')).toHaveCount(0)
+  await expect(page.locator('main')).toBeFocused()
+  // React's effects of that render, giving the focus back among them, run right after it.
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve))))
+}
+
 test.afterEach(async ({ page }) => {
   if (process.env.E2E_BASE_URL || page.url() === 'about:blank') return
   const headers = writeHeaders(page)
@@ -101,12 +114,10 @@ test('the search at the top finds every kind of item as it is typed and opens ea
     await expect(page.getByRole('dialog', { name: 'Quokka lift inspection', exact: true })).toBeVisible()
     await expect(box).toHaveValue('')
     await expect(results).toHaveCount(0)
-    await page.keyboard.press('Escape')
-    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await closeDialog(page)
 
     // Words inside a file, once the server has read it, and `/` goes to the box.
     await expect.poll(async () => (await (await page.request.get('/api/search?q=wombats')).json()).items.length, { timeout: 30_000 }).toBe(1)
-    await page.locator('main').focus()
     await page.keyboard.press('/')
     await expect(box).toBeFocused()
     await page.keyboard.type('wombats LIFT')
@@ -118,8 +129,7 @@ test('the search at the top finds every kind of item as it is typed and opens ea
     await expect(page).toHaveURL(new RegExp(`/documents/folders/${folder.id}\\?file=[1-9][0-9]*$`))
     const viewer = page.getByRole('dialog', { name: 'Quokka rules.txt', exact: true })
     await expect(viewer.getByText('Wombats may not use the lift after 22:00.')).toBeVisible()
-    await page.keyboard.press('Escape')
-    await expect(viewer).toHaveCount(0)
+    await closeDialog(page)
     await expect(page).toHaveURL(new RegExp(`/documents/folders/${folder.id}$`))
 
     // Escape hides the results first and then empties the box.
@@ -135,8 +145,7 @@ test('the search at the top finds every kind of item as it is typed and opens ea
     await options.click()
     await expect(page).toHaveURL(new RegExp(`/contacts\\?contact=${contact.id}$`))
     await expect(page.getByRole('dialog', { name: 'Quokka plumbing', exact: true }).getByText('Pipes and taps')).toBeVisible()
-    await page.keyboard.press('Escape')
-    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await closeDialog(page)
 
     await box.fill('quokka resident')
     await expect(options).toHaveText([new RegExp(`^${resident.name}`)])
