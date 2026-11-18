@@ -141,6 +141,8 @@ export const documents = {
   },
   info: {
     title: 'Info: {name}',
+    // A file opened from the search or a link that no longer exists.
+    missing: 'File not available',
     loading: 'Loading the details…',
     type: 'Type',
     size: 'Size',

@@ -90,7 +90,7 @@ const dwelling = (page, label) => page.locator('section.neighbor-dwelling', { ha
 
 /**
  * The screenshots, in the order of the README. `as` is how the welcome dialog is left; `capture`
- * brings the page to the state to show.
+ * brings the page to the state to show, and `keepFocus` leaves the focus where it put it.
  */
 const SHOTS = [
   {
@@ -180,6 +180,18 @@ const SHOTS = [
       await go(page, '/contacts')
       await heading(page, 'Contacts').waitFor()
       await page.locator('tbody tr').nth(8).waitFor()
+    },
+  },
+  {
+    name: 'search',
+    as: 'neighbor',
+    // The results show while the box has the focus.
+    keepFocus: true,
+    async capture(page) {
+      await go(page, '/actions')
+      await heading(page, 'Actions').waitFor()
+      await page.getByRole('combobox', { name: 'Search the portal' }).fill('lift')
+      await page.getByRole('listbox', { name: 'Search results' }).getByRole('option').nth(4).waitFor()
     },
   },
   {
@@ -301,10 +313,10 @@ async function start(page, as) {
   if (await page.locator('html').getAttribute('lang') !== 'en') throw new Error('The demo did not start in English')
 }
 
-/** No pointer over the page, no focus ring, nothing loading. */
-async function tidy(page, activity) {
+/** No pointer over the page, no focus ring unless the screenshot needs the focus, nothing loading. */
+async function tidy(page, activity, keepFocus = false) {
   await page.mouse.move(page.viewportSize().width / 2, 1)
-  await page.evaluate(() => {
+  if (!keepFocus) await page.evaluate(() => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
   })
   await apiIdle(activity)
@@ -342,7 +354,7 @@ async function takeScreenshot(browser, shot) {
     await start(page, shot.as)
     await apiIdle(activity)
     await shot.capture(page)
-    await tidy(page, activity)
+    await tidy(page, activity, shot.keepFocus)
     const image = await page.screenshot({ animations: 'disabled', caret: 'hide' })
     if (problems.length) throw new Error(problems.join('\n  '))
     writeFileSync(resolve(outDir, `${shot.name}.png`), image)

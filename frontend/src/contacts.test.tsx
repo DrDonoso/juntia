@@ -365,6 +365,25 @@ test('the row menu supports keyboard navigation and the name opens a contact mod
   expect(screen.queryByText('Details')).toBeNull()
 })
 
+test('a contact the search opens shows its details until they are closed, or says it is gone', async () => {
+  const user = userEvent.setup()
+  const answer = vi.mocked(api).getMockImplementation()!
+  vi.mocked(api).mockImplementation(async (url, ...rest) => url === '/contacts/7' ? Promise.reject(new ApiError('contact_not_found', 404)) : answer(url, ...rest))
+  page('/contacts?contact=1')
+  const details = await screen.findByRole('dialog', { name: contact.name })
+  expect(within(details).getByText(contact.notes)).toBeVisible()
+  await user.click(within(details).getByRole('button', { name: 'Close' }))
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(await table()).toBeTruthy()
+  for (const address of ['/contacts?contact=7', '/contacts?contact=first']) {
+    cleanup()
+    page(address)
+    const missing = await screen.findByRole('dialog', { name: 'Contact not available' })
+    expect(missing).toHaveTextContent('The contact is no longer available.')
+  }
+  expect(api).not.toHaveBeenCalledWith('/contacts/first', 'GET', undefined, expect.anything())
+})
+
 test('unfinished tags are added on blur and cancelling never writes them to the catalog', async () => {
   const user = userEvent.setup()
   page()

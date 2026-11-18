@@ -232,6 +232,10 @@ export function useFeatureLifecycle(features: FeatureFlagsOut | undefined) {
       if (!features.documents) cache.removeQueries({ queryKey: ['documents'] })
       else void cache.invalidateQueries({ queryKey: ['documents'] })
     }
+    // The search covers the sections that are on: open results are fetched again.
+    if (before.actions !== features.actions || before.events !== features.events || before.documents !== features.documents) {
+      void cache.resetQueries({ queryKey: ['search'] })
+    }
   }, [features])
 }
 export function useCatalog(kind: 'categories' | 'tags') {

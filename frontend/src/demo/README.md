@@ -84,10 +84,12 @@ src/demo/
   testing.ts           Vitest helpers: demoRequest(), signInAdmin() and signInAs(), stubFetchWithDemo()
 ```
 
-Domains are `core` (this foundation), `finance`, `community`, `people`, `storage` and `documents`
+Domains are `core` (this foundation), `finance`, `community`, `people`, `storage`, `documents`
 (shared documents, whose modules are named `shared-documents*.ts`: `scenario/community-documents.ts`
-is the catalogue of the actions' PDFs). Each domain owns exactly its `scenario/`, `store/` and
-`handlers/` module plus its own test files; `handlers/index.ts` and `store/index.ts` import them.
+is the catalogue of the actions' PDFs) and `search` (the search box at the top of every page, which
+only reads the other domains' stores and owns no data). Each domain owns exactly its `scenario/`,
+`store/` and `handlers/` module plus its own test files; `handlers/index.ts` and `store/index.ts`
+import them.
 
 ## The cast (`cast.ts`)
 
@@ -230,6 +232,10 @@ Every operation of `src/api/openapi.json` belongs to exactly one module (`{x}` i
   `GET /api/admin/documents/versions/{version_id}/download|preview`,
   `GET /api/admin/documents/text` and `/text/files`, `POST /api/admin/documents/text/retry` and
   `/text/files/{document_id}/read`, `GET|PATCH /api/admin/settings/documents`.
+- **search** (`handlers/search.ts`): `GET /api/search`, the search box at the top of every page:
+  actions (with their comments and PDF names), events, folders and files (by name and by their
+  text), neighbors, contacts and transactions, read from the other domains' stores with the
+  backend's rules (`src/juntia/search.py`).
 
 Any other `/api` request reaches the catch-all: a 501 `not_implemented` and a console error
 starting with `[demo] Unhandled API request:`. Two guards keep it that way:

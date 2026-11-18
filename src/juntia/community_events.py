@@ -1,7 +1,7 @@
 import math
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta, timezone
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Path, Query, Request
@@ -227,6 +227,19 @@ def record_history(
     ))
 
 
+def local_start(db: AsyncSession, zone: str) -> ColumnElement[Any]:
+    """When an event starts in the community's time zone, comparable across both schedules."""
+    if db.get_bind().dialect.name == "sqlite":
+        return case(
+            (CommunityEvent.all_day, cast(CommunityEvent.starts_on, Text) + " 00:00:00.000000"),
+            else_=func.juntia_local_datetime(CommunityEvent.starts_at, zone),
+        )
+    return case(
+        (CommunityEvent.all_day, cast(CommunityEvent.starts_on, DateTime)),
+        else_=func.timezone(zone, CommunityEvent.starts_at),
+    )
+
+
 @router.get("/config", response_model=EventConfigOut)
 async def configuration(request: Request) -> EventConfigOut:
     return EventConfigOut(timezone=settings(request).tz)
@@ -246,16 +259,7 @@ async def events(
     now = utcnow()
     today = now.astimezone(ZoneInfo(zone)).date()
     where = event_conditions(db, scope, q, action_id, now, today)
-    if db.get_bind().dialect.name == "sqlite":
-        local = case(
-            (CommunityEvent.all_day, cast(CommunityEvent.starts_on, Text) + " 00:00:00.000000"),
-            else_=func.juntia_local_datetime(CommunityEvent.starts_at, zone),
-        )
-    else:
-        local = case(
-            (CommunityEvent.all_day, cast(CommunityEvent.starts_on, DateTime)),
-            else_=func.timezone(zone, CommunityEvent.starts_at),
-        )
+    local = local_start(db, zone)
     order = (local.asc(), CommunityEvent.id.asc()) if scope in ("upcoming", "all") else (
         local.desc(), CommunityEvent.id.desc(),
     )

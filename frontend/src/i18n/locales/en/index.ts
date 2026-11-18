@@ -13,6 +13,7 @@ import { events } from './events'
 import { finance } from './finance'
 import { labels } from './labels'
 import { neighbors } from './neighbors'
+import { search } from './search'
 import { shell } from './shell'
 import { storage } from './storage'
 import { whatsNew } from './whatsNew'
@@ -32,6 +33,7 @@ export const en = {
   labels,
   storage,
   documents,
+  search,
   demo,
   whatsNew,
 } as const

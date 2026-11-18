@@ -1,0 +1,13 @@
+{
+  "kind": "new",
+  "audience": "everyone",
+  "icon": "search",
+  "en": {
+    "title": "Search the whole portal at once",
+    "body": "Type in the search box at the top of any page to find actions, events, folders, documents (by their content too), neighbors, contacts and transactions. Each result says what it is on the right; choose one to open it. On a phone, tap the magnifier."
+  },
+  "es": {
+    "title": "Busca en todo el portal a la vez",
+    "body": "Escribe en el buscador de arriba, en cualquier página, y encontrarás actuaciones, eventos, carpetas, documentos (también por su contenido), vecinos, contactos y movimientos. Cada resultado dice a la derecha qué es; elige uno para abrirlo. En el móvil, pulsa la lupa."
+  }
+}

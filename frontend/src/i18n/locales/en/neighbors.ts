@@ -14,6 +14,8 @@ export const neighbors = {
     empty: 'There are no dwellings in the directory yet.',
     missingDwelling: 'A dwelling in this cell is no longer available. Refresh the directory or contact the administrator.',
     otherDwellings: 'Other dwellings',
+    // A neighbor opened from the search who is no longer in the directory.
+    notFound: 'This neighbor is no longer in the directory.',
   },
   // Zone grid shared by the directory and the layout editor.
   layout: {

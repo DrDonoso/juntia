@@ -247,6 +247,8 @@ details > div { margin: 8px 0; }
 .neighbor-dwelling { margin-bottom: 0; }
 .neighbor-list { list-style: none; display: grid; gap: 16px; padding: 0; margin: 0; }
 .neighbor-list > li { display: flex; align-items: flex-start; gap: 12px; padding-top: 16px; border-top: 1px solid var(--border); }
+/* The neighbor the search opened (neighbors.tsx). */
+.neighbor-list > li[data-found] { border-radius: 8px; background: rgba(var(--primary-rgb), .08); box-shadow: 0 0 0 8px rgba(var(--primary-rgb), .08); }
 .neighbor-contact { min-width: 0; overflow-wrap: anywhere; }
 .neighbor-name { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
 .president-badge { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; min-width: 30px; min-height: 30px; padding: 4px; border-radius: 50%; border: 1px solid rgba(var(--warning-rgb), .3); background: var(--warning-bg); color: var(--warning-text); }
@@ -825,4 +827,35 @@ dialog.file-preview-pdf[open] { display: flex; flex-direction: column; height: 8
   .document-check { opacity: 1; }
   .document-card.selected { outline: 2px solid Highlight; }
   .document-excerpt mark { background: Mark; color: MarkText; forced-color-adjust: none; }
+}
+/* The search at the top of every page (search.tsx): a box in the top bar, or a panel under it on
+   narrow screens, with results that say on the right what each one is. */
+.global-search { position: relative; flex: 0 1 clamp(200px, 32vw, 440px); min-width: 0; }
+.global-search-field { position: relative; display: flex; align-items: center; }
+.global-search-field .global-search-icon { position: absolute; left: 10px; color: var(--text-muted); pointer-events: none; }
+.global-search-field input { width: 100%; min-height: 36px; padding-left: 32px; background: var(--bg); }
+.search-results { position: absolute; top: calc(100% + 6px); right: 0; width: max(100%, 380px); max-height: min(70vh, calc(100dvh - var(--topbar-height) - 24px)); overflow-y: auto; overscroll-behavior: contain; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-hero); font-size: var(--text-sm); }
+.search-results [role="listbox"][aria-busy="true"] { opacity: .7; }
+.search-hit { display: flex; align-items: flex-start; gap: 10px; min-height: 44px; padding: 8px 10px; border-radius: 8px; color: var(--text); }
+.search-hit:hover, .search-hit[data-active] { background: rgba(var(--primary-rgb), .08); }
+.search-hit .search-hit-icon { margin-top: 2px; color: var(--text-muted); }
+.search-hit-text { display: grid; flex: 1; gap: 2px; min-width: 0; }
+.search-hit-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.search-hit-title { min-width: 0; font-weight: 550; overflow-wrap: anywhere; }
+.search-hit-kind { flex-shrink: 0; padding: 1px 7px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-muted); font-size: var(--text-2xs); line-height: 1.6; white-space: nowrap; }
+.search-hit-detail, .search-hit-excerpt { color: var(--text-muted); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.search-hit-excerpt { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.search-hit-source { font-weight: 600; }
+/* No side padding: the words are often parts of longer ones, which must not look split. */
+.search-hit mark { padding: 0; border-radius: 2px; background: var(--warning-bg); color: inherit; font-weight: 650; }
+.search-message { margin: 6px 8px; color: var(--text-muted); font-size: var(--text-xs); }
+.search-message .notice { margin: 0 0 8px; }
+.global-search-panel { position: absolute; top: 100%; left: 0; right: 0; max-height: calc(100dvh - var(--topbar-height)); overflow-y: auto; overscroll-behavior: contain; padding: var(--space-3); border-bottom: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-hero); }
+/* At least 16px, so that phones do not zoom into the box. */
+.global-search-panel .global-search-field input { min-height: 44px; font-size: 16px; }
+.global-search-panel .search-results { position: static; width: auto; max-height: none; margin-top: var(--space-2); padding: 0; border: 0; box-shadow: none; }
+@media (forced-colors: active) {
+  .search-hit[data-active] { outline: 2px solid Highlight; outline-offset: -2px; }
+  .search-hit mark { background: Mark; color: MarkText; forced-color-adjust: none; }
+  .neighbor-list > li[data-found] { outline: 2px solid Highlight; outline-offset: 6px; }
 }

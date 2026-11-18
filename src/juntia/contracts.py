@@ -1491,3 +1491,89 @@ class WhatsNewOut(Contract):
 
 class WhatsNewSeenIn(Contract):
     ids: Annotated[list[NoteId], Field(min_length=1, max_length=500)]
+
+
+# The search box at the top of every page (search.py).
+SearchExcerptSource = Literal[
+    "description", "labels", "comment", "attachment", "notes", "tags", "text",
+]
+
+
+class SearchExcerpt(Contract):
+    # The words around the first place where some of the search's words appear; "…" marks a cut.
+    text: str
+    # An action's or event's description, labels, comment or PDF name; a contact's notes or tags;
+    # the text inside a file.
+    source: SearchExcerptSource
+
+
+class SearchHitBase(Contract):
+    id: int
+    # An action's or event's title; the name of a folder, file, neighbor or contact; a bank
+    # transaction's description.
+    title: str
+    # Where the search's words appear when the title lacks some of them, from a longer text.
+    excerpt: SearchExcerpt | None
+
+
+class ActionHit(SearchHitBase):
+    kind: Literal["action"] = "action"
+    status: ActionStatus
+
+
+class EventHit(SearchHitBase):
+    kind: Literal["event"] = "event"
+    location: str
+    all_day: bool
+    starts_at: datetime | None
+    ends_at: datetime | None
+    starts_on: date | None
+    ends_on: date | None
+
+
+class FolderHit(SearchHitBase):
+    kind: Literal["folder"] = "folder"
+    # The folders above it, from the top level of Documents.
+    location: list[DocumentFolderRef]
+
+
+class FileHit(SearchHitBase):
+    kind: Literal["file"] = "file"
+    document_kind: DocumentKind
+    folder_id: int | None
+    location: list[DocumentFolderRef]
+
+
+class NeighborHit(SearchHitBase):
+    kind: Literal["neighbor"] = "neighbor"
+    email: str
+    phone: str
+    dwelling: str
+    is_president: bool
+
+
+class ContactHit(SearchHitBase):
+    kind: Literal["contact"] = "contact"
+    company: str
+    email: str | None
+    phone: str
+
+
+class TransactionHit(SearchHitBase):
+    kind: Literal["transaction"] = "transaction"
+    booking_date: date
+    amount: Decimal
+    merchant: str
+
+
+SearchHit = Annotated[
+    ActionHit | EventHit | FolderHit | FileHit | NeighborHit | ContactHit | TransactionHit,
+    Field(discriminator="kind"),
+]
+
+
+class SearchOut(Contract):
+    # The best matches first.
+    items: list[SearchHit]
+    # More items match than are listed: a few of each kind are, and a few in all.
+    more: bool

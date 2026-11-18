@@ -54,6 +54,7 @@ export const contacts: Messages<typeof source> = {
   },
   viewDetails: 'Ver detalles de {name}',
   details: {
+    missing: 'Contacto no disponible',
     sendEmail: 'Escribir correo a {name}',
     sendEmailTitle: 'Escribir correo',
     emailUnavailable: 'Correo no disponible',

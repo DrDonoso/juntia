@@ -293,6 +293,23 @@ test('an image pasted into a comment is uploaded to the demo API and shown from 
   await expectNoCrash(page)
 })
 
+test('the search at the top finds the sample data as it is typed and opens the chosen item', async ({ page }) => {
+  await page.goto('/')
+  await explore(page)
+  const box = page.getByRole('combobox', { name: en.search.label, exact: true })
+  await box.fill('bike storage')
+  const options = page.getByRole('listbox', { name: en.search.results, exact: true }).getByRole('option')
+  await expect(options.first()).toContainText('Bike storage in the basement')
+  await expect(options.first().locator('.search-hit-kind')).toHaveText(en.search.kinds.action)
+  await expect(options.filter({ hasText: 'Bike storage survey.csv' }).locator('.search-hit-kind')).toHaveText(en.search.kinds.file)
+  await expectAccessible(page, 'the search results')
+  await box.press('Enter')
+  await expect(page).toHaveURL(/\/actions\/[1-9][0-9]*$/)
+  await expect(page.getByRole('heading', { name: 'Bike storage in the basement', level: 1 })).toBeVisible()
+  await expect(box).toHaveValue('')
+  await expectNoCrash(page)
+})
+
 test.describe('without service workers', () => {
   test.use({ serviceWorkers: 'block', expectedConsoleErrors: [/^The demo API could not start/] })
 

@@ -24,6 +24,7 @@ from . import (
     document_reading,
     google_auth,
     queries,
+    search,
     storage_admin,
     users,
     whats_new,
@@ -166,6 +167,7 @@ def create_app(config: Settings | None = None, *, text_worker: bool = True) -> F
     application.include_router(community_documents.settings_router)
     application.include_router(document_reading.router)
     application.include_router(contacts.router)
+    application.include_router(search.router)
     application.include_router(whats_new.router)
     application.include_router(api.public_router)
     application.include_router(api.reader)

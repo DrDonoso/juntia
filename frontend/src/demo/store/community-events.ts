@@ -127,8 +127,8 @@ export function filterEvents(state: CommunityState, query: EventQuery, now: numb
   })
 }
 
-/** Sortable local start: all-day events start at midnight of their first day. */
-function localStart(event: DemoEvent, zone: string): string {
+/** Sortable local start: all-day events start at midnight of their first day (`local_start`). */
+export function localStart(event: DemoEvent, zone: string): string {
   return event.allDay ? `${event.startsOn}T00:00:00.000` : zonedDateTime(Date.parse(event.startsAt ?? ''), zone)
 }
 

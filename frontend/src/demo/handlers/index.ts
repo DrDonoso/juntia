@@ -10,17 +10,19 @@ import { communityHandlers } from './community'
 import { coreHandlers } from './core'
 import { financeHandlers } from './finance'
 import { peopleHandlers } from './people'
+import { searchHandlers } from './search'
 import { sharedDocumentHandlers } from './shared-documents'
 import { storageHandlers } from './storage'
 
 /** Handlers of each module of the demo API. */
-export const domainHandlers: Readonly<Record<'core' | 'finance' | 'community' | 'people' | 'storage' | 'documents', readonly HttpHandler[]>> = {
+export const domainHandlers: Readonly<Record<'core' | 'finance' | 'community' | 'people' | 'storage' | 'documents' | 'search', readonly HttpHandler[]>> = {
   core: coreHandlers,
   finance: financeHandlers,
   community: communityHandlers,
   people: peopleHandlers,
   storage: storageHandlers,
   documents: sharedDocumentHandlers,
+  search: searchHandlers,
 }
 
 /**
@@ -56,5 +58,6 @@ export const handlers: HttpHandler[] = [
   ...peopleHandlers,
   ...storageHandlers,
   ...sharedDocumentHandlers,
+  ...searchHandlers,
   unhandledHandler,
 ]

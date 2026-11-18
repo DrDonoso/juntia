@@ -95,6 +95,22 @@ function ContactDetails({ value, close }: { value: ContactOut; close: () => void
 }
 function isStale(error: unknown) { return error instanceof ApiError && error.code === 'contact_stale' }
 
+/** The contact the address names (`?contact=<id>`, which the search opens), in its details. */
+function LinkedContact({ raw, close }: { raw: string; close: () => void }) {
+  const { t } = useI18n()
+  const id = /^[1-9][0-9]{0,9}$/.test(raw) && Number(raw) <= 2147483647 ? Number(raw) : null
+  const query = useQuery({
+    queryKey: ['contacts', 'item', id],
+    queryFn: ({ signal }) => api<ContactOut>(`/contacts/${id}`, 'GET', undefined, signal),
+    enabled: id !== null,
+  })
+  if (query.data) return <ContactDetails value={query.data} close={close} />
+  if (id !== null && !query.error) return null
+  return <Modal title={t('contacts.details.missing')} close={close} className="contact-modal">
+    <Notice error>{query.error ? errorMessage(query.error) : codeMessage('contact_not_found')}</Notice>
+  </Modal>
+}
+
 function ContactForm({ value, close }: { value: ContactOut | null; close: () => void }) {
   const { t } = useI18n()
   const [base, setBase] = useState(value), [draft, setDraft] = useState(() => draftFor(value))
@@ -293,6 +309,12 @@ export function ContactsPage({ deleted = false }: { deleted?: boolean }) {
   const [history, setHistory] = useState<ContactOut | null>(null)
   const [details, setDetails] = useState<ContactOut | null>(null)
   const createButton = useRef<HTMLButtonElement>(null)
+  const linked = deleted ? null : params.get('contact')
+  function closeLinked() {
+    const next = new URLSearchParams(params)
+    next.delete('contact')
+    setParams(next, { replace: true })
+  }
   function filter(changes: Record<string, string>) {
     const next = new URLSearchParams(params)
     Object.entries(changes).forEach(([key, value]) => value ? next.set(key, value) : next.delete(key))
@@ -346,5 +368,6 @@ export function ContactsPage({ deleted = false }: { deleted?: boolean }) {
     {deleting && <DeleteContact value={deleting} close={() => setDeleting(null)} restoreFocusRef={createButton} />}
     {history && <ContactHistory contact={history} close={() => setHistory(null)} />}
     {details && <ContactDetails value={details} close={() => setDetails(null)} />}
+    {linked !== null && <LinkedContact key={linked} raw={linked} close={closeLinked} />}
   </>
 }

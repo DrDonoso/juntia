@@ -1,7 +1,7 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, onTestFinished, test, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { cache, signedOut } from './api/client'
 import type { DwellingLayoutOut, DwellingNeighborsOut, UserAuthOut } from './api/schema.gen'
@@ -187,4 +187,31 @@ test('the neighbors page renders in Spanish and follows a language switch', asyn
   expect(within(own).getByRole('button', { name: 'Alex Morgan: Community president' })).toBeVisible()
   expect(screen.getByRole('region', { name: '2 A' })).toHaveTextContent('This dwelling has no neighbors in the directory yet.')
   expect(screen.getByRole('link', { name: 'Update my phone number' })).toHaveAttribute('href', '/profile')
+})
+
+test('a neighbor opened from the search is brought into view and marked, or said to be gone', async () => {
+  const layout: DwellingLayoutOut = { version: 0, layout: null, limits: { zones: 50, rows: 100, columns: 24, cells: 10000 } }
+  vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+    if (input === '/api/auth/session') return Response.json(signedOut)
+    if (input === '/api/neighbors') return Response.json(directory)
+    if (input === '/api/neighbors/layout') return Response.json(layout)
+    throw new Error(`Unexpected request ${input}`)
+  }))
+  const scrolled: Element[] = []
+  const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView')
+  HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) { scrolled.push(this) }
+  onTestFinished(() => {
+    if (original) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', original)
+    else delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView
+  })
+  render(<QueryClientProvider client={cache}><MemoryRouter initialEntries={['/neighbors?neighbor=3']}><NeighborsPage /></MemoryRouter></QueryClientProvider>)
+  const robin = (await screen.findByRole('heading', { name: 'Robin Lee' })).closest('li')
+  await waitFor(() => expect(robin).toHaveFocus())
+  expect(robin).toHaveAttribute('data-found')
+  expect(scrolled).toEqual([robin])
+  expect(screen.getByRole('heading', { name: 'Sam Taylor' }).closest('li')).not.toHaveAttribute('data-found')
+  expect(screen.queryByText('This neighbor is no longer in the directory.')).toBeNull()
+  cleanup()
+  render(<QueryClientProvider client={cache}><MemoryRouter initialEntries={['/neighbors?neighbor=99']}><NeighborsPage /></MemoryRouter></QueryClientProvider>)
+  expect(await screen.findByText('This neighbor is no longer in the directory.')).toBeVisible()
 })

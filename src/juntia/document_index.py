@@ -17,7 +17,7 @@ import signal
 import subprocess
 import sys
 from bisect import bisect_right
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -165,13 +165,14 @@ async def unread(db: AsyncSession) -> int:
     ) or 0
 
 
-def excerpt(content: str, needle: str) -> DocumentExcerpt | None:
-    """The first place where the text contains the folded needle, with the words around it.
+def locate(content: str, needles: Sequence[str]) -> tuple[int, int] | None:
+    """Where the text first contains one of the folded needles, as positions in the text itself.
 
     Folding works character by character, so the text is folded in chunks, and only the chunks
     where the match starts and ends are walked to find its characters in the original text.
     """
-    if not needle or not content:
+    needles = [needle for needle in needles if needle]
+    if not needles or not content:
         return None
     starts: list[int] = []
     parts: list[str] = []
@@ -181,9 +182,12 @@ def excerpt(content: str, needle: str) -> DocumentExcerpt | None:
         part = fold_text(content[offset:offset + FOLD_CHUNK])
         parts.append(part)
         total += len(part)
-    position = "".join(parts).find(needle)
-    if position < 0:
+    key = "".join(parts)
+    matches = [(found, len(needle)) for needle in needles if (found := key.find(needle)) >= 0]
+    if not matches:
         return None
+    # The earliest match, the longest of those that start there.
+    position, length = min(matches, key=lambda match: (match[0], -match[1]))
 
     def character(folded: int) -> int:
         chunk = bisect_right(starts, folded) - 1
@@ -195,13 +199,18 @@ def excerpt(content: str, needle: str) -> DocumentExcerpt | None:
                 return base + index
         return min(len(content), base + FOLD_CHUNK) - 1
 
-    start = character(position)
-    end = character(position + len(needle) - 1) + 1
-    left = max(0, start - EXCERPT_BEFORE)
+    return character(position), character(position + length - 1) + 1
+
+
+def surroundings(
+    content: str, start: int, end: int, before: int = EXCERPT_BEFORE, after: int = EXCERPT_AFTER,
+) -> DocumentExcerpt:
+    """The text from `start` to `end`, with the words around it; "…" marks a cut."""
+    left = max(0, start - before)
     if left > 0:
         space = content.find(" ", left, start)
         left = space + 1 if space >= 0 else left
-    right = min(len(content), end + EXCERPT_AFTER)
+    right = min(len(content), end + after)
     if right < len(content):
         space = content.rfind(" ", end, right)
         right = space if space > end else right
@@ -209,6 +218,12 @@ def excerpt(content: str, needle: str) -> DocumentExcerpt | None:
         before=("…" if left > 0 else "") + content[left:start], match=content[start:end],
         after=content[end:right] + ("…" if right < len(content) else ""),
     )
+
+
+def excerpt(content: str, needle: str) -> DocumentExcerpt | None:
+    """The first place where the text contains the folded needle, with the words around it."""
+    found = locate(content, [needle])
+    return surroundings(content, *found) if found else None
 
 
 async def excerpts(

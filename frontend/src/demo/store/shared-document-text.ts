@@ -417,11 +417,13 @@ export async function readText(text: DemoText, bytes: Uint8Array<ArrayBuffer>, e
 }
 
 /**
- * `excerpt`: the first place where the text contains the folded needle, with the words around it.
- * Folding works character by character, so each character's folded length maps the match back.
+ * `locate`: where the text first contains one of the folded needles (the longest of those starting
+ * there), in characters of the text. Folding works character by character, so each character's
+ * folded length maps the match back.
  */
-export function textExcerpt(content: string, needle: string): DocumentExcerpt | null {
-  if (!needle || !content) return null
+export function locateText(content: string, needles: readonly string[]): [number, number] | null {
+  const wanted = needles.filter(Boolean)
+  if (!wanted.length || !content) return null
   const characters = Array.from(content)
   const folded: string[] = []
   const starts: number[] = []
@@ -432,20 +434,30 @@ export function textExcerpt(content: string, needle: string): DocumentExcerpt | 
     folded.push(part)
     length += part.length
   }
-  const position = folded.join('').indexOf(needle)
-  if (position < 0) return null
+  const key = folded.join('')
+  let best: [number, number] | null = null
+  for (const needle of wanted) {
+    const position = key.indexOf(needle)
+    if (position >= 0 && (!best || position < best[0] || position === best[0] && needle.length > best[1])) best = [position, needle.length]
+  }
+  if (!best) return null
   const at = (offset: number) => {
     let index = 0
     while (index + 1 < characters.length && starts[index + 1] <= offset) index += 1
     return index
   }
-  const start = at(position), end = at(position + needle.length - 1) + 1
-  let left = Math.max(0, start - EXCERPT_BEFORE)
+  return [at(best[0]), at(best[0] + best[1] - 1) + 1]
+}
+
+/** `surroundings`: the characters from `start` to `end` with the words around them; "…" marks a cut. */
+export function textSurroundings(content: string, start: number, end: number, before = EXCERPT_BEFORE, after = EXCERPT_AFTER): DocumentExcerpt {
+  const characters = Array.from(content)
+  let left = Math.max(0, start - before)
   if (left > 0) {
     const space = characters.indexOf(' ', left)
     if (space >= 0 && space < start) left = space + 1
   }
-  let right = Math.min(characters.length, end + EXCERPT_AFTER)
+  let right = Math.min(characters.length, end + after)
   if (right < characters.length) {
     const space = characters.lastIndexOf(' ', right - 1)
     if (space > end) right = space
@@ -454,4 +466,10 @@ export function textExcerpt(content: string, needle: string): DocumentExcerpt | 
     before: (left > 0 ? '…' : '') + characters.slice(left, start).join(''), match: characters.slice(start, end).join(''),
     after: characters.slice(end, right).join('') + (right < characters.length ? '…' : ''),
   }
+}
+
+/** `excerpt`: the first place where the text contains the folded needle, with the words around it. */
+export function textExcerpt(content: string, needle: string): DocumentExcerpt | null {
+  const found = locateText(content, [needle])
+  return found && textSurroundings(content, found[0], found[1])
 }
