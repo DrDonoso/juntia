@@ -2,6 +2,10 @@
 capped, with the ids' format checked; and the migration that lets existing accounts read the notes
 of the version that brings them."""
 
+import builtins
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 from sqlalchemy import select, text
 
@@ -87,6 +91,39 @@ def test_only_the_newest_notes_are_kept(neighbor, monkeypatch):
     assert mark(client, "2026-04-01-d", "2025-12-31-z") == {
         "seen": ["2026-02-01-b", "2026-03-01-c", "2026-04-01-d"]
     }
+
+
+def test_saves_at_the_same_time_keep_every_note(neighbor, config, monkeypatch):
+    # Two devices of one account save different notes at once: the second waits until the first is
+    # stored instead of overwriting it, on SQLite too (it ignores FOR UPDATE).
+    client, user_id = neighbor
+    first, second = "2026-12-01-search", "2027-02-03-shared-calendar"
+    mark(client, LAUNCH)
+    paused, release, second_read = threading.Event(), threading.Event(), threading.Event()
+
+    def merge(ids):
+        # mark_seen calls sorted() right after reading the stored list: the first save stops there.
+        if second in ids:
+            second_read.set()
+        else:
+            paused.set()
+            assert release.wait(15)
+        return builtins.sorted(ids)
+
+    monkeypatch.setattr(whats_new, "sorted", merge, raising=False)
+    with visitor(config) as other, ThreadPoolExecutor(2) as pool:
+        assert login(other).status_code == 200
+        one = pool.submit(mark, client, first)
+        try:
+            assert paused.wait(15)
+            two = pool.submit(mark, other, second)
+            # The second save can't read the list while the first one holds it.
+            assert not second_read.wait(1)
+        finally:
+            release.set()
+        assert one.result(timeout=15) == {"seen": [LAUNCH, first]}
+        assert two.result(timeout=15) == {"seen": [LAUNCH, first, second]}
+    assert stored(config, user_id) == [LAUNCH, first, second]
 
 
 @pytest.mark.parametrize(

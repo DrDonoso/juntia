@@ -6,7 +6,7 @@ The notes ship with the interface (``frontend/src/whats-new/notes/``, one JSON f
 then marks every current note as read without showing them, so only later changes are announced."""
 
 from fastapi import APIRouter, Request
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from .auth import DB, CurrentUser, mutation_session
 from .contracts import WhatsNewOut, WhatsNewSeenIn
@@ -34,7 +34,15 @@ async def mark_seen(body: WhatsNewSeenIn, request: Request, db: DB) -> WhatsNewO
     """Add ``ids`` to the notes the account has read (ids already there change nothing)."""
     # The account's row stays locked until the commit, so two tabs saving at once both add theirs.
     identity = await mutation_session(request, db)
-    account = await db.get(User, identity.user_id) if identity.user_id is not None else None
+    if identity.user_id is None:
+        raise AppError("authentication_required", 401)
+    if db.get_bind().dialect.name == "sqlite":
+        # SQLite ignores FOR UPDATE; acquire its write lock before reading the list again.
+        await db.execute(
+            update(User).where(User.id == identity.user_id)
+            .values(whats_new_seen=User.whats_new_seen)
+        )
+    account = await db.get(User, identity.user_id, with_for_update=True, populate_existing=True)
     if account is None:
         raise AppError("authentication_required", 401)
     read = account.whats_new_seen if isinstance(account.whats_new_seen, list) else []
