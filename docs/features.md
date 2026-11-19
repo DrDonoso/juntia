@@ -200,6 +200,11 @@ order as the box:
   opening Juntia turns them back on. A session that just expires does not stop them. Tapping one
   opens its page in Juntia.
 
+<p align="center">
+  <img src="screenshots/notifications.png" alt="The list under the bell, open on the Import statement page: Missing statement: October 2026, with a line saying it has not been imported yet and where to import it, when it came, buttons to mark it as read and to dismiss it, Mark all as read and Notification settings" width="900"><br>
+  <sub>An administrator's <b>notifications</b> when last month's statement is missing (synthetic demo data).</sub>
+</p>
+
 ## Finances
 
 Residents read the finances in **Overview** and **Transactions**. All changes, statement imports and
