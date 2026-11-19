@@ -6,6 +6,7 @@ import { setClock } from '../core/clock'
 import { resetCommunityStore } from './community'
 import { resetCoreStore } from './core'
 import { resetFinanceStore } from './finance'
+import { resetNotificationsStore } from './notifications'
 import { resetPeopleStore } from './people'
 import { resetSharedDocumentsStore } from './shared-documents'
 
@@ -22,4 +23,5 @@ export function resetDemo({ now }: ResetOptions = {}): void {
   resetFinanceStore()
   resetCommunityStore()
   resetSharedDocumentsStore()
+  resetNotificationsStore()
 }

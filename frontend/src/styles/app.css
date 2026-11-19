@@ -235,7 +235,7 @@ details > div { margin: 8px 0; }
 .profile-avatar { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; border-radius: 50%; background: rgba(var(--primary-rgb), .1); color: var(--primary); font-weight: 650; }
 .profile-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; max-width: 1100px; }
 .profile-layout .card { margin-bottom: 0; }
-.profile-security { display: grid; gap: 20px; }
+.profile-main, .profile-security { display: grid; gap: 20px; }
 .card > .profile-identity { justify-content: flex-start; flex-wrap: nowrap; }
 .profile-identity > div { min-width: 0; overflow-wrap: anywhere; }
 .profile-identity p { margin-bottom: 0; }

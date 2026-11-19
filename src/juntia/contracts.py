@@ -1599,3 +1599,68 @@ class SearchResultsOut(Contract):
     page: int
     # 0 when nothing matches.
     pages: int
+
+
+# Notifications: the bell at the top of the portal (notifications.py) and push notifications on
+# the devices that turned them on (push.py).
+NotificationKind = Literal["statement_missing"]
+NOTIFICATION_KINDS: tuple[NotificationKind, ...] = get_args(NotificationKind)
+
+
+class NotificationKindOut(Contract):
+    kind: NotificationKind
+    # False: the account turned it off, so it is neither listed nor sent.
+    enabled: bool
+
+
+class NotificationOut(Contract):
+    id: int
+    kind: NotificationKind
+    # What its texts need, by kind: "month" ("2026-10") for a missing statement.
+    params: dict[str, str]
+    # The page of the portal it opens.
+    link: str
+    created_at: datetime
+    read: bool
+
+
+class NotificationsOut(Contract):
+    # The kinds the account can receive, in the order they are shown; none: the portal shows no
+    # bell and no notification settings.
+    kinds: list[NotificationKindOut]
+    # How many of them are not read yet (all of them, even beyond the 50 listed).
+    unread: int
+    # The account's notifications of the kinds turned on, neither resolved nor dismissed, newest
+    # first (50 at most).
+    items: list[NotificationOut]
+
+
+class NotificationPreferenceIn(Contract):
+    kind: NotificationKind
+    enabled: bool = Field(strict=True)
+
+
+class PushConfigOut(Contract):
+    # The server's VAPID public key: the ``applicationServerKey`` browsers subscribe with (an
+    # uncompressed P-256 point in URL-safe base64).
+    public_key: str
+
+
+PushEndpoint = Annotated[str, Field(min_length=1, max_length=2048)]
+
+
+class PushKeysIn(Contract):
+    # The browser's keys, as ``PushSubscription.toJSON()`` gives them (URL-safe base64).
+    p256dh: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+={0,2}$")
+    auth: str = Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9_-]+={0,2}$")
+
+
+class PushSubscriptionIn(Contract):
+    endpoint: PushEndpoint
+    keys: PushKeysIn
+    # The language of the interface on the device, which its notifications speak.
+    locale: Literal["en", "es"]
+
+
+class PushEndpointIn(Contract):
+    endpoint: PushEndpoint

@@ -23,6 +23,8 @@ from . import (
     document_index,
     document_reading,
     google_auth,
+    notifications,
+    push,
     queries,
     search,
     storage_admin,
@@ -66,8 +68,12 @@ async def warn_without_administrators(db: AsyncSession) -> None:
         )
 
 
-def create_app(config: Settings | None = None, *, text_worker: bool = True) -> FastAPI:
-    """`text_worker=False` leaves the shared documents' text unread until tests read it."""
+def create_app(
+    config: Settings | None = None, *, text_worker: bool = True, notifier: bool = True
+) -> FastAPI:
+    """`text_worker=False` leaves the shared documents' text unread until tests read it, and
+    `notifier=False` leaves the notifications alone until tests call
+    ``app.state.notifier.tick``."""
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -86,6 +92,7 @@ def create_app(config: Settings | None = None, *, text_worker: bool = True) -> F
         application.state.google_provider = google_auth.GoogleProvider(current)
         reader = document_index.DocumentReader(application.state.sessions, current)
         application.state.document_reader = reader
+        application.state.notifier = push.Notifier(application.state.sessions, current)
         try:
             async with application.state.sessions() as db:
                 if await db.get(State, 1) is None:
@@ -97,8 +104,11 @@ def create_app(config: Settings | None = None, *, text_worker: bool = True) -> F
             await reader.prepare()
             if text_worker:
                 reader.start()
+            if notifier:
+                await application.state.notifier.start()
             yield
         finally:
+            await application.state.notifier.stop()
             await reader.stop()
             await application.state.google_provider.close()
             await engine.dispose()
@@ -169,6 +179,8 @@ def create_app(config: Settings | None = None, *, text_worker: bool = True) -> F
     application.include_router(contacts.router)
     application.include_router(search.router)
     application.include_router(whats_new.router)
+    application.include_router(notifications.router)
+    application.include_router(push.router)
     application.include_router(api.public_router)
     application.include_router(api.reader)
     application.include_router(api.admin_router)
@@ -237,6 +249,9 @@ def create_app(config: Settings | None = None, *, text_worker: bool = True) -> F
     async def frontend(path: str):
         if path in {"theme-init.js", "icon.svg"} and (dist / path).is_file():
             return FileResponse(dist / path)
+        # The service worker of push notifications (frontend/public/sw.js), for the whole site.
+        if path == "sw.js" and (dist / path).is_file():
+            return FileResponse(dist / path, media_type="text/javascript")
         if path not in {
             "",
             "transactions",

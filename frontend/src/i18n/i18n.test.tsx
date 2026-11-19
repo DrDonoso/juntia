@@ -25,7 +25,7 @@ afterEach(() => {
 
 const NAMESPACES = [
   'common', 'shell', 'auth', 'errors', 'finance', 'admin', 'actions', 'events', 'accounts', 'neighbors', 'contacts',
-  'labels', 'storage', 'documents', 'search', 'demo', 'whatsNew',
+  'labels', 'storage', 'documents', 'search', 'demo', 'whatsNew', 'notifications',
 ]
 
 type Leaf = string | Readonly<Record<string, string>>

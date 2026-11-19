@@ -13,7 +13,7 @@ from sqlalchemy import Select, select, update
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse
 
-from . import ai, imports, queries
+from . import ai, imports, notifications, queries
 from .auth import DB, Admin, reader_session, settings
 from .contracts import (
     AccountConfirmation,
@@ -314,6 +314,8 @@ async def confirm_import(
     if record.id != str(preview_id):
         (settings(request).upload_dir / f"{preview_id}.pdf").unlink(missing_ok=True)
         result = result.model_copy(update={"inserted": 0, "duplicates": result.count})
+    # The statement may be the one an alert says is missing.
+    await notifications.refresh(db)
     return result
 
 
@@ -332,6 +334,8 @@ async def delete_import(
     admin: Admin,
 ) -> None:
     await imports.remove_import(db, str(import_id), body.revision)
+    # Without it, a month may be missing again.
+    await notifications.refresh(db)
     try:
         (settings(request).upload_dir / f"{import_id}.pdf").unlink(missing_ok=True)
     except OSError:

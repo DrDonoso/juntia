@@ -76,8 +76,9 @@ def config(tmp_path, language):
 
 @pytest.fixture
 def client(config):
-    # Tests read the shared documents' text themselves (tests/test_document_text.py: read_texts).
-    with TestClient(create_app(config, text_worker=False)) as client:
+    # Tests read the shared documents' text themselves (tests/test_document_text.py: read_texts)
+    # and run the notifier's rounds themselves (tests/test_push.py: tick).
+    with TestClient(create_app(config, text_worker=False, notifier=False)) as client:
         client.headers.update({"origin": "http://testserver", "x-juntia-request": "1"})
         yield client
 

@@ -1,0 +1,14 @@
+{
+  "kind": "new",
+  "audience": "admins",
+  "icon": "bell",
+  "link": "/profile",
+  "en": {
+    "title": "Get told when a bank statement is missing",
+    "body": "From the first day of each month, the bell at the top tells you if last month's statement has not been imported yet. In My profile you choose what you are told about, and you can also get it on your phone or computer."
+  },
+  "es": {
+    "title": "Te avisamos cuando falte un extracto",
+    "body": "Desde el día 1 de cada mes, la campana de arriba te avisa si aún no se ha importado el extracto del mes anterior. En Mi perfil eliges de qué quieres enterarte, y también puedes recibirlo en el móvil o el ordenador."
+  }
+}

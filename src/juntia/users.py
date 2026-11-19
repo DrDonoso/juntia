@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.concurrency import run_in_threadpool
 
-from . import mail, queries
+from . import mail, notifications, queries
 from .auth import (
     DB,
     USER_COOKIE,
@@ -47,7 +47,7 @@ from .contracts import (
     UserStatusIn,
     VersionIn,
 )
-from .db import Dwelling, State, User, UserToken, aware, lock_state, utcnow
+from .db import Dwelling, Notification, State, User, UserToken, aware, lock_state, utcnow
 from .errors import AppError
 
 log = logging.getLogger(__name__)
@@ -433,6 +433,7 @@ async def delete_user(user_id: int, body: UserDeleteIn, db: DB, editor: Administ
     was_administrator = active_administrator(user)
     await clear_presidency(db, user_id)
     await revoke_user_access(db, user_id)
+    await notifications.forget(db, Notification.user_id == user_id)
     removed = await db.scalar(
         delete(User).where(
             User.id == user_id, User.version == body.version, User.email == body.email,

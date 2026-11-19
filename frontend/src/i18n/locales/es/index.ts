@@ -13,6 +13,7 @@ import { events } from './events'
 import { finance } from './finance'
 import { labels } from './labels'
 import { neighbors } from './neighbors'
+import { notifications } from './notifications'
 import { search } from './search'
 import { shell } from './shell'
 import { storage } from './storage'
@@ -36,4 +37,5 @@ export const es: Messages<Dictionary> = {
   search,
   demo,
   whatsNew,
+  notifications,
 }

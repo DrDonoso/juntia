@@ -14,6 +14,7 @@ function cachedFor<T>(cache: Map<string, T>, options: object | undefined, create
 
 const numberFormats = new Map<string, Intl.NumberFormat>()
 const dateTimeFormats = new Map<string, Intl.DateTimeFormat>()
+const relativeTimeFormats = new Map<string, Intl.RelativeTimeFormat>()
 const collators = new Map<string, Intl.Collator>()
 
 /** Cached `Intl.NumberFormat` for the active language. */
@@ -24,6 +25,11 @@ export function numberFormat(options?: Intl.NumberFormatOptions): Intl.NumberFor
 /** Cached `Intl.DateTimeFormat` for the active language. */
 export function dateTimeFormat(options?: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
   return cachedFor(dateTimeFormats, options, locale => new Intl.DateTimeFormat(locale, options))
+}
+
+/** Cached `Intl.RelativeTimeFormat` for the active language ("2 hours ago", "yesterday"). */
+export function relativeTimeFormat(options?: Intl.RelativeTimeFormatOptions): Intl.RelativeTimeFormat {
+  return cachedFor(relativeTimeFormats, options, locale => new Intl.RelativeTimeFormat(locale, options))
 }
 
 /** Cached `Intl.Collator` for the active language (default: numeric, case- and accent-insensitive). */

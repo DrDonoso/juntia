@@ -650,6 +650,31 @@ open are checked as positive integers before anything is requested, and the
 records they name are read through their usual, authorized APIs; the page of
 results reads its `kind` and `page` the same way, ignoring anything else.
 
+## Notifications
+
+`/api/notifications` requires a session of an active account and only ever
+reads or changes that account's own notifications: another account's id is
+404 `notification_not_found`, and each account turns on or off only the kinds
+its role receives (403 `notification_kind_unavailable` otherwise). So far the
+only kind, a missing bank statement, goes to active administrators, checked on
+every round of the notifier: an account that loses the role loses its alerts
+and is sent no more. They say which month is missing, never an amount, a name
+or an IBAN.
+
+Push notifications (`/api/push`) follow RFC 8030, 8291 and 8292 without a
+third-party library: every message is encrypted for the one browser that
+subscribed and signed with a VAPID key derived from `AUTH_SECRET`. The address a
+browser gives (its push service's) is only accepted, and only ever contacted,
+when it is an `https` address on port 443 of the push services of Chrome,
+Safari, Firefox or Edge, so a subscription cannot make the server send requests
+anywhere else; redirects are not followed, and the logs name the push service,
+never the address. A device belongs to the account and the session that
+registered it, at most 20 per account: signing out there forgets it, and a new
+password, closing every session, disabling or deleting the account forget all
+of them. A session that just expires does not, so that a phone keeps receiving
+them between visits. Tapping a notification only opens pages of the same
+origin. The service worker (`/sw.js`) has no fetch handler and caches nothing.
+
 ## Deployment controls
 
 The **Actions** switch defaults to on. When it is off, both navigations hide

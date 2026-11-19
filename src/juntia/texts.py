@@ -2,6 +2,7 @@
 
 The web interface follows each browser's language; these texts cover what the server writes
 itself: emails, first-run defaults, fallback labels and the technical administrator's author label.
+Push notifications use them too, in the language of the interface on each device.
 """
 
 from dataclasses import dataclass
@@ -37,6 +38,12 @@ class Texts:
     # The name of a ZIP of documents from several folders, and the mark of an earlier version.
     documents: str
     document_version: str
+    # Push notifications (notifications.py), in the language of each device: the months, a month
+    # of a year ("{month} {year}"), and each kind's title and text.
+    months: tuple[str, ...]
+    month_year: str
+    statement_missing_title: str
+    statement_missing_body: str
 
 
 TEXTS: dict[Language, Texts] = {
@@ -75,6 +82,13 @@ TEXTS: dict[Language, Texts] = {
         password_notice="We will never ask you to send your password by email.",
         documents="Documents",
         document_version=" (version {number})",
+        months=(
+            "January", "February", "March", "April", "May", "June", "July", "August",
+            "September", "October", "November", "December",
+        ),
+        month_year="{month} {year}",
+        statement_missing_title="Missing statement: {month}",
+        statement_missing_body="It has not been imported yet: import it in Finances > Import.",
     ),
     "es": Texts(
         administrator="Administrador técnico",
@@ -108,6 +122,13 @@ TEXTS: dict[Language, Texts] = {
         password_notice="Nunca te pediremos que envíes tu contraseña por correo.",
         documents="Documentos",
         document_version=" (versión {number})",
+        months=(
+            "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
+            "septiembre", "octubre", "noviembre", "diciembre",
+        ),
+        month_year="{month} de {year}",
+        statement_missing_title="Falta el extracto de {month}",
+        statement_missing_body="Aún no se ha importado: impórtalo en Gastos > Importar.",
     ),
 }
 

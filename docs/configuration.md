@@ -18,6 +18,7 @@ that live in the database, such as the feature switches, are managed in the admi
 - [Email (SMTP)](#email-smtp)
 - [Google sign-in](#google-sign-in)
 - [AI classification](#ai-classification)
+- [Push notifications](#push-notifications)
 - [Sessions and import previews](#sessions-and-import-previews)
 - [Set by Compose or the image](#set-by-compose-or-the-image)
 - [Local Compose only](#local-compose-only)
@@ -174,6 +175,8 @@ browser-test server takes `--language en|es` instead (`scripts/smoke_server.py`)
 whatever the time zone of each visitor's device. Timed events are stored as instants and all-day
 events as dates, so changing `TZ` later changes their presentation, not the stored values. Local
 times that do not exist or happen twice at a daylight-saving change are rejected with a field error.
+It also decides when a month starts for the [missing statement](features.md#notifications) alert,
+and the hours, 9:00 to 21:00, when [push notifications](#push-notifications) are sent.
 
 ## Storage limits
 
@@ -248,6 +251,29 @@ Optional classification suggestions during statement imports. AI is enabled only
 The provider receives sanitized transaction descriptions and the names of your categories and tags,
 never the PDF, the IBAN, the amounts or the balances. Sanitizing is not anonymization: read
 [AI classification](importing-statements.md#ai-classification) before turning it on.
+
+## Push notifications
+
+[Notifications](features.md#notifications) appear under the bell without any setting. Showing them
+on phones and computers (Web Push) needs no setting either, only:
+
+- **HTTPS.** Browsers offer push notifications only on secure pages: an `https` `PUBLIC_ORIGIN`
+  behind the [reverse proxy](deployment.md#reverse-proxy-and-https), or `http://localhost` on the
+  server itself. On an iPhone or iPad they also need Juntia added to the Home Screen.
+- **Outbound HTTPS from the server** (port 443) to the push services of the browsers, the only
+  addresses it sends them to: `fcm.googleapis.com` (Chrome, Edge on Android and most Android
+  browsers), `*.push.apple.com` (Safari and the iPhone), `*.push.services.mozilla.com` (Firefox) and
+  `*.notify.windows.com` (Edge on Windows). A firewall that blocks them only stops the push
+  notifications: failures are logged with the push service, never the device's address, and tried
+  again later.
+- **The service worker at `/sw.js`**, served by Juntia like the rest of the web app: proxy it too.
+
+The server signs its messages with a key derived from `AUTH_SECRET` (VAPID), which identifies the
+sender by the first `https` origin of `PUBLIC_ORIGIN` (or `SMTP_FROM` without one). Rotating
+`AUTH_SECRET` changes the key: each device subscribes again the next time Juntia opens there.
+They are sent from 9:00 to 21:00 in `TZ`, so those due at night wait until morning; one a push
+service cannot take is tried again after 2, 5, 15, 30 and 60 minutes, and dropped after three days.
+The image runs a single process, which sends them.
 
 ## Sessions and import previews
 

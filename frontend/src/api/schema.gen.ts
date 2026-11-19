@@ -1038,6 +1038,31 @@ export interface NeighborOut {
   phone: string
 }
 
+export interface NotificationKindOut {
+  enabled: boolean
+  kind: 'statement_missing'
+}
+
+export interface NotificationOut {
+  created_at: string
+  id: number
+  kind: 'statement_missing'
+  link: string
+  params: Record<string, string>
+  read: boolean
+}
+
+export interface NotificationPreferenceIn {
+  enabled: boolean
+  kind: 'statement_missing'
+}
+
+export interface NotificationsOut {
+  items: NotificationOut[]
+  kinds: NotificationKindOut[]
+  unread: number
+}
+
 export interface PresidencyIn {
   user_id: number | null
   version: number
@@ -1107,6 +1132,25 @@ export interface ProfileOut {
   name: string
   phone: string
   version: number
+}
+
+export interface PushConfigOut {
+  public_key: string
+}
+
+export interface PushEndpointIn {
+  endpoint: string
+}
+
+export interface PushKeysIn {
+  auth: string
+  p256dh: string
+}
+
+export interface PushSubscriptionIn {
+  endpoint: string
+  keys: PushKeysIn
+  locale: 'en' | 'es'
 }
 
 export interface RecoveryOut {

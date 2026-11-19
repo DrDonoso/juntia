@@ -21,6 +21,7 @@ setting up, running Juntia locally and the rules every pull request follows; thi
 - [Translations](#translations)
 - [What's new notes](#whats-new-notes)
 - [Icons](#icons)
+- [Notification kinds](#notification-kinds)
 - [Dependencies](#dependencies)
 - [Continuous integration](#continuous-integration)
 - [Supply chain](#supply-chain)
@@ -75,7 +76,10 @@ The test of OCR needs [Tesseract](https://github.com/tesseract-ocr/tesseract) wi
 model, as in CI and the image (`sudo apt install tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa`
 on Debian and Ubuntu, `brew install tesseract tesseract-lang` on macOS); without it, it is skipped.
 The test clients never start the background reader of shared documents: tests read the waiting
-files themselves with `client.portal.call(client.app.state.document_reader.drain)`.
+files themselves with `client.portal.call(client.app.state.document_reader.drain)`. Nor do they
+start the notifier: tests run its rounds at the moment they choose with
+`client.portal.call(client.app.state.notifier.tick, moment)`, and give it a `webpush.WebPush` on an
+`httpx.MockTransport` (`tests/push_support.py`), so nothing reaches a real push service.
 
 ### PostgreSQL test database
 
@@ -299,7 +303,29 @@ symbols as icons.
 
 The favicon, Apple touch icon and Android icons are generated from `frontend/public/icon.svg` with
 `npm run gen:icons` in `frontend/`, which needs Playwright's Chromium (or
-`PLAYWRIGHT_CHANNEL=msedge`).
+`PLAYWRIGHT_CHANNEL=msedge`). It also draws the badge of push notifications in Android's status bar
+(`icons/badge-96.png`), a white silhouette of the icon.
+
+## Notification kinds
+
+A kind of [notification](features.md#notifications) is declared once and told in both languages:
+
+1. its name in `NotificationKind` (`src/juntia/contracts.py`), and in `KINDS`
+   (`src/juntia/notifications.py`) who receives it (`everyone` or `administrators`) and the page it
+   opens;
+2. when it appears: a condition that `evaluate` brings up to date on every round of the notifier
+   (as `statement_missing`), resolving it when the condition stops holding, or a call that creates
+   it when something happens; `create` never makes the same one twice for an account (its `key`),
+   and `queue` sends its push messages;
+3. its push message in `push_text`, with the texts in `src/juntia/texts.py`;
+4. its texts in `frontend/src/i18n/locales/*/notifications.ts` (`kinds.<kind>`: the title and text
+   under the bell, the name and description of its switch) and in `TEXTS` of
+   `frontend/src/notifications/notifications.tsx`;
+5. the demo's handler (`frontend/src/demo/handlers/notifications.ts`) and the
+   [features](features.md#notifications).
+
+No migration is needed: notifications keep their kind and parameters, and accounts the kinds they
+turned off.
 
 ## Dependencies
 

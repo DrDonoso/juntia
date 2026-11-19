@@ -44,7 +44,8 @@ deployment relies on are explained in the [security model](security-model.md).
   [storage quotas](#storage-quotas-and-purging) (2 GiB for the community by default), and uploads
   keep 1 GiB free on the volume by default.
 - Optional: an SMTP account (needed to invite residents and recover passwords), a Google OAuth web
-  client, and an OpenAI-compatible API.
+  client, and an OpenAI-compatible API. Push notifications on phones and computers need HTTPS and
+  outbound HTTPS to the browsers' push services ([push notifications](configuration.md#push-notifications)).
 
 ## Installing
 
@@ -118,7 +119,8 @@ published. Docker checks `/health` every 15 seconds.
 ## Reverse proxy and HTTPS
 
 Put an HTTPS reverse proxy in front of Juntia and proxy every path (the web app, `/api`, `/assets`,
-`/icons`, `/fonts` and `/manifest.webmanifest`) to the published port. The proxy must:
+`/icons`, `/fonts`, `/manifest.webmanifest` and the service worker `/sw.js`) to the published port.
+The proxy must:
 
 - **keep the original `Host` header.** Juntia answers `400 invalid_host` to hostnames that are not
   in `PUBLIC_ORIGIN` (other than the loopback names), and it ignores `X-Forwarded-Host`;
