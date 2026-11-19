@@ -9,13 +9,16 @@ import { http, HttpResponse, type HttpHandler } from '../core'
 import { communityHandlers } from './community'
 import { coreHandlers } from './core'
 import { financeHandlers } from './finance'
+import { notificationHandlers } from './notifications'
 import { peopleHandlers } from './people'
 import { searchHandlers } from './search'
 import { sharedDocumentHandlers } from './shared-documents'
 import { storageHandlers } from './storage'
 
 /** Handlers of each module of the demo API. */
-export const domainHandlers: Readonly<Record<'core' | 'finance' | 'community' | 'people' | 'storage' | 'documents' | 'search', readonly HttpHandler[]>> = {
+export const domainHandlers: Readonly<Record<
+  'core' | 'finance' | 'community' | 'people' | 'storage' | 'documents' | 'search' | 'notifications', readonly HttpHandler[]
+>> = {
   core: coreHandlers,
   finance: financeHandlers,
   community: communityHandlers,
@@ -23,6 +26,7 @@ export const domainHandlers: Readonly<Record<'core' | 'finance' | 'community' | 
   storage: storageHandlers,
   documents: sharedDocumentHandlers,
   search: searchHandlers,
+  notifications: notificationHandlers,
 }
 
 /**
@@ -37,6 +41,9 @@ export const UNAVAILABLE_IN_DEMO: Readonly<Record<string, string>> = {
   'POST /api/auth/google/link': 'Linking a Google account needs Google sign-in.',
   'DELETE /api/auth/google/link': 'Unlinking a Google account needs Google sign-in.',
   'POST /api/admin/imports/{preview_id}/ai': 'AI classification needs an OpenAI-compatible API key on the server.',
+  'GET /api/push': 'Push notifications need a server that sends them; the demo\'s service worker is MSW\'s.',
+  'PUT /api/push/subscription': 'Push notifications need a server that sends them to the browsers\' push services.',
+  'POST /api/push/unsubscribe': 'Push notifications need a server that sends them to the browsers\' push services.',
 }
 
 /** Prefix of the console error logged for an /api request the demo does not answer. */
@@ -59,5 +66,6 @@ export const handlers: HttpHandler[] = [
   ...storageHandlers,
   ...sharedDocumentHandlers,
   ...searchHandlers,
+  ...notificationHandlers,
   unhandledHandler,
 ]

@@ -1,0 +1,248 @@
+/* Notifications (src/notifications): the bell in the top bar, its panel and the settings in
+   My profile. Rules that override shared ones (app.css) use two classes. */
+
+.notification-controls {
+  position: relative;
+}
+
+.topbar .notification-button {
+  position: relative;
+}
+
+/* How many are unread, on the bell. */
+.notification-badge {
+  position: absolute;
+  top: 4px;
+  right: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--expense);
+  color: var(--surface);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 2px var(--surface);
+  pointer-events: none;
+}
+
+.notification-panel {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  width: 380px;
+  max-width: calc(100vw - var(--space-6));
+  max-height: calc(100dvh - var(--topbar-height) - var(--space-4));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-hero);
+  color: var(--text);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.notification-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.notification-panel-header h2 {
+  margin: 0;
+  font-size: var(--text-base);
+}
+
+.notification-panel .notification-read-all {
+  min-height: 40px;
+  font-size: var(--text-xs);
+}
+
+.notification-panel .notice {
+  margin: var(--space-2) var(--space-4) 0;
+}
+
+.notification-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Every kind so far is a warning: the colour of the side and of the icon. */
+.notification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-1) var(--space-3) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid var(--warning);
+}
+
+.notification-unread {
+  background: var(--notif-unread-bg);
+}
+
+.notification-icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--warning-text);
+}
+
+.notification-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-panel .notification-title {
+  display: block;
+  color: var(--text);
+  font-weight: 500;
+  line-height: 1.4;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.notification-panel .notification-title:hover {
+  text-decoration: underline;
+}
+
+.notification-unread .notification-title {
+  font-weight: 650;
+}
+
+.notification-panel .notification-body {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.notification-time {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+}
+
+.notification-item-actions {
+  display: flex;
+  flex: none;
+}
+
+.notification-item-actions .icon-button {
+  width: 36px;
+  min-height: 36px;
+  color: var(--text-muted);
+}
+
+.notification-panel .notification-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-8) var(--space-6);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.notification-panel-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: auto;
+  padding: var(--space-3) var(--space-4);
+}
+
+.notification-panel-footer a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+}
+
+/* Narrow screens: the panel takes the width under the top bar, like the search. */
+@media (max-width: 720px) {
+  .notification-controls {
+    position: static;
+  }
+
+  .topbar .notification-panel {
+    top: 100%;
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: none;
+    max-height: calc(100dvh - var(--topbar-height));
+    border-width: 0 0 1px;
+    border-radius: 0;
+  }
+}
+
+/* My profile: this device and the kinds, each with its switch. */
+.notification-settings h3 {
+  margin: var(--space-5) 0 var(--space-3);
+  font-size: var(--text-md);
+}
+
+.notification-kinds {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.notification-setting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+}
+
+.notification-setting > div {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.notification-setting-label {
+  font-weight: 600;
+}
+
+.notification-settings .notification-setting p {
+  margin: var(--space-1) 0 0;
+}
+
+.notification-setting [role="switch"] {
+  min-width: 140px;
+  min-height: 44px;
+}
+
+.notification-setting .notice {
+  flex-basis: 100%;
+}
+
+/* Without background colours the badge and the side of each notification keep an outline. */
+@media (forced-colors: active) {
+  .notification-badge {
+    border: 1px solid CanvasText;
+  }
+
+  .notification-item {
+    border-left-color: CanvasText;
+  }
+}

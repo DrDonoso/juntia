@@ -77,6 +77,7 @@ src/demo/
   store/<domain>.ts    the data of this page load: <domain>Store() and reset<Domain>Store()
   store/core.ts        shared state: session, features, general settings, account, dwellings, accounts, the What's new notes each account has read
   store/storage.ts     storage of PDFs, images and documents, from their stores (no state of its own)
+  store/notifications.ts  the notifications each account was told, read and dismissed, and the kinds it turned off
   store/index.ts       resetDemo(): every store back to its scenario
   handlers/<domain>.ts the MSW handlers of each domain (an exported array)
   handlers/index.ts    all handlers, UNAVAILABLE_IN_DEMO and the /api catch-all (501, console error)
@@ -86,8 +87,9 @@ src/demo/
 
 Domains are `core` (this foundation), `finance`, `community`, `people`, `storage`, `documents`
 (shared documents, whose modules are named `shared-documents*.ts`: `scenario/community-documents.ts`
-is the catalogue of the actions' PDFs) and `search` (the search box at the top of every page, which
-only reads the other domains' stores and owns no data). Each domain owns exactly its `scenario/`,
+is the catalogue of the actions' PDFs), `search` (the search box at the top of every page, which
+only reads the other domains' stores and owns no data) and `notifications` (the bell, whose alerts
+follow the finance store, with no scenario of its own). Each domain owns exactly its `scenario/`,
 `store/` and `handlers/` module plus its own test files; `handlers/index.ts` and `store/index.ts`
 import them.
 
@@ -166,10 +168,10 @@ Never change an id or a name: the domains build on them. Add people at the end i
    routes (see the table).
 4. **Unavailable features.** Anything that needs real infrastructure answers `demoUnavailable()`
    (403 `demo_unavailable`, translated as "This feature needs a real server, so it is not available
-   in the demo."): Google sign-in and linking, AI classification, real PDF parsing (the import
-   returns a canned synthetic preview instead), email delivery (invitations and recovery are
-   simulated without email). Operations that answer it entirely are listed, with the reason, in
-   `UNAVAILABLE_IN_DEMO` (`handlers/index.ts`).
+   in the demo."): Google sign-in and linking, AI classification, push notifications on devices, real
+   PDF parsing (the import returns a canned synthetic preview instead), email delivery (invitations
+   and recovery are simulated without email). Operations that answer it entirely are listed, with
+   the reason, in `UNAVAILABLE_IN_DEMO` (`handlers/index.ts`).
 5. **Data rules.** English synthetic data only (the server language is English: categories
    "Regular fees", "Water", "Cleaning"…, tags "Recurring", "Direct debit"…, fallbacks
    "Uncategorized" / "No merchant", ICS files `event-{id}.ics`); `@example.com` emails, UK fiction
@@ -237,6 +239,13 @@ Every operation of `src/api/openapi.json` belongs to exactly one module (`{x}` i
   text), neighbors, contacts and transactions, read from the other domains' stores with the
   backend's rules (`src/juntia/search.py`); `GET /api/search/results`, the page of results, with
   the count of each kind and the best few of each, or a page of one kind.
+- **notifications** (`handlers/notifications.ts`): `GET /api/notifications`,
+  `POST /api/notifications/read-all`, `POST /api/notifications/{notification_id}/read|dismiss` and
+  `PATCH /api/notifications/preferences`, brought up to date on every request from the finance
+  store with the backend's rule (`src/juntia/notifications.py`): administrators are told when the
+  previous month's statement is missing, which happens once the latest two statements are removed;
+  `GET /api/push`, `PUT /api/push/subscription` and `POST /api/push/unsubscribe` answer
+  `demo_unavailable` (MSW's is the demo's service worker).
 
 Any other `/api` request reaches the catch-all: a 501 `not_implemented` and a console error
 starting with `[demo] Unhandled API request:`. Two guards keep it that way:
@@ -247,7 +256,7 @@ starting with `[demo] Unhandled API request:`. Two guards keep it that way:
   of the API, answered by one handler only; and every listed operation that has a handler must
   answer `demo_unavailable`. After a backend contract change (`npm run gen:api`), the test names
   the operations to add. Today every operation has a handler, and the list holds Google sign-in,
-  linking and unlinking and AI classification.
+  linking and unlinking, AI classification and the push notifications of devices.
 - **Every page in the browser** (`e2e/demo.spec.ts`): as the sample neighbor (welcome dialog,
   "Explore as a neighbor") and as the administrator, James Okafor ("Open administration"), in
   English and in Spanish (the browser's language), the crawl opens every link of the "Main

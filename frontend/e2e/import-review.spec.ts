@@ -34,6 +34,8 @@ async function mockImport(page: Page, { count = 62, initialAccount = false, fail
     // What's new, as for a new account: nothing to show, and every note is marked as read.
     if (path === '/whats-new') return json({ seen: null })
     if (path === '/whats-new/seen') return json({ seen: [] })
+    // Notifications, as for an administrator who has nothing to be told.
+    if (path === '/notifications') return json({ kinds: [{ kind: 'statement_missing', enabled: true }], unread: 0, items: [] })
     if (path === '/account') return json(initialAccount && !state.confirmation ? null : { iban: preview.iban, name: 'Community account' })
     if (path === '/catalog/categories') return json([{ id: 1, name: 'Cleaning', color: '#08735a' }, { id: 2, name: 'Maintenance', color: '#21639f' }])
     if (path === '/catalog/tags') return json([{ id: 1, name: 'Recurring', color: '#64748b' }])

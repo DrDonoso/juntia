@@ -82,6 +82,12 @@ describe('the demo API covers the OpenAPI document', () => {
       'POST /api/admin/imports/{preview_id}/ai': {
         method: 'POST', path: '/api/admin/imports/0f8fad5b-d9cb-469f-a165-70867728950e/ai', body: { version: 1 }, admin: true,
       },
+      'GET /api/push': { method: 'GET', path: '/api/push', body: undefined },
+      'PUT /api/push/subscription': {
+        method: 'PUT', path: '/api/push/subscription',
+        body: { endpoint: 'https://web.push.apple.com/device', keys: { p256dh: 'BKey', auth: 'Secret' }, locale: 'en' },
+      },
+      'POST /api/push/unsubscribe': { method: 'POST', path: '/api/push/unsubscribe', body: { endpoint: 'https://web.push.apple.com/device' } },
     }
     const routes = demoRoutes()
     const handled = operations

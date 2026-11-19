@@ -5,6 +5,7 @@ import type { GoogleStartOut, ProfileOut, UserAuthOut } from './api/schema.gen'
 import { useLoginNotice, useReaderAuth, type LoginNotice } from './auth'
 import { GoogleIcon, GoogleResult } from './google'
 import { useI18n } from './i18n'
+import { NotificationSettings } from './notifications/notifications'
 import { MIN_PASSWORD_LENGTH, Modal, Notice, PhoneField, coefficientPercent, connectionTime, focusFormField, profileInitials, useAction, useFeatures, validateNewPassword, type NewPasswordError } from './shared'
 
 type FinishSecurityAction = (notice: LoginNotice) => Promise<void>
@@ -117,7 +118,7 @@ function SessionsCard({ finish }: { finish: FinishSecurityAction }) {
   </section>
 }
 
-function AccountProfile({ userId }: { userId: number }) {
+function AccountProfile({ userId, administrator }: { userId: number; administrator: boolean }) {
   const { t } = useI18n()
   const { setNotice } = useLoginNotice()
   const features = useFeatures()
@@ -132,7 +133,7 @@ function AccountProfile({ userId }: { userId: number }) {
   if (query.error) return <Notice error>{errorMessage(query.error)}</Notice>
   const profile = query.data
   return <div className="profile-layout">
-    <section className="card"><header className="profile-identity">
+    <div className="profile-main"><section className="card"><header className="profile-identity">
       <span className="profile-avatar" aria-hidden="true">{profileInitials(profile.name)}</span>
       <div><h2>{profile.name}</h2><p className="muted">{profile.administrator
         ? profile.dwelling_id === null ? t('accounts.profile.administratorAccount') : t('accounts.profile.administratorNeighborAccount')
@@ -150,6 +151,7 @@ function AccountProfile({ userId }: { userId: number }) {
       <p className="muted">{coefficientEnabled ? t('accounts.profile.account.managedWithCoefficient') : t('accounts.profile.account.managed')} {t('accounts.profile.account.lastSignInHelp')}</p>
       <p className="muted">{t('accounts.profile.account.visibility')}</p>
     </section>
+    <NotificationSettings administrator={administrator} /></div>
     <div className="profile-security">
       {profile.has_password ? <PasswordForm finish={finish} /> : <CreatePassword email={profile.email} />}
       <GoogleAccount profile={profile} enabled={features.data?.google_login === true && !features.error} finish={finish} />
@@ -166,7 +168,7 @@ export function ProfilePage() {
     <p className="muted">{t('accounts.profile.description')}</p></div></div>
     <GoogleResult />
     {identity?.authenticated && identity.user_id !== null
-      ? <AccountProfile key={identity.user_id} userId={identity.user_id} />
+      ? <AccountProfile key={identity.user_id} userId={identity.user_id} administrator={identity.administrator} />
       : <Notice error>{t('accounts.profile.unidentified')}</Notice>}
   </>
 }

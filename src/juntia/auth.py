@@ -18,11 +18,13 @@ from .contracts import SetupIn, SetupOut, UserAuthOut, UserLoginIn
 from .db import (
     AuthLimit,
     GoogleAuthFlow,
+    PushSubscription,
     State,
     User,
     UserSession,
     UserToken,
     aware,
+    forget_devices,
     utcnow,
 )
 from .errors import AppError
@@ -128,6 +130,8 @@ async def revoke_user_access(db: AsyncSession, user_id: int) -> None:
         await db.execute(
             delete(model).where(model.user_id == user_id).execution_options(autoflush=False)
         )
+    # Its devices stop receiving notifications until they sign in again.
+    await forget_devices(db, PushSubscription.user_id == user_id)
 
 
 def signed_in(user: User, expires_at: datetime) -> UserAuthOut:
@@ -336,6 +340,8 @@ async def logout(request: Request, response: Response, db: DB) -> None:
     config = settings(request)
     if request.cookies.get(USER_COOKIE):
         await db.execute(delete(UserSession).where(UserSession.token_hash == session_hash(request)))
+        # This device no longer receives the account's notifications.
+        await forget_devices(db, PushSubscription.session_hash == session_hash(request))
     google_browser = request.cookies.get(GOOGLE_COOKIE)
     if google_browser:
         await db.execute(delete(GoogleAuthFlow).where(

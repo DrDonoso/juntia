@@ -7,6 +7,7 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     CheckConstraint,
+    ColumnElement,
     Date,
     DateTime,
     ForeignKey,
@@ -16,7 +17,9 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    delete,
     false,
+    select,
     true,
     update,
 )
@@ -125,6 +128,8 @@ class User(Base):
     # Ids of the "What's new" notes the account has read (see ``whats_new``); NULL until the
     # interface records them for the first time.
     whats_new_seen: Mapped[list[str] | None] = mapped_column(JSON(none_as_null=True))
+    # The kinds of notifications the account turned off (see ``notifications``); NULL: none.
+    notifications_muted: Mapped[list[str] | None] = mapped_column(JSON(none_as_null=True))
 
 
 class UserSession(Base):
@@ -716,6 +721,76 @@ class DocumentUpload(Authorship, Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class Notification(Base):
+    """An alert for one account, under the bell at the top of the portal and, on the devices that
+    turned them on, a push notification (``notifications``). ``key`` says what it is about
+    (``statement_missing:2026-10``): an account never gets the same one twice. Its condition
+    resolves it, and brings it back; dismissing it hides it for good."""
+
+    __tablename__ = "notifications"
+    __table_args__ = (UniqueConstraint("user_id", "key", name="one_notification_per_key"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", name="notification_user", ondelete="CASCADE")
+    )
+    kind: Mapped[str] = mapped_column(String(40))
+    key: Mapped[str] = mapped_column(String(100))
+    # What its texts need, by kind: {"month": "2026-10"} for a missing statement.
+    params: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
+    # The page of the portal it opens.
+    link: Mapped[str] = mapped_column(String(300))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PushSubscription(Base):
+    """A browser, or the portal installed on a phone, that receives the account's notifications
+    (``push``): its push service's address and keys, as the browser gave them."""
+
+    __tablename__ = "push_subscriptions"
+    __table_args__ = (CheckConstraint("locale IN ('en', 'es')", name="push_subscription_locale"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", name="push_subscription_user", ondelete="CASCADE"), index=True
+    )
+    # The session that registered it: signing out there forgets it.
+    session_hash: Mapped[str] = mapped_column(String(64), index=True)
+    endpoint: Mapped[str] = mapped_column(String(2048), unique=True)
+    p256dh: Mapped[str] = mapped_column(String(100))
+    auth: Mapped[str] = mapped_column(String(40))
+    # The address of the portal it uses (one of PUBLIC_ORIGIN), which its notifications open.
+    origin: Mapped[str] = mapped_column(String(255))
+    # The language of the interface there, which its notifications speak.
+    locale: Mapped[str] = mapped_column(String(2))
+    # Notifications in a row its push service refused: too many forget it.
+    failures: Mapped[int] = mapped_column(default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PushDelivery(Base):
+    """A notification waiting to reach one device (``push``)."""
+
+    __tablename__ = "push_deliveries"
+    __table_args__ = (
+        UniqueConstraint("notification_id", "subscription_id", name="one_push_delivery"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    notification_id: Mapped[int] = mapped_column(
+        ForeignKey("notifications.id", name="push_delivery_notification", ondelete="CASCADE")
+    )
+    subscription_id: Mapped[int] = mapped_column(
+        ForeignKey("push_subscriptions.id", name="push_delivery_subscription", ondelete="CASCADE"),
+        index=True,
+    )
+    # Sending attempts that failed for now, and when to try again (or a claim while sending).
+    attempts: Mapped[int] = mapped_column(default=0, server_default="0")
+    not_before: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 async def lock_state(db: AsyncSession) -> State:
     if db.get_bind().dialect.name == "sqlite":
         # SQLite ignores FOR UPDATE; acquire its write lock before reading the revision.
@@ -724,3 +799,17 @@ async def lock_state(db: AsyncSession) -> State:
     if state is None:
         raise RuntimeError("Database is not initialized; run migrations and seed")
     return state
+
+
+async def forget_devices(db: AsyncSession, condition: ColumnElement[bool]) -> None:
+    """Forget the push devices that meet ``condition``, with the messages waiting for them (SQLite
+    does not cascade)."""
+    await db.execute(
+        delete(PushDelivery)
+        .where(PushDelivery.subscription_id.in_(select(PushSubscription.id).where(condition)))
+        .execution_options(autoflush=False, synchronize_session=False)
+    )
+    await db.execute(
+        delete(PushSubscription).where(condition)
+        .execution_options(autoflush=False, synchronize_session=False)
+    )

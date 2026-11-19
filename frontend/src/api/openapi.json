@@ -5731,6 +5731,120 @@
         "title": "NeighborOut",
         "type": "object"
       },
+      "NotificationKindOut": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "statement_missing",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "enabled"
+        ],
+        "title": "NotificationKindOut",
+        "type": "object"
+      },
+      "NotificationOut": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "statement_missing",
+            "title": "Kind",
+            "type": "string"
+          },
+          "link": {
+            "title": "Link",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Params",
+            "type": "object"
+          },
+          "read": {
+            "title": "Read",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "params",
+          "link",
+          "created_at",
+          "read"
+        ],
+        "title": "NotificationOut",
+        "type": "object"
+      },
+      "NotificationPreferenceIn": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "statement_missing",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "enabled"
+        ],
+        "title": "NotificationPreferenceIn",
+        "type": "object"
+      },
+      "NotificationsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationKindOut"
+            },
+            "title": "Kinds",
+            "type": "array"
+          },
+          "unread": {
+            "title": "Unread",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kinds",
+          "unread",
+          "items"
+        ],
+        "title": "NotificationsOut",
+        "type": "object"
+      },
       "PresidencyIn": {
         "additionalProperties": false,
         "properties": {
@@ -6139,6 +6253,90 @@
           "google_linked"
         ],
         "title": "ProfileOut",
+        "type": "object"
+      },
+      "PushConfigOut": {
+        "additionalProperties": false,
+        "properties": {
+          "public_key": {
+            "title": "Public Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_key"
+        ],
+        "title": "PushConfigOut",
+        "type": "object"
+      },
+      "PushEndpointIn": {
+        "additionalProperties": false,
+        "properties": {
+          "endpoint": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Endpoint",
+            "type": "string"
+          }
+        },
+        "required": [
+          "endpoint"
+        ],
+        "title": "PushEndpointIn",
+        "type": "object"
+      },
+      "PushKeysIn": {
+        "additionalProperties": false,
+        "properties": {
+          "auth": {
+            "maxLength": 40,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+={0,2}$",
+            "title": "Auth",
+            "type": "string"
+          },
+          "p256dh": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+={0,2}$",
+            "title": "P256Dh",
+            "type": "string"
+          }
+        },
+        "required": [
+          "p256dh",
+          "auth"
+        ],
+        "title": "PushKeysIn",
+        "type": "object"
+      },
+      "PushSubscriptionIn": {
+        "additionalProperties": false,
+        "properties": {
+          "endpoint": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "keys": {
+            "$ref": "#/components/schemas/PushKeysIn"
+          },
+          "locale": {
+            "enum": [
+              "en",
+              "es"
+            ],
+            "title": "Locale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "endpoint",
+          "keys",
+          "locale"
+        ],
+        "title": "PushSubscriptionIn",
         "type": "object"
       },
       "RecoveryOut": {
@@ -14910,6 +15108,271 @@
         "tags": [
           "Finance",
           "Neighbors"
+        ]
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "operationId": "notifications_api_notifications_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Notifications",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/notifications/preferences": {
+      "patch": {
+        "description": "Turn a kind on or off for the account (the bell and every device).",
+        "operationId": "choose_api_notifications_preferences_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationPreferenceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Choose",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/notifications/read-all": {
+      "post": {
+        "description": "Mark every notification under the bell as read.",
+        "operationId": "read_all_api_notifications_read_all_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read All",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/notifications/{notification_id}/dismiss": {
+      "post": {
+        "description": "Hide a notification for good; its push messages still waiting are not sent.",
+        "operationId": "dismiss_api_notifications__notification_id__dismiss_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "notification_id",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Notification Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dismiss",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/notifications/{notification_id}/read": {
+      "post": {
+        "operationId": "read_api_notifications__notification_id__read_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "notification_id",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Notification Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/push": {
+      "get": {
+        "operationId": "push_config_api_push_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushConfigOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Push Config",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/push/subscription": {
+      "put": {
+        "description": "Register this device for the account's notifications, or refresh its registration. An\naddress another account registered becomes this one's (someone else signed in there), without\nwhat was waiting for the other. 422 ``push_service_unsupported``: the browser uses a push\nservice Juntia does not send to.",
+        "operationId": "subscribe_api_push_subscription_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushSubscriptionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Subscribe",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/push/unsubscribe": {
+      "post": {
+        "description": "Stop the notifications of this device (nothing happens unless the account registered it).",
+        "operationId": "unsubscribe_api_push_unsubscribe_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushEndpointIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unsubscribe",
+        "tags": [
+          "Notifications"
         ]
       }
     },

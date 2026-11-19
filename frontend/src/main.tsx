@@ -8,6 +8,8 @@ import { Notice, profileInitials, useAction, useFeatureLifecycle, useFeatures, u
 import { Icon } from './icons'
 import { PrivacyContext, storedPrivacy } from './privacy'
 import { I18nRoot, LanguageSelect, useI18n } from './i18n'
+import { NotificationBell } from './notifications/notifications'
+import { PushProvider } from './notifications/push'
 import { GlobalSearch } from './search'
 import type { WhatsNewProps } from './whats-new/whats-new'
 import './styles/app.css'
@@ -93,13 +95,17 @@ export function Shell() {
   const [hideValues, setHideValues] = useState(storedPrivacy)
   const [compactNavigation, setCompactNavigation] = useState(() => window.matchMedia(compactNavigationQuery).matches)
   const [desktopCollapsed, setDesktopCollapsed] = useState(storedSidebarCollapsed)
-  const [openMenu, setOpenMenu] = useState<'navigation' | 'user' | 'search' | null>(null)
+  const [openMenu, setOpenMenu] = useState<'navigation' | 'user' | 'search' | 'notifications' | null>(null)
   const [whatsNewOpen, setWhatsNewOpen] = useState(false)
   const sidebar = useRef<HTMLElement>(null), navigationButton = useRef<HTMLButtonElement>(null)
   const userMenu = useRef<HTMLElement>(null), userButton = useRef<HTMLButtonElement>(null)
   const searchPanel = useRef<HTMLDivElement>(null), searchButton = useRef<HTMLButtonElement>(null)
+  const notificationsPanel = useRef<HTMLElement>(null), notificationsButton = useRef<HTMLButtonElement>(null)
   const setSearchOpen = useCallback((open: boolean) => {
     setOpenMenu(previous => open ? 'search' : previous === 'search' ? null : previous)
+  }, [])
+  const setNotificationsOpen = useCallback((open: boolean) => {
+    setOpenMenu(previous => open ? 'notifications' : previous === 'notifications' ? null : previous)
   }, [])
   const sidebarExpanded = compactNavigation ? openMenu === 'navigation' : !desktopCollapsed
   const privateValues = isFinanceView && hideValues
@@ -118,6 +124,7 @@ export function Shell() {
     function resize() {
       if (sidebar.current?.contains(document.activeElement)) navigationButton.current?.focus()
       if (userMenu.current?.contains(document.activeElement)) userButton.current?.focus()
+      if (notificationsPanel.current?.contains(document.activeElement)) notificationsButton.current?.focus()
       setCompactNavigation(query.matches)
       setOpenMenu(null)
     }
@@ -126,9 +133,14 @@ export function Shell() {
   }, [])
   useEffect(() => {
     if (!openMenu) return
-    const panel = openMenu === 'navigation' ? sidebar.current : openMenu === 'user' ? userMenu.current : searchPanel.current
-    const trigger = openMenu === 'navigation' ? navigationButton.current : openMenu === 'user' ? userButton.current : searchButton.current
-    panel?.querySelector<HTMLElement>(openMenu === 'navigation' ? 'nav a, .sidebar-return' : openMenu === 'user' ? 'a, button' : 'input')?.focus()
+    const menus = {
+      navigation: [sidebar.current, navigationButton.current, 'nav a, .sidebar-return'],
+      user: [userMenu.current, userButton.current, 'a, button'],
+      search: [searchPanel.current, searchButton.current, 'input'],
+      notifications: [notificationsPanel.current, notificationsButton.current, 'a, button'],
+    } as const
+    const [panel, trigger, first] = menus[openMenu]
+    panel?.querySelector<HTMLElement>(first)?.focus()
     function dismiss(event: PointerEvent | FocusEvent) {
       if (event.target instanceof Node && !panel?.contains(event.target) && !trigger?.contains(event.target)) setOpenMenu(null)
     }
@@ -182,7 +194,7 @@ export function Shell() {
     catch { console.warn('Privacy preference could not be stored.') }
   }
   const initials = profileInitials(reader.data?.name || t('shell.defaultUserName'))
-  return <PrivacyContext value={privateValues}><a className="skip-link" href="#content">{t('shell.skipToContent')}</a>
+  return <PushProvider userId={signedIn ? reader.data?.user_id ?? null : null}><PrivacyContext value={privateValues}><a className="skip-link" href="#content">{t('shell.skipToContent')}</a>
     <header className="topbar">
       <button ref={navigationButton} type="button" className="quiet icon-button navigation-toggle" title={t('shell.navigationMenu')} aria-label={t('shell.navigationMenu')} aria-controls="site-navigation" aria-expanded={sidebarExpanded} onClick={toggleNavigation}><Icon name={compactNavigation && sidebarExpanded ? 'close' : 'menu'} /></button>
       <span className="community-title" title={communityName}>{communityName}</span>
@@ -193,6 +205,9 @@ export function Shell() {
         }} />}
         {isFinanceView && signedIn && <button className="quiet icon-button" title={hideValues ? t('shell.showAmounts') : t('shell.hideAmounts')} aria-label={hideValues ? t('shell.showAmounts') : t('shell.hideAmounts')} aria-pressed={hideValues} onClick={togglePrivacy}><Icon name={hideValues ? 'eye-off' : 'eye'} /></button>}
         <button className="quiet icon-button" title={theme === 'dark' ? t('shell.lightMode') : t('shell.darkMode')} aria-label={theme === 'dark' ? t('shell.lightMode') : t('shell.darkMode')} aria-pressed={theme === 'dark'} onClick={toggleTheme}><Icon name={theme === 'dark' ? 'sun' : 'moon'} /></button>
+        {signedIn && <NotificationBell administrator={administrator} panel={{
+          open: openMenu === 'notifications', setOpen: setNotificationsOpen, panel: notificationsPanel, trigger: notificationsButton,
+        }} />}
         {signedIn && <div className="user-controls">
           <button ref={userButton} type="button" className="quiet icon-button profile-button" title={t('shell.userMenu')} aria-label={t('shell.userMenuLabel', { initials })} aria-controls="user-menu" aria-expanded={openMenu === 'user'} onClick={() => setOpenMenu(previous => previous === 'user' ? null : 'user')}>
             <span className="profile-avatar" aria-hidden="true">{initials}</span>
@@ -268,7 +283,7 @@ export function Shell() {
       <WhatsNew key={reader.data?.user_id} administrator={administrator}
         allOpen={whatsNewOpen} onAllOpenChange={setWhatsNewOpen} restoreFocusRef={userButton} />
     </Suspense>}
-  </PrivacyContext>
+  </PrivacyContext></PushProvider>
 }
 /** The administration: for signed-in administrators; anyone else finds no such page. */
 function AdminGate() {

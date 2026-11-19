@@ -14,6 +14,7 @@ All screenshots show synthetic data from the [demo](https://demo.juntia.drdonoso
 - [Search](#search)
 - [Languages](#languages)
 - [What's new](#whats-new)
+- [Notifications](#notifications)
 - [Finances](#finances)
 - [Actions](#actions)
 - [Events](#events)
@@ -168,6 +169,36 @@ order as the box:
 - **What's new** in the avatar menu lists every note again, by month.
 - The notes ship with each version (nothing is fetched from outside the server); the server only
   keeps which ones each account has read.
+
+## Notifications
+
+- Accounts that receive notifications see a **bell** at the top of every page, next to the theme
+  button, with how many are unread (**9+** above nine). So far only administrators receive them;
+  neighbors see no bell.
+- The bell opens the list: what each notification is about, one line of explanation and how long
+  ago it came. Its title opens the page where it is dealt with and counts it as read; the check mark
+  marks it as read, the cross dismisses it for good, and **Mark all as read** does it for all of
+  them. Escape, a click outside or the bell close the list; on a phone it spans the screen.
+- **Missing statement**, for administrators: from the first day of each month (in the community's
+  time zone, `TZ`), when the ledger has movements from earlier months but none booked in the
+  previous one, its bank statement has not been imported yet. It opens **Finances > Import**, goes
+  away as soon as a statement with movements of that month is imported, and comes back if that
+  statement is removed. A statement that covers only part of the month counts as imported, and an
+  installation without statements is never told.
+- **My profile > Notifications** (also **Notification settings** under the bell) turns each kind on
+  or off for the account: a kind turned off is neither listed nor sent to its devices. Every kind is
+  on at first.
+- **Notifications on this device**, in the same card, also shows them as notifications of the phone
+  or computer, even with Juntia closed, from 9:00 to 21:00 in the community's time zone (a device
+  that is off then gets them when it comes back). Each device is turned on by itself, and is told in
+  the language of its interface. It needs HTTPS (or `localhost`) and outbound access from the server
+  to the browsers' push services ([configuration](configuration.md#push-notifications)); on an
+  iPhone or iPad, Juntia added to the Home Screen (iOS 16.4 or later) and turned on from there; and
+  the browser's permission, which the card says when it is blocked.
+- A device stops receiving them when it signs out, and every device of an account does when its
+  password changes, its sessions are closed or it is disabled or deleted; signing in again there and
+  opening Juntia turns them back on. A session that just expires does not stop them. Tapping one
+  opens its page in Juntia.
 
 ## Finances
 
@@ -713,6 +744,8 @@ The avatar menu opens **My profile**, for every account, administrators included
   password.
 - **Link Google** and **Unlink Google** manage Google sign-in (see below). Accounts that only use
   Google can request a link to create a **Local password**.
+- **Notifications**, for the accounts that receive them, chooses which ones and turns them on for
+  that device (see [notifications](#notifications)).
 
 ### Google sign-in
 
@@ -892,8 +925,9 @@ needs HTTPS, and the wording depends on the device. The shortcut uses the commun
 community-building icon (including a maskable icon for Android); re-add an existing shortcut to
 refresh them.
 
-No service worker is installed and no data is cached for offline use. The manifest is requested with
-credentials, so an access gate in front of Juntia can authorize it.
+Nothing is cached for offline use. A service worker (`/sw.js`) is installed only on the devices
+where [notifications](#notifications) are turned on, and it only shows them. The manifest is
+requested with credentials, so an access gate in front of Juntia can authorize it.
 
 <p align="center">
   <img src="screenshots/mobile.png" alt="Juntia on a phone" width="320"><br>

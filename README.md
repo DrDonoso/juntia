@@ -116,6 +116,13 @@ describes every part in detail.
 - After an update, everyone is told once, in plain words and in their language, what changed for
   them since their last visit; the avatar menu keeps the list.
 
+**Notifications**
+
+- A bell at the top tells administrators what needs their attention, starting with the bank
+  statement of the previous month when it has not been imported by the first day of the next one.
+- Whoever receives them chooses in **My profile** what they are told about, and can also get it as
+  notifications on their phone or computer (Web Push, HTTPS needed), even with Juntia closed.
+
 **Security and privacy**
 
 - No public registration; HttpOnly, SameSite Strict cookies; an origin and anti-CSRF check on every
@@ -164,6 +171,7 @@ flowchart LR
   app -. optional .-> smtp["SMTP server"]
   app -. optional .-> google["Google sign-in<br/>(OpenID Connect)"]
   app -. optional .-> ai["OpenAI-compatible API"]
+  app -. optional .-> push["Browsers' push services<br/>(notifications)"]
 ```
 
 - One image, `drdonoso/juntia`, runs as a non-root user and serves the API and the compiled web app
@@ -172,6 +180,8 @@ flowchart LR
 - Statements are parsed locally in a time-limited child process, and the text of shared documents
   is read the same way, with Tesseract's OCR for scans and pictures. The optional AI receives only
   sanitized transaction descriptions and your category and tag names, never the PDF, IBAN or amounts.
+- Every minute the same process brings the notifications up to date and sends the push
+  notifications due, encrypted for each device, only to the push services of the major browsers.
 - Stack: Python 3.14, FastAPI, SQLAlchemy, Alembic and PostgreSQL 18; React 19, TypeScript 7, Vite 8,
   TanStack Query and React Aria.
 
