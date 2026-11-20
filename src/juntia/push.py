@@ -12,8 +12,10 @@ that a phone keeps receiving them between visits.
 (``notifications.evaluate``), then sends the push messages waiting (``push_deliveries``) between
 9:00 and 21:00 in ``TZ`` (a server that was down at nine sends them when it is back). A message
 that fails is tried again after 2, 5, 15, 30 and 60 minutes. It is dropped once its notification is
-read, dismissed or resolved, or its kind turned off, and after three days. A device its push
-service no longer knows, or that refused three messages in a row, is forgotten.
+read, dismissed or resolved, or its kind turned off (also with the section of the portal it belongs
+to), and after three days. A notification that has news while its message is being sent gets it
+sent again, with the news. A device its push service no longer knows, or that refused three
+messages in a row, is forgotten.
 
 The messages use the declarative format (``"web_push": 8030``) that Safari shows by itself since
 iOS 18.4; the service worker of the interface (``frontend/public/sw.js``) shows them everywhere
@@ -35,7 +37,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from . import notifications, webpush
+from . import notifications, queries, webpush
 from .auth import DB, CurrentUser, session_hash, settings
 from .config import Language, Settings, normalize_origin
 from .contracts import PushConfigOut, PushEndpointIn, PushSubscriptionIn
@@ -161,11 +163,14 @@ async def unsubscribe(body: PushEndpointIn, user_id: CurrentUser, db: DB) -> Non
     await db.commit()
 
 
-def message(notification: Notification, origin: str, locale: Language) -> dict[str, Any] | None:
-    """The declarative push message of a notification, which opens its page of ``origin``; None
-    if it cannot be told. Its title says what it is about, never the portal's name: iOS adds
-    "from <the community's name>" under the title of every notification."""
-    text = notifications.push_text(notification.kind, notification.params or {}, locale)
+def message(
+    notification: Notification, origin: str, locale: Language, today: dt.date
+) -> dict[str, Any] | None:
+    """The declarative push message of a notification, which opens its page of ``origin``, told on
+    the community's date ``today``; None if it cannot be told. Its title says what it is about,
+    never the portal's name: iOS adds "from <the community's name>" under the title of every
+    notification. Its tag is what it is about, so that news replaces the earlier message."""
+    text = notifications.push_text(notification.kind, notification.params or {}, locale, today)
     if text is None:
         return None
     title, body = text
@@ -198,6 +203,8 @@ class Due:
     # Seconds the push service keeps it for an unreachable device: until the end of the window.
     ttl: int
     topic: str
+    # Until when this round claimed it: a message queued again meanwhile has another time.
+    claim: dt.datetime
 
 
 class Notifier:
@@ -275,9 +282,12 @@ class Notifier:
     async def due(self, now: dt.datetime) -> list[Due]:
         """Drop the messages no longer wanted, and claim those to send now."""
         end = self.window_end(now)
+        today = now.astimezone(self.zone).date()
+        claim = now + CLAIM
         dropped: list[int] = []
         due: list[Due] = []
         async with self.sessions() as db:
+            flags = await queries.feature_flags(db)
             rows = (await db.execute(
                 select(PushDelivery, Notification, PushSubscription, User)
                 .join(Notification, Notification.id == PushDelivery.notification_id)
@@ -292,7 +302,7 @@ class Notifier:
                     or notification.resolved_at is not None
                     or device.user_id != notification.user_id
                     or user.disabled
-                    or notification.kind not in notifications.available(user.administrator)
+                    or notification.kind not in notifications.available(user.administrator, flags)
                     or notification.kind in notifications.muted_kinds(user.notifications_muted)
                     or aware(delivery.created_at) + EXPIRY <= now
                 ):
@@ -300,14 +310,14 @@ class Notifier:
                     continue
                 if end is None or aware(delivery.not_before) > now:
                     continue
-                content = message(notification, device.origin, cast(Language, device.locale))
+                content = message(notification, device.origin, cast(Language, device.locale), today)
                 if content is None:
                     dropped.append(delivery.id)
                     continue
                 claimed = await db.scalar(
                     update(PushDelivery)
                     .where(PushDelivery.id == delivery.id, PushDelivery.not_before <= now)
-                    .values(not_before=now + CLAIM)
+                    .values(not_before=claim)
                     .returning(PushDelivery.id)
                     .execution_options(synchronize_session=False)
                 )
@@ -321,6 +331,7 @@ class Notifier:
                     attempts=delivery.attempts,
                     ttl=max(60, int((end - now).total_seconds())),
                     topic=f"notification-{notification.id}",
+                    claim=claim,
                 ))
             if dropped:
                 await db.execute(delete(PushDelivery).where(PushDelivery.id.in_(dropped)))
@@ -341,19 +352,24 @@ class Notifier:
     async def record(self, now: dt.datetime, results: list[tuple[Due, webpush.Outcome]]) -> None:
         async with self.sessions() as db:
             for item, result in results:
+                # Unless its notification had news while it was being sent: then it waits again,
+                # to be sent with them.
+                claimed = and_(
+                    PushDelivery.id == item.delivery_id, PushDelivery.not_before == item.claim,
+                )
                 if result == "retry":
                     attempts = item.attempts + 1
                     wait = RETRY_MINUTES[min(attempts, len(RETRY_MINUTES)) - 1]
                     await db.execute(
                         update(PushDelivery)
-                        .where(PushDelivery.id == item.delivery_id)
+                        .where(claimed)
                         .values(attempts=attempts, not_before=now + dt.timedelta(minutes=wait))
                     )
                     continue
                 if result == "gone":
                     await forget_devices(db, PushSubscription.id == item.subscription_id)
                     continue
-                await db.execute(delete(PushDelivery).where(PushDelivery.id == item.delivery_id))
+                await db.execute(delete(PushDelivery).where(claimed))
                 await db.execute(
                     update(PushSubscription)
                     .where(PushSubscription.id == item.subscription_id)

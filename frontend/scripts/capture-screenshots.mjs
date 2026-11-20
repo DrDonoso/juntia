@@ -206,25 +206,14 @@ const SHOTS = [
   },
   {
     name: 'notifications',
-    as: 'administrator',
+    as: 'neighbor',
     // The list under the bell stays open while it has the focus.
     keepFocus: true,
     async capture(page) {
-      // Without the latest two statements (newest first), last month's is missing.
-      await go(page, '/admin/statements')
-      await heading(page, 'Bank statements').waitFor()
-      page.on('dialog', dialog => void dialog.accept())
-      const statements = page.locator('.statement-list > article')
-      await statements.first().waitFor()
-      const total = await statements.count()
-      for (const left of [total - 1, total - 2]) {
-        await statements.first().getByRole('button', { name: 'Delete import', exact: true }).click()
-        await statements.nth(left).waitFor({ state: 'detached' })
-      }
-      await go(page, '/admin')
-      await heading(page, 'Import statement').waitFor()
-      await page.getByRole('button', { name: 'Notifications: 1 unread', exact: true }).click()
-      await page.getByRole('dialog', { name: 'Notifications' }).getByRole('link', { name: /^Missing statement: / }).waitFor()
+      // The sample neighbor follows the lift's action, which has new comments.
+      await heading(page, 'Community finances').waitFor()
+      await page.getByRole('button', { name: /^Notifications: \d+\+? unread$/ }).click()
+      await page.getByRole('dialog', { name: 'Notifications' }).getByRole('link', { name: /^Lift modernisation/ }).first().waitFor()
     },
   },
   {

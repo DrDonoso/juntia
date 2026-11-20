@@ -1,0 +1,14 @@
+{
+  "kind": "new",
+  "audience": "everyone",
+  "icon": "bell",
+  "link": "/profile",
+  "en": {
+    "title": "Hear about the community's news on your phone",
+    "body": "The bell at the top now tells you what happens in the community, such as each month's accounts, new actions and comments, or events with a reminder the day before. Turn them on in My profile to get them on your phone too."
+  },
+  "es": {
+    "title": "Entérate de lo que pasa en la comunidad desde el móvil",
+    "body": "La campana de arriba te avisa ahora de lo que pasa en la comunidad, como las cuentas de cada mes, actuaciones y comentarios nuevos o eventos, con un recordatorio el día antes. Actívalas en Mi perfil para recibirlas también en el móvil."
+  }
+}

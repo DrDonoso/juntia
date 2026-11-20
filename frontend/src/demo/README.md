@@ -77,7 +77,7 @@ src/demo/
   store/<domain>.ts    the data of this page load: <domain>Store() and reset<Domain>Store()
   store/core.ts        shared state: session, features, general settings, account, dwellings, accounts, the What's new notes each account has read
   store/storage.ts     storage of PDFs, images and documents, from their stores (no state of its own)
-  store/notifications.ts  the notifications each account was told, read and dismissed, and the kinds it turned off
+  store/notifications.ts  what each account read and dismissed, when alerts were first noticed, the ids and the kinds turned off
   store/index.ts       resetDemo(): every store back to its scenario
   handlers/<domain>.ts the MSW handlers of each domain (an exported array)
   handlers/index.ts    all handlers, UNAVAILABLE_IN_DEMO and the /api catch-all (501, console error)
@@ -88,8 +88,8 @@ src/demo/
 Domains are `core` (this foundation), `finance`, `community`, `people`, `storage`, `documents`
 (shared documents, whose modules are named `shared-documents*.ts`: `scenario/community-documents.ts`
 is the catalogue of the actions' PDFs), `search` (the search box at the top of every page, which
-only reads the other domains' stores and owns no data) and `notifications` (the bell, whose alerts
-follow the finance store, with no scenario of its own). Each domain owns exactly its `scenario/`,
+only reads the other domains' stores and owns no data) and `notifications` (the bell, derived from
+the finance and community stores, with no scenario of its own). Each domain owns exactly its `scenario/`,
 `store/` and `handlers/` module plus its own test files; `handlers/index.ts` and `store/index.ts`
 import them.
 
@@ -241,9 +241,13 @@ Every operation of `src/api/openapi.json` belongs to exactly one module (`{x}` i
   the count of each kind and the best few of each, or a page of one kind.
 - **notifications** (`handlers/notifications.ts`): `GET /api/notifications`,
   `POST /api/notifications/read-all`, `POST /api/notifications/{notification_id}/read|dismiss` and
-  `PATCH /api/notifications/preferences`, brought up to date on every request from the finance
-  store with the backend's rule (`src/juntia/notifications.py`): administrators are told when the
+  `PATCH /api/notifications/preferences`, derived on every request from the finance and community
+  stores with the backend's rules (`src/juntia/notifications.py`): administrators are told when the
   previous month's statement is missing, which happens once the latest two statements are removed;
+  everyone else, the previous month's accounts; and everyone, the news of the actions and events
+  from their history (the news from more than three days before the page loaded counts as read) and
+  the reminders of the events that start within a day. The store keeps only what each account read
+  and dismissed, the ids and the kinds turned off;
   `GET /api/push`, `PUT /api/push/subscription` and `POST /api/push/unsubscribe` answer
   `demo_unavailable` (MSW's is the demo's service worker).
 

@@ -1602,8 +1602,11 @@ class SearchResultsOut(Contract):
 
 
 # Notifications: the bell at the top of the portal (notifications.py) and push notifications on
-# the devices that turned them on (push.py).
-NotificationKind = Literal["statement_missing"]
+# the devices that turned them on (push.py). In the order they are shown.
+NotificationKind = Literal[
+    "statement_missing", "accounts_ready", "action_changes", "action_comments", "event_changes",
+    "event_reminder",
+]
 NOTIFICATION_KINDS: tuple[NotificationKind, ...] = get_args(NotificationKind)
 
 
@@ -1616,10 +1619,16 @@ class NotificationKindOut(Contract):
 class NotificationOut(Contract):
     id: int
     kind: NotificationKind
-    # What its texts need, by kind: "month" ("2026-10") for a missing statement.
+    # What its texts need, by kind (notifications.py): "month" ("2026-10") for a missing statement
+    # or the accounts of a month; an action's "title" and "status", with "change" ("created" or
+    # "status"); the "comments" and "attachments" (counts) on an action and the "author" of the
+    # latest; an event's "title", the "day" ("2026-12-04") and "time" ("19:00", empty all day) it
+    # starts in the community's time zone and its "location", with "change" ("created", "changed"
+    # or "cancelled") for the news about it.
     params: dict[str, str]
     # The page of the portal it opens.
     link: str
+    # When it came, or its latest news.
     created_at: datetime
     read: bool
 
@@ -1628,6 +1637,9 @@ class NotificationsOut(Contract):
     # The kinds the account can receive, in the order they are shown; none: the portal shows no
     # bell and no notification settings.
     kinds: list[NotificationKindOut]
+    # The community's date (TZ), against which the days of the notifications are told ("today",
+    # "tomorrow").
+    today: date
     # How many of them are not read yet (all of them, even beyond the 50 listed).
     unread: int
     # The account's notifications of the kinds turned on, neither resolved nor dismissed, newest

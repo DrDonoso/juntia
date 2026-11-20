@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 from starlette.responses import Response
 
-from . import event_calendar, queries
+from . import event_calendar, notifications, queries
 from .auth import DB, Actor, actor_of, mutation_session, reader_session, settings
 from .config import Language, Settings
 from .contracts import (
@@ -214,6 +214,13 @@ def snapshot(value: EventOut) -> EventSnapshot:
     return EventSnapshot.model_validate(value.model_dump(include=set(EventSnapshot.model_fields)))
 
 
+def moved(before: EventSnapshot, after: EventSnapshot) -> bool:
+    """Whether an event changed its date, time or place: news for everyone."""
+    return any(getattr(before, name) != getattr(after, name) for name in (
+        "all_day", "starts_at", "ends_at", "starts_on", "ends_on", "location",
+    ))
+
+
 def record_history(
     db: AsyncSession, value: CommunityEvent, actor: Actor,
     kind: Literal["created", "updated", "deleted"],
@@ -393,6 +400,7 @@ async def create_event(
     await db.flush()
     record_history(db, value, actor, "created", None,
                    snapshot(await render_event(db, value, links=True, language=language)))
+    await notifications.tell_event(db, settings(request), actor, value, "created")
     await db.commit()
     return await render_event(
         db, value, links=(await queries.feature_flags(db)).actions, language=language,
@@ -416,6 +424,9 @@ async def edit_event(
         value.version += 1
         value.updated_at = utcnow()
         record_history(db, value, actor, "updated", before, after)
+        await notifications.tell_event(
+            db, settings(request), actor, value, "changed" if moved(before, after) else None,
+        )
     await db.commit()
     return await render_event(
         db, value, links=(await queries.feature_flags(db)).actions, language=language,
@@ -435,6 +446,7 @@ async def delete_event(
     value.deleted_at = value.updated_at = utcnow()
     value.version += 1
     record_history(db, value, actor, "deleted", before, None)
+    await notifications.tell_event(db, settings(request), actor, value, "cancelled")
     await db.commit()
 
 

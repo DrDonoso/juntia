@@ -14,7 +14,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse
 
 from . import ai, imports, notifications, queries
-from .auth import DB, Admin, reader_session, settings
+from .auth import DB, Admin, Administrator, reader_session, settings
 from .contracts import (
     AccountConfirmation,
     AccountOut,
@@ -307,6 +307,7 @@ async def confirm_import(
     request: Request,
     db: DB,
     admin: Admin,
+    identity: Administrator,
     language: ServerLanguage,
 ) -> ImportOut:
     record = await imports.confirm(db, admin, str(preview_id), body, language=language)
@@ -314,8 +315,9 @@ async def confirm_import(
     if record.id != str(preview_id):
         (settings(request).upload_dir / f"{preview_id}.pdf").unlink(missing_ok=True)
         result = result.model_copy(update={"inserted": 0, "duplicates": result.count})
-    # The statement may be the one an alert says is missing.
-    await notifications.refresh(db)
+    # The statement may bring the accounts of the month that ended last, or be the one an alert
+    # says is missing.
+    await notifications.imported(db, settings(request), identity.user_id, record.id)
     return result
 
 
@@ -334,7 +336,7 @@ async def delete_import(
     admin: Admin,
 ) -> None:
     await imports.remove_import(db, str(import_id), body.revision)
-    # Without it, a month may be missing again.
+    # Without it, a month may be missing again, or have no accounts.
     await notifications.refresh(db)
     try:
         (settings(request).upload_dir / f"{import_id}.pdf").unlink(missing_ok=True)

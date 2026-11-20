@@ -1,21 +1,25 @@
 /**
- * Notifications (src/juntia/notifications.py): the bell in the top bar with the account's alerts,
- * and their settings in My profile. Both show only to accounts that can receive some kind
- * (administrators, so far). Push notifications on each device: ./push.tsx.
+ * Notifications (src/juntia/notifications.py): the bell in the top bar with the account's alerts and
+ * the community's news, and their settings in My profile. Both show to the accounts that can receive
+ * some kind: every account, since the accounts of each month are for everyone. Push notifications on
+ * each device: ./push.tsx.
  */
 import { useEffect, useId, useRef, type RefObject } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useLocation } from 'react-router'
 import { api, cache } from '../api/client'
-import type { NotificationOut, NotificationsOut } from '../api/schema.gen'
-import { Icon } from '../icons'
-import { dateTimeFormat, relativeTimeFormat, useI18n, type Translate } from '../i18n'
+import type { ActionSummaryOut, NotificationOut, NotificationsOut } from '../api/schema.gen'
+import { Icon, type IconName } from '../icons'
+import { dateTimeFormat, relativeTimeFormat, upperCase, useI18n, type Translate } from '../i18n'
 import { useAction } from '../shared'
 import { usePush, type PushStatus } from './push'
 import './notifications.css'
 
 /** How often the bell asks again while the account can receive some kind. */
 export const POLL_MS = 60_000
+
+/** The most unread notifications the bell's badge counts: above, it shows "9+". */
+const BADGE_MAX = 9
 
 /** The account's role decides which kinds it receives: a new role asks again. */
 export function notificationsKey(administrator: boolean) {
@@ -52,13 +56,107 @@ function monthName(month: string | undefined): string {
   return dateTimeFormat({ month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${month}-01T00:00:00Z`))
 }
 
+/** The day after `day` (`YYYY-MM-DD`); empty when it is not one. */
+function nextDay(day: string): string {
+  const time = Date.parse(`${day}T00:00:00Z`)
+  return Number.isNaN(time) ? '' : new Date(time + 86_400_000).toISOString().slice(0, 10)
+}
+
+/**
+ * When and where an event is, from the day and time it starts in the community's time zone:
+ * "Thursday 4 December, 19:00 · Portal", with the year when it is not `today`'s.
+ */
+function eventWhen(params: NotificationOut['params'], today: string, t: Translate): string {
+  const { day = '', time, location } = params
+  const date = new Date(`${day}T00:00:00Z`)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || Number.isNaN(date.getTime())) return ''
+  const name = (options: Intl.DateTimeFormatOptions) => dateTimeFormat({ ...options, timeZone: 'UTC' }).format(date)
+  const parts = { weekday: name({ weekday: 'long' }), day: date.getUTCDate(), month: name({ month: 'long' }) }
+  const when = day.slice(0, 4) === today.slice(0, 4)
+    ? t('notifications.eventDay', parts)
+    : t('notifications.eventDayYear', { ...parts, year: date.getUTCFullYear() })
+  return upperCase(when.slice(0, 1)) + when.slice(1) + (time ? `, ${time}` : '') + (location ? ` · ${location}` : '')
+}
+
+const ACTION_STATUSES: readonly ActionSummaryOut['status'][] = [
+  'detected', 'quoting', 'voting', 'approved', 'ordered', 'in_progress', 'done', 'discarded',
+]
+
+function actionStatus(value: string | undefined, t: Translate): string {
+  const status = ACTION_STATUSES.find(known => known === value)
+  return status ? t(`actions.status.${status}`) : value ?? ''
+}
+
+/** A count among the parameters of a notification. */
+function count(value: string | undefined): number {
+  return /^\d+$/.test(value ?? '') ? Number(value) : 0
+}
+
+/** What is new on an action: "New comment by Ana", "3 new comments", "2 new comments and 1 new PDF". */
+function contributions(params: NotificationOut['params'], t: Translate): string {
+  const comments = count(params.comments), attachments = count(params.attachments)
+  if (comments + attachments === 1) {
+    return t(comments ? 'notifications.kinds.action_comments.comment' : 'notifications.kinds.action_comments.attachment', {
+      author: params.author ?? '',
+    })
+  }
+  const told = {
+    comments: t('notifications.kinds.action_comments.comments', { count: comments }),
+    attachments: t('notifications.kinds.action_comments.attachments', { count: attachments }),
+  }
+  if (comments && attachments) return t('notifications.kinds.action_comments.both', told)
+  return t('notifications.kinds.action_comments.single', { items: comments ? told.comments : told.attachments })
+}
+
 type Texts = { title: string; body: string }
 
-const TEXTS: { [K in NotificationOut['kind']]: (item: NotificationOut, t: Translate) => Texts } = {
+/** Each kind's title and text under the bell, `today` being the community's date. */
+const TEXTS: { [K in NotificationOut['kind']]: (item: NotificationOut, t: Translate, today: string) => Texts } = {
   statement_missing: (item, t) => ({
     title: t('notifications.kinds.statement_missing.title', { month: monthName(item.params.month) }),
     body: t('notifications.kinds.statement_missing.body'),
   }),
+  accounts_ready: (item, t) => ({
+    title: t('notifications.kinds.accounts_ready.title', { month: monthName(item.params.month) }),
+    body: t('notifications.kinds.accounts_ready.body'),
+  }),
+  action_changes: ({ params }, t) => {
+    const status = actionStatus(params.status, t), title = params.title ?? ''
+    return params.change === 'created'
+      ? {
+          title: t('notifications.kinds.action_changes.created', { title }),
+          body: t('notifications.kinds.action_changes.createdBody', { status }),
+        }
+      : { title, body: t('notifications.kinds.action_changes.statusBody', { status }) }
+  },
+  action_comments: ({ params }, t) => ({ title: params.title ?? '', body: contributions(params, t) }),
+  event_changes: ({ params }, t, today) => {
+    const title = params.title ?? ''
+    const heading = params.change === 'cancelled'
+      ? t('notifications.kinds.event_changes.cancelled', { title })
+      : params.change === 'changed'
+        ? t('notifications.kinds.event_changes.changed', { title })
+        : t('notifications.kinds.event_changes.created', { title })
+    return { title: heading, body: eventWhen(params, today, t) }
+  },
+  event_reminder: ({ params }, t, today) => {
+    const title = params.title ?? ''
+    const heading = params.day === today
+      ? t('notifications.kinds.event_reminder.today', { title })
+      : params.day === nextDay(today)
+        ? t('notifications.kinds.event_reminder.tomorrow', { title })
+        : t('notifications.kinds.event_reminder.reminder', { title })
+    return { title: heading, body: eventWhen(params, today, t) }
+  },
+}
+
+const ICONS: { [K in NotificationOut['kind']]: IconName } = {
+  statement_missing: 'alert',
+  accounts_ready: 'dashboard',
+  action_changes: 'check',
+  action_comments: 'message',
+  event_changes: 'calendar',
+  event_reminder: 'clock',
 }
 
 const UNITS: readonly [Intl.RelativeTimeFormatUnit, number][] = [
@@ -81,19 +179,21 @@ export type NotificationsPanel = {
   panel: RefObject<HTMLElement | null>; trigger: RefObject<HTMLButtonElement | null>
 }
 
-function NotificationItem({ item, busy, change, leave }: {
+function NotificationItem({ item, today, busy, change, leave }: {
   item: NotificationOut
+  /** The community's date, against which days are told. */
+  today: string
   busy: boolean
   change: (path: string) => void
   /** Its link was followed. */
   leave: () => void
 }) {
   const { t } = useI18n()
-  const { title, body } = TEXTS[item.kind](item, t)
+  const { title, body } = TEXTS[item.kind](item, t, today)
   const markRead = t('notifications.markRead', { title })
   const dismiss = t('notifications.dismiss', { title })
   return <li className={item.read ? 'notification-item' : 'notification-item notification-unread'}>
-    <span className="notification-icon" aria-hidden="true"><Icon name="alert" size={18} /></span>
+    <span className="notification-icon" aria-hidden="true"><Icon name={ICONS[item.kind]} size={18} /></span>
     <div className="notification-text">
       {!item.read && <span className="sr-only">{t('notifications.unread')}</span>}
       <Link className="notification-title" to={item.link} onClick={leave}>{title}</Link>
@@ -135,7 +235,11 @@ export function NotificationBell({ administrator, panel }: { administrator: bool
   if (!value || value.kinds.length === 0) return null
   const { open, setOpen } = panel
   const unread = value.unread
-  const label = unread > 0 ? t('notifications.bellUnread', { count: unread }) : t('notifications.title')
+  // The badge counts up to nine; the bell's name says what it shows.
+  const badge = unread > BADGE_MAX ? `${BADGE_MAX}+` : String(unread)
+  const label = unread > BADGE_MAX
+    ? t('notifications.bellUnreadMany', { badge })
+    : unread > 0 ? t('notifications.bellUnread', { count: unread }) : t('notifications.title')
   function change(path: string) {
     keepFocus.current = true
     void action.change(path).then(saved => { if (!saved) keepFocus.current = false })
@@ -157,7 +261,7 @@ export function NotificationBell({ administrator, panel }: { administrator: bool
     <button ref={panel.trigger} type="button" className="quiet icon-button notification-button" title={t('notifications.title')}
       aria-label={label} aria-expanded={open} aria-controls={open ? panelId : undefined} onClick={() => setOpen(!open)}>
       <Icon name="bell" />
-      {unread > 0 && <span className="notification-badge" aria-hidden="true">{unread > 9 ? '9+' : unread}</span>}
+      {unread > 0 && <span className="notification-badge" aria-hidden="true">{badge}</span>}
     </button>
     {open && <section ref={panel.panel} id={panelId} className="notification-panel" role="dialog" aria-labelledby={titleId} tabIndex={-1}>
       <div className="notification-panel-header">
@@ -168,7 +272,7 @@ export function NotificationBell({ administrator, panel }: { administrator: bool
       {action.notice}
       {value.items.length > 0
         ? <ul className="notification-list">
-          {value.items.map(item => <NotificationItem key={item.id} item={item} busy={action.busy} change={change} leave={() => leave(item)} />)}
+          {value.items.map(item => <NotificationItem key={item.id} item={item} today={value.today} busy={action.busy} change={change} leave={() => leave(item)} />)}
         </ul>
         : <p className="notification-empty"><Icon name="bell" size={28} />{t('notifications.empty')}</p>}
       <div className="notification-panel-footer">

@@ -9,15 +9,22 @@ from sqlalchemy import func, select
 from juntia import webpush
 from juntia.db import PushDelivery, PushSubscription
 from tests.push_support import Browser, PushService
+from tests.test_community_actions import create_item
+from tests.test_community_events import create_event
+from tests.test_feature_flags import set_flag
 from tests.test_notifications import (
+    MEETING,
     at,
     bell,
+    comment,
+    edit_action,
     import_statement,
     neighbor,
     set_administrator,
     stored,
     tick,
 )
+from tests.test_notifications import clock as clock
 from tests.test_users import current_user, database, login
 from tests.test_users import mailbox as mailbox
 
@@ -208,3 +215,96 @@ def test_devices_stop_with_the_session_or_the_account(admin, config, mailbox):
     )
     assert removed.status_code == 204, removed.text
     assert stored(config, user["id"]) == 0
+
+
+def test_news_reaches_the_devices_two_minutes_later_with_the_latest(
+    admin, config, service, mailbox, clock,
+):
+    clock["now"] = at(config, 2030, 3, 4, 10)
+    with neighbor(config, admin, mailbox) as (reader, _):
+        phone = Browser()
+        register(reader, phone)
+        item = create_item(admin, "Leak in the garage")
+        tick(admin, at(config, 2030, 3, 4, 10, 1))
+        assert service.requests == []
+        # Another change waits again, to tell the latest once.
+        clock["now"] = at(config, 2030, 3, 4, 10, 1, 30)
+        edit_action(admin, item, status="voting")
+        tick(admin, at(config, 2030, 3, 4, 10, 3))
+        assert service.requests == []
+        tick(admin, at(config, 2030, 3, 4, 10, 4))
+        assert service.messages(phone) == [{
+            "web_push": 8030,
+            "notification": {
+                "title": "New action: Leak in the garage",
+                "body": "Status: Voting",
+                "lang": "en",
+                "dir": "ltr",
+                "navigate": f"http://testserver/actions/{item['id']}",
+                "tag": f"action:{item['id']}",
+                "silent": False,
+                "icon": "http://testserver/icons/icon-192.png",
+                "badge": "http://testserver/icons/badge-96.png",
+            },
+        }]
+        # Later news replaces it on the device (the same tag): unread, the action is still new.
+        clock["now"] = at(config, 2030, 3, 4, 11)
+        edit_action(admin, item, status="approved")
+        tick(admin, at(config, 2030, 3, 4, 11, 2))
+        message = service.messages(phone)[-1]["notification"]
+        assert (message["title"], message["body"], message["tag"]) == (
+            "New action: Leak in the garage", "Status: Approved", f"action:{item['id']}",
+        )
+        assert waiting(config) == 0
+
+
+def test_news_that_comes_while_its_message_is_sent_is_sent_too(
+    admin, config, service, mailbox, clock,
+):
+    clock["now"] = at(config, 2030, 3, 4, 10)
+    phone = Browser()
+    register(admin, phone)
+    with neighbor(config, admin, mailbox) as (reader, _):
+        item = create_item(admin, "Leak in the garage")
+        comment(reader, item, "Thanks")
+        notifier = admin.app.state.notifier
+        (sending,) = admin.portal.call(notifier.due, at(config, 2030, 3, 4, 10, 3))
+        clock["now"] = at(config, 2030, 3, 4, 10, 3, 30)
+        comment(reader, item, "It is getting worse")
+        admin.portal.call(notifier.record, at(config, 2030, 3, 4, 10, 4), [(sending, "delivered")])
+        assert waiting(config) == 1
+        tick(admin, at(config, 2030, 3, 4, 10, 6))
+        (message,) = service.messages(phone)
+        assert (message["notification"]["title"], message["notification"]["body"]) == (
+            "Leak in the garage", "2 new comments",
+        )
+        assert waiting(config) == 0
+
+
+def test_reminders_reach_the_devices_at_once_in_their_language(admin, config, service):
+    set_flag(admin, "events", True)
+    english, spanish = Browser(), Browser(endpoint="https://fcm.googleapis.com/fcm/send/es")
+    register(admin, english)
+    register(admin, spanish, locale="es")
+    event = create_event(admin, **MEETING)
+    # Its author is reminded too, at once.
+    tick(admin, at(config, 2030, 3, 4, 19))
+    (message,) = service.messages(english)
+    assert {name: message["notification"][name] for name in ("title", "body", "navigate")} == {
+        "title": "Tomorrow: Owners' meeting",
+        "body": "Tuesday 5 March, 19:00 · Portal",
+        "navigate": f"http://testserver/events/{event['id']}",
+    }
+    (message,) = service.messages(spanish)
+    assert (message["notification"]["title"], message["notification"]["body"]) == (
+        "Mañana: Owners' meeting", "Martes 5 de marzo, 19:00 · Portal",
+    )
+    # Reminded before nine, and Events turned off meanwhile: never sent.
+    create_event(
+        admin, **{**MEETING, "starts_at": "2030-03-07T08:00:00", "ends_at": "2030-03-07T09:00:00"}
+    )
+    tick(admin, at(config, 2030, 3, 6, 8, 30))
+    assert waiting(config) == 2
+    set_flag(admin, "events", False)
+    tick(admin, at(config, 2030, 3, 6, 9))
+    assert waiting(config) == 0 and len(service.requests) == 2

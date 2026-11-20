@@ -172,37 +172,67 @@ order as the box:
 
 ## Notifications
 
-- Accounts that receive notifications see a **bell** at the top of every page, next to the theme
-  button, with how many are unread (**9+** above nine). So far only administrators receive them;
-  neighbors see no bell.
-- The bell opens the list: what each notification is about, one line of explanation and how long
-  ago it came. Its title opens the page where it is dealt with and counts it as read; the check mark
-  marks it as read, the cross dismisses it for good, and **Mark all as read** does it for all of
-  them. Escape, a click outside or the bell close the list; on a phone it spans the screen.
+- Every account sees a **bell** at the top of every page, next to the theme button, with how many
+  notifications are unread (**9+** above nine).
+- The bell opens the list, newest first: what each notification is about, one line of explanation
+  and how long ago it came. Its title opens its own page (the action, the event, the Overview of a
+  month…) and counts it as read; the check mark marks it as read, the cross dismisses it, and **Mark
+  all as read** does it for all of them. Escape, a click outside or the bell close the list; on a
+  phone it spans the screen.
+- Nobody is told what they did themselves, and doing something on an action or an event (commenting
+  on it, changing it) counts what the account was told about it as read.
+- There is **one notification per subject**. News about an action or an event the account was
+  already told about brings that notification up to date instead of adding another: it is unread
+  again and at the top, even if it had been dismissed, and replaces the earlier one on the devices.
+  While unread, it adds up what came ("3 new comments"), and a new action or event stays new with its
+  latest status or time. News is forgotten 90 days after it came.
+
+Each kind:
+
 - **Missing statement**, for administrators: from the first day of each month (in the community's
   time zone, `TZ`), when the ledger has movements from earlier months but none booked in the
   previous one, its bank statement has not been imported yet. It opens **Finances > Import**, goes
   away as soon as a statement with movements of that month is imported, and comes back if that
   statement is removed. A statement that covers only part of the month counts as imported, and an
-  installation without statements is never told.
+  installation without statements is never told. Dismissed, it never comes back.
+- **Accounts of the month**: when an imported statement brings movements of the month that just
+  ended, every account but the administrator who imported it is told, once, that its accounts are
+  ready. It opens **Overview** for that month, and goes away while that month has no movements.
+- **Actions**: someone created an action or changed its status. It opens the action.
+- **Comments on the actions you follow**: new comments and PDFs on the actions the account created,
+  edited, commented on or attached a PDF to, with who sent the latest. It opens the action.
+- **Events**: someone created an event that has not ended, changed its date, time or place, or
+  deleted it (**Event cancelled**). It says when it starts and where, opens the event and goes away
+  when the event ends.
+- **Event reminders**: 24 hours before each event starts (an event of whole days, from midnight of
+  the day before), everyone is reminded of it, its author included: "Tomorrow: Owners' meeting".
+  An event set less than 24 hours before it starts is not reminded: its news told everyone then. The
+  reminder goes away when the event starts, and moving the event moves it.
+- While Actions or Events are [turned off](#features-switches), their kinds are neither listed, nor
+  sent, nor offered in the settings.
+
+Settings and devices:
+
 - **My profile > Notifications** (also **Notification settings** under the bell) turns each kind on
   or off for the account: a kind turned off is neither listed nor sent to its devices. Every kind is
   on at first.
 - **Notifications on this device**, in the same card, also shows them as notifications of the phone
   or computer, even with Juntia closed, from 9:00 to 21:00 in the community's time zone (a device
-  that is off then gets them when it comes back). Each device is turned on by itself, and is told in
-  the language of its interface. It needs HTTPS (or `localhost`) and outbound access from the server
-  to the browsers' push services ([configuration](configuration.md#push-notifications)); on an
-  iPhone or iPad, Juntia added to the Home Screen (iOS 16.4 or later) and turned on from there; and
-  the browser's permission, which the card says when it is blocked.
+  that is off then gets them when it comes back). News about actions and events waits two minutes,
+  so that several changes in a row arrive as one, with the latest. Each device is turned on by
+  itself, and is told in the language of its interface. It needs HTTPS (or `localhost`) and outbound
+  access from the server to the browsers' push services
+  ([configuration](configuration.md#push-notifications)); on an iPhone or iPad, Juntia added to the
+  Home Screen (iOS 16.4 or later) and turned on from there; and the browser's permission, which the
+  card says when it is blocked.
 - A device stops receiving them when it signs out, and every device of an account does when its
   password changes, its sessions are closed or it is disabled or deleted; signing in again there and
   opening Juntia turns them back on. A session that just expires does not stop them. Tapping one
   opens its page in Juntia.
 
 <p align="center">
-  <img src="screenshots/notifications.png" alt="The list under the bell, open on the Import statement page: Missing statement: October 2026, with a line saying it has not been imported yet and where to import it, when it came, buttons to mark it as read and to dismiss it, Mark all as read and Notification settings" width="900"><br>
-  <sub>An administrator's <b>notifications</b> when last month's statement is missing (synthetic demo data).</sub>
+  <img src="screenshots/notifications.png" alt="The list under the bell of a neighbor, open on the Overview: unread first, new comments on two actions they follow, a new event and a cancelled one with their day, time and place; then older news already read, such as an action now in progress; each with how long ago it came and buttons to mark it as read and to dismiss it" width="900"><br>
+  <sub>A neighbor's <b>notifications</b>: the news of the community (synthetic demo data).</sub>
 </p>
 
 ## Finances
@@ -384,7 +414,8 @@ not post content that may need to be erased later.
 
 **Concurrent edits.** If someone else saved first, your save is rejected instead of overwriting their
 changes: your draft stays in the form, and you can compare it with the current version and keep your
-changes on top of it. There are no real-time collaboration or notifications.
+changes on top of it. There is no real-time collaboration; the others learn about new actions,
+statuses, comments and PDFs through their [notifications](#notifications).
 
 <p align="center">
   <img src="screenshots/action-detail.png" alt="An action with its status, labels, description and PDF attachments" width="900"><br>
@@ -416,8 +447,9 @@ stop concurrent edits from overwriting each other.
   marked **Continues · Last day** on the final one. All rows open the same event.
 - An event has a title and an optional location (up to 200 characters each), an optional description
   in [Markdown, with images](#markdown-and-images) (up to 20,000), and either a start and end time or
-  a range of whole days. There are no recurring events, reminders, invitations, RSVPs or monthly
-  calendar view.
+  a range of whole days. There are no recurring events, invitations, RSVPs or monthly calendar view.
+- Everyone is told about new, moved and cancelled events, and reminded of each one the day before,
+  through their [notifications](#notifications).
 
 <p align="center">
   <img src="screenshots/events.png" alt="Events agenda grouped by day" width="900"><br>
@@ -749,8 +781,8 @@ The avatar menu opens **My profile**, for every account, administrators included
   password.
 - **Link Google** and **Unlink Google** manage Google sign-in (see below). Accounts that only use
   Google can request a link to create a **Local password**.
-- **Notifications**, for the accounts that receive them, chooses which ones and turns them on for
-  that device (see [notifications](#notifications)).
+- **Notifications** chooses which ones the account receives and turns them on for that device (see
+  [notifications](#notifications)).
 
 ### Google sign-in
 
