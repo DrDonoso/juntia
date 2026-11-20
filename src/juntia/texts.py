@@ -44,6 +44,34 @@ class Texts:
     month_year: str
     statement_missing_title: str
     statement_missing_body: str
+    accounts_ready_title: str
+    accounts_ready_body: str
+    # The statuses of actions as the portal shows them, in the order of ``ACTION_STATUSES``.
+    action_statuses: tuple[str, ...]
+    action_created_title: str
+    action_created_body: str
+    action_status_body: str
+    # What is new on an action: one comment or PDF by its author, or how many of each ("{count}"
+    # of one, or of several), alone or together.
+    comment_added: str
+    attachment_added: str
+    comments_one: str
+    comments_many: str
+    attachments_one: str
+    attachments_many: str
+    contributions: str
+    contributions_both: str
+    # The days of the week from Monday, and the day an event starts ("Thursday 4 December"), in
+    # another year with it.
+    weekdays: tuple[str, ...]
+    event_day: str
+    event_day_year: str
+    event_created: str
+    event_changed: str
+    event_cancelled: str
+    reminder_today: str
+    reminder_tomorrow: str
+    reminder: str
 
 
 TEXTS: dict[Language, Texts] = {
@@ -89,6 +117,34 @@ TEXTS: dict[Language, Texts] = {
         month_year="{month} {year}",
         statement_missing_title="Missing statement: {month}",
         statement_missing_body="It has not been imported yet: import it in Finances > Import.",
+        accounts_ready_title="The accounts of {month} are ready",
+        accounts_ready_body="See the month's income and expenses in Finances > Overview.",
+        action_statuses=(
+            "Detected", "Requesting quotes", "Voting", "Approved", "Ordered / paid", "In progress",
+            "Done", "Discarded",
+        ),
+        action_created_title="New action: {title}",
+        action_created_body="Status: {status}",
+        action_status_body="Now: {status}",
+        comment_added="New comment by {author}",
+        attachment_added="New PDF by {author}",
+        comments_one="{count} new comment",
+        comments_many="{count} new comments",
+        attachments_one="{count} new PDF",
+        attachments_many="{count} new PDFs",
+        contributions="{items}",
+        contributions_both="{comments} and {attachments}",
+        weekdays=(
+            "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+        ),
+        event_day="{weekday} {day} {month}",
+        event_day_year="{weekday} {day} {month} {year}",
+        event_created="New event: {title}",
+        event_changed="Event changed: {title}",
+        event_cancelled="Event cancelled: {title}",
+        reminder_today="Today: {title}",
+        reminder_tomorrow="Tomorrow: {title}",
+        reminder="Reminder: {title}",
     ),
     "es": Texts(
         administrator="Administrador técnico",
@@ -129,6 +185,32 @@ TEXTS: dict[Language, Texts] = {
         month_year="{month} de {year}",
         statement_missing_title="Falta el extracto de {month}",
         statement_missing_body="Aún no se ha importado: impórtalo en Gastos > Importar.",
+        accounts_ready_title="Ya están las cuentas de {month}",
+        accounts_ready_body="Consulta los ingresos y gastos del mes en Gastos > Resumen.",
+        action_statuses=(
+            "Detectado", "Pidiendo presupuestos", "En votación", "Aprobado", "Encargado / pagado",
+            "En ejecución", "Hecho", "Descartado",
+        ),
+        action_created_title="Nueva actuación: {title}",
+        action_created_body="Estado: {status}",
+        action_status_body="Ahora: {status}",
+        comment_added="Nuevo comentario de {author}",
+        attachment_added="Nuevo PDF de {author}",
+        comments_one="{count} comentario",
+        comments_many="{count} comentarios",
+        attachments_one="{count} PDF",
+        attachments_many="{count} PDF",
+        contributions="{items} nuevos",
+        contributions_both="{comments} y {attachments} nuevos",
+        weekdays=("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"),
+        event_day="{weekday} {day} de {month}",
+        event_day_year="{weekday} {day} de {month} de {year}",
+        event_created="Nuevo evento: {title}",
+        event_changed="Evento cambiado: {title}",
+        event_cancelled="Evento cancelado: {title}",
+        reminder_today="Hoy: {title}",
+        reminder_tomorrow="Mañana: {title}",
+        reminder="Recordatorio: {title}",
     ),
 }
 

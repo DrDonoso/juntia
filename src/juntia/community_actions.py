@@ -15,7 +15,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse
 
-from . import queries
+from . import notifications, queries
 from .auth import (
     DB,
     Actor,
@@ -450,6 +450,7 @@ async def create_item(
         ActionChange(field="status", before=None, after=value.status),
         ActionChange(field="labels", before=None, after=[label.name for label in labels]),
     ])
+    await notifications.tell_action(db, actor, value, created=True)
     await db.commit()
     return await action_out(db, value, language)
 
@@ -484,6 +485,10 @@ async def edit_item(
     if changes:
         value.version += 1
         add_event(db, value, actor, "updated", changes)
+        fields = {change.field for change in changes}
+        await notifications.tell_action(
+            db, actor, value, status="status" in fields, title="title" in fields,
+        )
     await db.commit()
     return await action_out(db, value, language)
 
@@ -525,6 +530,7 @@ async def add_comment(
     add_event(db, value, actor, "comment_added", [
         ActionChange(field="comment", before=None, after=comment.body),
     ], comment_id=comment.id)
+    await notifications.tell_contribution(db, actor, value, attachment=False)
     await db.commit()
     return comment_out(comment, language)
 
@@ -705,6 +711,7 @@ async def upload_attachment(
             ActionChange(field="filename", before=None, after=attachment.filename),
             ActionChange(field="size", before=None, after=str(attachment.size)),
         ], attachment_id=attachment.id)
+        await notifications.tell_contribution(db, actor, value, attachment=True)
         await run_in_threadpool(publish_pdf, staged)
         await db.commit()
         committed = True

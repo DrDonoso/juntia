@@ -1040,13 +1040,13 @@ export interface NeighborOut {
 
 export interface NotificationKindOut {
   enabled: boolean
-  kind: 'statement_missing'
+  kind: 'statement_missing' | 'accounts_ready' | 'action_changes' | 'action_comments' | 'event_changes' | 'event_reminder'
 }
 
 export interface NotificationOut {
   created_at: string
   id: number
-  kind: 'statement_missing'
+  kind: 'statement_missing' | 'accounts_ready' | 'action_changes' | 'action_comments' | 'event_changes' | 'event_reminder'
   link: string
   params: Record<string, string>
   read: boolean
@@ -1054,12 +1054,13 @@ export interface NotificationOut {
 
 export interface NotificationPreferenceIn {
   enabled: boolean
-  kind: 'statement_missing'
+  kind: 'statement_missing' | 'accounts_ready' | 'action_changes' | 'action_comments' | 'event_changes' | 'event_reminder'
 }
 
 export interface NotificationsOut {
   items: NotificationOut[]
   kinds: NotificationKindOut[]
+  today: string
   unread: number
 }
 

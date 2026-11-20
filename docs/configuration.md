@@ -175,8 +175,9 @@ browser-test server takes `--language en|es` instead (`scripts/smoke_server.py`)
 whatever the time zone of each visitor's device. Timed events are stored as instants and all-day
 events as dates, so changing `TZ` later changes their presentation, not the stored values. Local
 times that do not exist or happen twice at a daylight-saving change are rejected with a field error.
-It also decides when a month starts for the [missing statement](features.md#notifications) alert,
-and the hours, 9:00 to 21:00, when [push notifications](#push-notifications) are sent.
+It also decides when a month starts for the [missing statement](features.md#notifications) alert
+and the accounts of each month, the days notifications tell ("today", "tomorrow"), and the hours,
+9:00 to 21:00, when [push notifications](#push-notifications) are sent.
 
 ## Storage limits
 

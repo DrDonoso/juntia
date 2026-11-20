@@ -67,9 +67,13 @@ Features that depend on real infrastructure are simulated or explain that they n
   invited neighbors stay pending; password recovery answers as usual without sending anything.
 - **Google sign-in** and linking answer "This feature needs a real server, so it is not available in
   the demo."
-- **Notifications:** the administrator's bell follows the data of the visit: remove the latest two
-  statements in **Manage statements** and the previous month's statement goes missing. Notifications
-  on phones and computers need a real server: **My profile** says the demo cannot send them.
+- **Notifications:** the bell follows the data of the visit. The sample neighbor is told the recent
+  news of the community (the actions they follow, the coming events, last month's accounts), and
+  what you do as one account (commenting, changing an action's status, creating an event) tells the
+  others: sign in as the administrator to see it. Remove the latest two statements in **Manage
+  statements** and the administrator is told the previous month's statement is missing.
+  Notifications on phones and computers need a real server: **My profile** says the demo cannot send
+  them.
 - **Storage administration** shows invented disk figures; permanent deletion and the PDF quotas
   behave as on a real server (every account has one, administrators included), and so do the limits
   of shared documents (the largest file and video, and the quotas of each account and of the

@@ -42,7 +42,7 @@ beforeEach(() => {
   // What the tests put in the cache (the session, the community, the features) stays as it is.
   cache.setDefaultOptions({ queries: { retry: false, staleTime: Infinity } })
   state = {
-    kinds: [{ kind: 'statement_missing', enabled: true }], unread: 2,
+    kinds: [{ kind: 'statement_missing', enabled: true }], today: '2026-12-01', unread: 2,
     items: [alert(2, '2026-11', 5), alert(1, '2026-10', 32 * 24 * 60)],
   }
   requests = []
@@ -198,7 +198,7 @@ describe('the bell', () => {
     act(() => setLanguage('es'))
     const user = userEvent.setup()
     renderShell()
-    const bell = await screen.findByRole('button', { name: 'Notificaciones: 12 sin leer' })
+    const bell = await screen.findByRole('button', { name: 'Notificaciones: 9+ sin leer' })
     expect(bell).toHaveTextContent('9+')
     await user.click(bell)
     const panel = screen.getByRole('dialog', { name: 'Notificaciones' })
@@ -211,8 +211,59 @@ describe('the bell', () => {
     expect(within(panel).queryByText('Sin leer')).toBeNull()
   })
 
+  it('tells a neighbor the news of the community, with the days told against the community’s date', async () => {
+    const news = (id: number, kind: NotificationOut['kind'], params: Record<string, string>, link: string): NotificationOut => ({
+      id, kind, params, link, read: false, created_at: new Date(NOW.getTime() - id * 60_000).toISOString(),
+    })
+    const meeting = { title: 'Owners’ meeting', day: '2026-12-02', time: '19:00', location: 'Portal' }
+    state = {
+      kinds: (['accounts_ready', 'action_changes', 'action_comments', 'event_changes', 'event_reminder'] as const)
+        .map(kind => ({ kind, enabled: true })),
+      today: '2026-12-01', unread: 8,
+      items: [
+        news(1, 'event_reminder', meeting, '/events/4'),
+        news(2, 'event_reminder', { title: 'Lift inspection', day: '2026-12-01', time: '10:00', location: '' }, '/events/6'),
+        news(3, 'event_changes', { title: 'Cleaning day', day: '2027-01-15', time: '', location: '', change: 'created' }, '/events/5'),
+        news(4, 'event_changes', { ...meeting, change: 'cancelled' }, '/events/4'),
+        news(5, 'action_comments', { title: 'Leak in the garage', comments: '2', attachments: '1', author: 'Ana' }, '/actions/7'),
+        news(6, 'action_comments', { title: 'Broken gate', comments: '1', attachments: '0', author: 'Ana' }, '/actions/8'),
+        news(7, 'action_changes', { title: 'Leak in the garage', status: 'voting', change: 'created' }, '/actions/7'),
+        news(8, 'accounts_ready', { month: '2026-11' }, '/?start=2026-11-01&end=2026-11-30'),
+      ],
+    }
+    const user = userEvent.setup()
+    renderShell(false)
+    await user.click(await screen.findByRole('button', { name: 'Notifications: 8 unread' }))
+    const panel = screen.getByRole('dialog', { name: 'Notifications' })
+    const texts = () => within(panel).getAllByRole('listitem').map(item => [
+      within(item).getByRole('link').textContent, item.querySelector('.notification-body')?.textContent,
+    ])
+    expect(texts()).toEqual([
+      ['Tomorrow: Owners’ meeting', 'Wednesday 2 December, 19:00 · Portal'],
+      ['Today: Lift inspection', 'Tuesday 1 December, 10:00'],
+      ['New event: Cleaning day', 'Friday 15 January 2027'],
+      ['Event cancelled: Owners’ meeting', 'Wednesday 2 December, 19:00 · Portal'],
+      ['Leak in the garage', '2 new comments and 1 new PDF'],
+      ['Broken gate', 'New comment by Ana'],
+      ['New action: Leak in the garage', 'Status: Voting'],
+      ['The accounts of November 2026 are ready', "See the month's income and expenses in Finances > Overview."],
+    ])
+    expect(within(panel).getByRole('link', { name: 'Broken gate' })).toHaveAttribute('href', '/actions/8')
+    act(() => setLanguage('es'))
+    expect(texts()).toEqual([
+      ['Mañana: Owners’ meeting', 'Miércoles 2 de diciembre, 19:00 · Portal'],
+      ['Hoy: Lift inspection', 'Martes 1 de diciembre, 10:00'],
+      ['Nuevo evento: Cleaning day', 'Viernes 15 de enero de 2027'],
+      ['Evento cancelado: Owners’ meeting', 'Miércoles 2 de diciembre, 19:00 · Portal'],
+      ['Leak in the garage', '2 comentarios y 1 PDF nuevos'],
+      ['Broken gate', 'Nuevo comentario de Ana'],
+      ['Nueva actuación: Leak in the garage', 'Estado: En votación'],
+      ['Ya están las cuentas de noviembre de 2026', 'Consulta los ingresos y gastos del mes en Gastos > Resumen.'],
+    ])
+  })
+
   it('is not shown to an account that receives no notifications', async () => {
-    state = { kinds: [], unread: 0, items: [] }
+    state = { kinds: [], today: '2026-12-01', unread: 0, items: [] }
     renderShell(false)
     await waitFor(() => expect(requests).toContain('GET /api/notifications'))
     expect(screen.queryByRole('button', { name: /^Notifications/ })).toBeNull()

@@ -5739,7 +5739,14 @@
             "type": "boolean"
           },
           "kind": {
-            "const": "statement_missing",
+            "enum": [
+              "statement_missing",
+              "accounts_ready",
+              "action_changes",
+              "action_comments",
+              "event_changes",
+              "event_reminder"
+            ],
             "title": "Kind",
             "type": "string"
           }
@@ -5764,7 +5771,14 @@
             "type": "integer"
           },
           "kind": {
-            "const": "statement_missing",
+            "enum": [
+              "statement_missing",
+              "accounts_ready",
+              "action_changes",
+              "action_comments",
+              "event_changes",
+              "event_reminder"
+            ],
             "title": "Kind",
             "type": "string"
           },
@@ -5803,7 +5817,14 @@
             "type": "boolean"
           },
           "kind": {
-            "const": "statement_missing",
+            "enum": [
+              "statement_missing",
+              "accounts_ready",
+              "action_changes",
+              "action_comments",
+              "event_changes",
+              "event_reminder"
+            ],
             "title": "Kind",
             "type": "string"
           }
@@ -5832,6 +5853,11 @@
             "title": "Kinds",
             "type": "array"
           },
+          "today": {
+            "format": "date",
+            "title": "Today",
+            "type": "string"
+          },
           "unread": {
             "title": "Unread",
             "type": "integer"
@@ -5839,6 +5865,7 @@
         },
         "required": [
           "kinds",
+          "today",
           "unread",
           "items"
         ],
@@ -15198,7 +15225,7 @@
     },
     "/api/notifications/{notification_id}/dismiss": {
       "post": {
-        "description": "Hide a notification for good; its push messages still waiting are not sent.",
+        "description": "Hide a notification until it has news; its push messages still waiting are not sent.",
         "operationId": "dismiss_api_notifications__notification_id__dismiss_post",
         "parameters": [
           {

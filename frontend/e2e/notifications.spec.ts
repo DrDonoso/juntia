@@ -10,11 +10,12 @@ function missingStatement(id: number, month: string, minutesAgo: number): Notifi
   }
 }
 
-/** Answers the bell's requests with two missing statements, as the server lists them. */
-async function twoAlerts(page: Page) {
-  let items = [missingStatement(2, '2026-11', 5), missingStatement(1, '2026-10', 60 * 24 * 32)]
+/** Answers the bell's requests with `first`, as the server lists them, reading and dismissing them. */
+async function bellWith(page: Page, first: NotificationOut[], today = '2026-12-01') {
+  let items = first
   const answer = (): NotificationsOut => ({
-    kinds: [{ kind: 'statement_missing', enabled: true }], unread: items.filter(item => !item.read).length, items,
+    kinds: [...new Set(items.map(item => item.kind))].map(kind => ({ kind, enabled: true })), today,
+    unread: items.filter(item => !item.read).length, items,
   })
   await page.route('**/api/notifications', route => route.fulfill({ json: answer() }))
   await page.route('**/api/notifications/read-all', route => {
@@ -28,6 +29,11 @@ async function twoAlerts(page: Page) {
       : items.map(item => item.id === Number(id) ? { ...item, read: true } : item)
     return route.fulfill({ json: answer() })
   })
+}
+
+/** Two missing statements. */
+function twoAlerts(page: Page) {
+  return bellWith(page, [missingStatement(2, '2026-11', 5), missingStatement(1, '2026-10', 60 * 24 * 32)])
 }
 
 test('the bell lists the administrator\'s notifications, by keyboard too, and opens their page', async ({ page }) => {
@@ -58,6 +64,30 @@ test('the bell lists the administrator\'s notifications, by keyboard too, and op
   await expect(panel).toBeHidden()
   await expect(bell).toHaveAccessibleName('Notifications')
   await expect(bell).toHaveText('')
+})
+
+test('the bell tells the community\'s news, each opening its own page', async ({ page }) => {
+  const now = Date.now()
+  await bellWith(page, [
+    {
+      id: 4, kind: 'event_reminder', link: '/events/4', read: false, created_at: new Date(now - 60_000).toISOString(),
+      params: { title: 'Owners’ meeting', day: '2026-12-02', time: '19:00', location: 'Portal' },
+    },
+    {
+      id: 3, kind: 'action_comments', link: '/actions/7', read: false, created_at: new Date(now - 3_600_000).toISOString(),
+      params: { title: 'Leak in the garage', comments: '2', attachments: '1', author: 'Ana' },
+    },
+  ])
+  await signInAsAdministrator(page, '/')
+  await page.getByRole('button', { name: 'Notifications: 2 unread' }).click()
+  const panel = page.getByRole('dialog', { name: 'Notifications' })
+  await expect(panel.getByRole('link', { name: 'Tomorrow: Owners’ meeting' })).toBeVisible()
+  await expect(panel.getByText('Wednesday 2 December, 19:00 · Portal')).toBeVisible()
+  await expect(panel.getByText('2 new comments and 1 new PDF')).toBeVisible()
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
+  await panel.getByRole('link', { name: 'Leak in the garage' }).click()
+  await page.waitForURL(url => url.pathname === '/actions/7')
+  await expect(page.getByRole('button', { name: 'Notifications: 1 unread' })).toBeVisible()
 })
 
 test.describe('on a phone', () => {

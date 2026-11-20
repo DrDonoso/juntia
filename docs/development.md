@@ -310,22 +310,29 @@ The favicon, Apple touch icon and Android icons are generated from `frontend/pub
 
 A kind of [notification](features.md#notifications) is declared once and told in both languages:
 
-1. its name in `NotificationKind` (`src/juntia/contracts.py`), and in `KINDS`
-   (`src/juntia/notifications.py`) who receives it (`everyone` or `administrators`) and the page it
-   opens;
-2. when it appears: a condition that `evaluate` brings up to date on every round of the notifier
-   (as `statement_missing`), resolving it when the condition stops holding, or a call that creates
-   it when something happens; `create` never makes the same one twice for an account (its `key`),
-   and `queue` sends its push messages;
+1. its name in `NotificationKind` (`src/juntia/contracts.py`, in the order the settings show them),
+   and in `KINDS` (`src/juntia/notifications.py`) who receives it (`everyone` or `administrators`),
+   whether it is news (forgotten 90 days after it came) or an alert, the section of the portal it
+   belongs to (`actions`, `events`: off with it) and how long its push messages wait;
+2. when it appears, with the page it opens (`link`) and a `key` saying what it is about (an account
+   has one notification per key):
+   - an alert: a condition that `evaluate` brings up to date on every round of the notifier (as
+     `statement_missing`), resolving it when the condition stops holding;
+   - news: a call where it happens, in the same transaction, to `notify` with every recipient but
+     whoever did it (as `tell_action`). It creates the notification, or brings an existing one up to
+     date with the parameters it returns from the earlier ones, and `queue`s its push messages; `seen`
+     reads what the actor was told about the subject, and `amend` changes the parameters without
+     telling anyone;
 3. its push message in `push_text`, with the texts in `src/juntia/texts.py`;
 4. its texts in `frontend/src/i18n/locales/*/notifications.ts` (`kinds.<kind>`: the title and text
-   under the bell, the name and description of its switch) and in `TEXTS` of
+   under the bell, the name and description of its switch), in `TEXTS` and its icon in `ICONS` of
    `frontend/src/notifications/notifications.tsx`;
-5. the demo's handler (`frontend/src/demo/handlers/notifications.ts`) and the
+5. the demo's handler (`frontend/src/demo/handlers/notifications.ts`), which derives the
+   notifications from the other stores on every request, and the
    [features](features.md#notifications).
 
-No migration is needed: notifications keep their kind and parameters, and accounts the kinds they
-turned off.
+No migration is needed: notifications keep their kind, parameters and page, and accounts the kinds
+they turned off.
 
 ## Dependencies
 

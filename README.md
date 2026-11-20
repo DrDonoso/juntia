@@ -118,10 +118,12 @@ describes every part in detail.
 
 **Notifications**
 
-- A bell at the top tells administrators what needs their attention, starting with the bank
-  statement of the previous month when it has not been imported by the first day of the next one.
-- Whoever receives them chooses in **My profile** what they are told about, and can also get it as
-  notifications on their phone or computer (Web Push, HTTPS needed), even with Juntia closed.
+- A bell at the top tells everyone the community's news: new actions and their statuses, comments on
+  the actions they follow, new, moved or cancelled events with a reminder the day before, and each
+  month's accounts once its statement is imported. Administrators are also told when the previous
+  month's bank statement has not been imported by the first day of the next one.
+- Each account chooses in **My profile** what it is told about, and can also get it as
+  notifications on its phone or computer (Web Push, HTTPS needed), even with Juntia closed.
 
 **Security and privacy**
 

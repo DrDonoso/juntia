@@ -655,11 +655,15 @@ results reads its `kind` and `page` the same way, ignoring anything else.
 `/api/notifications` requires a session of an active account and only ever
 reads or changes that account's own notifications: another account's id is
 404 `notification_not_found`, and each account turns on or off only the kinds
-its role receives (403 `notification_kind_unavailable` otherwise). So far the
-only kind, a missing bank statement, goes to active administrators, checked on
-every round of the notifier: an account that loses the role loses its alerts
-and is sent no more. They say which month is missing, never an amount, a name
-or an IBAN.
+its role and the sections turned on allow (403 `notification_kind_unavailable`
+otherwise). The alert of a missing bank statement goes to active administrators,
+checked on every round of the notifier: an account that loses the role loses its
+alerts and is sent no more. The news of the community goes to the active
+accounts that can read its subject anyway: the accounts of a month say which
+month, never an amount, a name or an IBAN; actions and events, their title,
+status, date and place; comments and PDFs, how many and who sent the latest,
+only to the accounts that took part in the action, never what they say. Actions
+and events turned off take their news with them, push messages included.
 
 Push notifications (`/api/push`) follow RFC 8030, 8291 and 8292 without a
 third-party library: every message is encrypted for the one browser that
